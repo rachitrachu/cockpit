@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>XOS Ops</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="styles.css">
+  <script src="../base1/cockpit.js"></script>
+</head>
+<body>
+  <header class="xhdr">
+    <h1>XOS Ops</h1>
+    <span id="ver" class="pill">…</span>
+  </header>
+
+  <section class="card">
+    <h2>Kolla‑Ansible Actions</h2>
+    <div class="row">
+      <button id="btn-prechecks"   class="btn">Prechecks</button>
+      <button id="btn-deploy"      class="btn">Deploy</button>
+      <button id="btn-upgrade"     class="btn">Upgrade</button>
+      <button id="btn-reconfigure" class="btn btn-outline">Reconfigure</button>
+      <button id="btn-ping"        class="btn btn-outline">Ansible Ping</button>
+      <button id="btn-restart-bad" class="btn btn-danger">Restart Failed Containers</button>
+      <button id="btn-stop"        class="btn btn-danger" disabled>Stop</button>
+    </div>
+    <pre id="op-out" class="term"></pre>
+    <p class="hint">Kolla venv + inventory are read from <code>/etc/xos-ops.conf</code>. You can change them there.</p>
+  </section>
+
+  <section class="card">
+    <h2>OpenStack / Kolla Health</h2>
+    <div class="row">
+      <button id="btn-health" class="btn">Run Health Checks</button>
+      <button id="btn-os-services" class="btn btn-outline">OS Services</button>
+      <button id="btn-os-agents" class="btn btn-outline">Network Agents</button>
+      <button id="btn-db-rmq" class="btn btn-outline">DB/RabbitMQ</button>
+    </div>
+
+    <div class="grid">
+      <div class="stat"><div class="k">Nova</div><div id="st-nova" class="v mute">–</div></div>
+      <div class="stat"><div class="k">Neutron</div><div id="st-neutron" class="v mute">–</div></div>
+      <div class="stat"><div class="k">Cinder</div><div id="st-cinder" class="v mute">–</div></div>
+      <div class="stat"><div class="k">Keystone</div><div id="st-keystone" class="v mute">–</div></div>
+      <div class="stat"><div class="k">Glance</div><div id="st-glance" class="v mute">–</div></div>
+      <div class="stat"><div class="k">MariaDB</div><div id="st-mariadb" class="v mute">–</div></div>
+      <div class="stat"><div class="k">RabbitMQ</div><div id="st-rabbitmq" class="v mute">–</div></div>
+    </div>
+
+    <pre id="health-out" class="term"></pre>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>
