@@ -1,19 +1,21 @@
-:root{
-  --bg:#0b0f14;
-  --card:#121822;
-  --muted:#98a2b3;
-  --text:#e5e7eb;
-  --accent:#3b82f6;
-  --ok:#197560;
-  --warn:#eab308;
-  --bad:#ef4444;
-  --border:#1f2937;
+:root {
+  --bg: var(--pf-global--BackgroundColor--100);
+  --card: var(--pf-global--BackgroundColor--200);
+  --muted: var(--pf-global--Color--200);
+  --text: var(--pf-global--Color--100);
+  --accent: var(--pf-global--active-color--100);
+  --ok: #197560;
+  --warn: #eab308;
+  --bad: #ef4444;
+  --border: var(--pf-global--BorderColor--100);
 }
-*{box-sizing:border-box}
-body{
-  margin:0;background:var(--bg);color:var(--text);
-  font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial;
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial;
 }
+
 h1,h2,h3{margin:.2rem 0 .6rem}
 a{color:var(--accent)}
 .xos-header{
