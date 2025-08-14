@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <title>XOS Manager</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="styles.css">
   <script src="../base1/cockpit.js"></script>
 </head>
@@ -18,7 +19,7 @@
     <button class="tab" data-tab="containers">Containers</button>
   </nav>
 
-  <!-- HORIZON -->
+  <!-- HORIZON TAB -->
   <section id="horizon" class="pane active">
     <div class="row">
       <input id="hz-url" placeholder="https://<controller>:8080 (Horizon URL)">
@@ -28,16 +29,16 @@
     <div class="iframe-wrap">
       <iframe id="hz-frame" src="about:blank" referrerpolicy="no-referrer"></iframe>
     </div>
-    <p class="hint">Tip: set a Horizon URL that’s reachable from this host. CSP allows any https/http frame.</p>
+    <p class="hint">Tip: save a Horizon URL reachable from this host. You can embed HTTPS or HTTP.</p>
   </section>
 
-  <!-- CLI -->
+  <!-- OPENSTACK CLI TAB -->
   <section id="cli" class="pane">
     <div class="row">
       <select id="auth-mode">
-        <option value="auto" selected>Auth: auto (OS_* env / keystonerc / clouds.yaml)</option>
+        <option value="auto" selected>Auth: auto (OS_* / keystonerc / clouds.yaml)</option>
         <option value="env">Auth: OS_* env</option>
-        <option value="rc">Auth: /root/keystonerc</option>
+        <option value="rc">Auth: /root/keystonerc*</option>
         <option value="clouds">Auth: clouds.yaml + cloud name</option>
       </select>
       <input id="cloud-name" placeholder="cloud name (for clouds.yaml)" style="max-width:260px;">
@@ -46,15 +47,15 @@
       <button id="btn-os-nova" class="btn btn-outline">Hypervisors</button>
     </div>
     <div class="row">
-      <input id="os-cmd" placeholder="openstack server list --long">
+      <input id="os-cmd" placeholder="openstack server list --long" style="flex:1; min-width:360px;">
       <button id="os-run" class="btn">Run</button>
       <button id="os-stop" class="btn btn-danger" disabled>Stop</button>
     </div>
     <pre id="os-out" class="term"></pre>
-    <p class="hint">Config: edit <code>/usr/local/bin/xos-cli.sh</code> to hard‑set paths if needed.</p>
+    <p class="hint">Edit <code>/usr/local/bin/xos-cli.sh</code> to hard‑set auth paths if needed.</p>
   </section>
 
-  <!-- CONTAINERS -->
+  <!-- CONTAINERS TAB -->
   <section id="containers" class="pane">
     <div class="row">
       <button id="ct-refresh" class="btn">Refresh</button>
@@ -65,6 +66,7 @@
     </div>
     <div id="ct-table" class="table"></div>
     <pre id="ct-out" class="term"></pre>
+    <p class="hint">Works with Docker or Podman via <code>/usr/local/bin/xcontainers.sh</code>.</p>
   </section>
 
   <script src="app.js"></script>
