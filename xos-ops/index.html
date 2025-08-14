@@ -24,8 +24,26 @@
       <button id="btn-restart-bad" class="btn btn-danger">Restart Failed Containers</button>
       <button id="btn-stop"        class="btn btn-danger" disabled>Stop</button>
     </div>
+
+    <h3 style="margin-top:8px">Per‑service restarts</h3>
+    <div class="row">
+      <button class="btn btn-outline svc" data-svc="nova">Restart Nova</button>
+      <button class="btn btn-outline svc" data-svc="neutron">Restart Neutron</button>
+      <button class="btn btn-outline svc" data-svc="cinder">Restart Cinder</button>
+      <button class="btn btn-outline svc" data-svc="keystone">Restart Keystone</button>
+      <button class="btn btn-outline svc" data-svc="glance">Restart Glance</button>
+      <button class="btn btn-outline svc" data-svc="mariadb">Restart MariaDB</button>
+      <button class="btn btn-outline svc" data-svc="rabbitmq">Restart RabbitMQ</button>
+    </div>
+
+    <h3 style="margin-top:8px">Kolla logs collection</h3>
+    <div class="row">
+      <input id="logs-since" placeholder="minutes (default 60)" style="max-width:180px">
+      <button id="btn-logs" class="btn">Collect Logs</button>
+    </div>
+
     <pre id="op-out" class="term"></pre>
-    <p class="hint">Kolla venv + inventory are read from <code>/etc/xos-ops.conf</code>. You can change them there.</p>
+    <p class="hint">Kolla venv / inventory from <code>/etc/xos-ops.conf</code>. Logs are saved under <code>/var/tmp/</code>.</p>
   </section>
 
   <section class="card">
