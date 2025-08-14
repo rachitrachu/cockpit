@@ -1,7 +1,6 @@
 {
   "version": 1,
   "name": "xos-networking",
-  "label": "XOS Networking",
   "icon": "icon.svg",
   "preload": ["style.css", "main.js"],
   "tools": [
