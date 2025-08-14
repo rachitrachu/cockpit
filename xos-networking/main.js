@@ -2,32 +2,52 @@
 (() => {
   'use strict';
 
-  const $ = (q, root = document) => root.querySelector(q);
+  const NM = '/usr/bin/nmcli';        // absolute path to avoid PATH issues in cockpit
+  const $  = (q, root = document) => root.querySelector(q);
   const $$ = (q, root = document) => Array.from(root.querySelectorAll(q));
   const statusEl = $('#status');
 
-  function setStatus(msg) {
-    statusEl.textContent = msg || '';
-  }
+  function setStatus(msg) { statusEl.textContent = msg || ''; }
 
+  // spawn wrapper: default to non-blocking privilege behavior
   async function run(cmd, args = [], opts = {}) {
     const proc = cockpit.spawn([cmd, ...args], {
-      superuser: "require",
+      superuser: "try",     // don't force polkit for read ops; write ops still escalate as needed
       err: "out",
       ...opts
     });
     let out = "";
     proc.stream(d => out += d);
-    await proc;
-    return out.trim();
+    try {
+      await proc;
+      return out.trim();
+    } catch (e) {
+      // surface errors in UI and rethrow for caller to handle
+      console.error(`spawn failed: ${cmd} ${args.join(' ')}`, e, out);
+      throw (out || e).toString();
+    }
   }
 
+  function td(text) { const e = document.createElement('td'); e.textContent = text; return e; }
+  function tdEl(el) { const e = document.createElement('td'); e.appendChild(el); return e; }
+  function btn(label, handler) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.className = 'btn';
+    b.addEventListener('click', async () => {
+      try { setStatus(`${label}…`); await handler(); }
+      catch (e) { alert(`${label} failed:\n${e}`); }
+      finally { setStatus(''); }
+    });
+    return b;
+  }
   function stateBadge(state) {
     const span = document.createElement('span');
-    span.className = 'badge ' + (state === 'connected' || state === 'UP' ? 'state-up'
-                      : state === 'disconnected' || state === 'DOWN' ? 'state-down'
+    const s = (state || 'unknown').toUpperCase();
+    span.className = 'badge ' + (s === 'CONNECTED' || s === 'UP' ? 'state-up'
+                      : s === 'DISCONNECTED' || s === 'DOWN' ? 'state-down'
                       : 'state-unknown');
-    span.textContent = state.toUpperCase();
+    span.textContent = s;
     return span;
   }
 
@@ -41,68 +61,68 @@
   // -------- Interfaces --------
   async function listInterfaces() {
     setStatus('Loading interfaces…');
-    // nmcli device show / device status
-    const terse = await run('nmcli', ['-t', '-f', 'DEVICE,TYPE,STATE,CONNECTION', 'device']);
-    const lines = terse.split('\n').filter(Boolean);
-    const devices = await parseDevicesDetail();
+    let lines = [];
+    try {
+      const terse = await run(NM, ['-t', '-f', 'DEVICE,TYPE,STATE,CONNECTION', 'device']);
+      lines = terse.split('\n').filter(Boolean);
+    } catch (e) {
+      // If nmcli is missing or blocked, show a single error row
+      const tbody = $('#table-interfaces tbody');
+      tbody.innerHTML = '';
+      const tr = document.createElement('tr');
+      tr.append(td('—'), td('—'), tdEl(stateBadge('unknown')), td('—'), td('—'), td('—'), td('—'), td('nmcli error: ' + e));
+      tbody.appendChild(tr);
+      setStatus('');
+      return;
+    }
+
+    const devMap = await parseDevicesDetail().catch(() => new Map());
     const tbody = $('#table-interfaces tbody');
     tbody.innerHTML = '';
 
     for (const l of lines) {
       const [dev, type, state, conn] = l.split(':');
-      const d = devices.get(dev) || {};
+      const d = devMap.get(dev) || {};
       const tr = document.createElement('tr');
-      const act = document.createElement('td');
-      act.className = 'actions';
+      const acts = document.createElement('td'); acts.className = 'actions';
 
-      const btnUp = btn(`Up`, async () => {
-        await run('nmcli', ['device', 'connect', dev]);
-        await refreshAll();
-      });
-      const btnDown = btn('Down', async () => {
-        await run('nmcli', ['device', 'disconnect', dev]);
-        await refreshAll();
-      });
+      // When unmanaged, Up/Down via nmcli device connect/disconnect will fail.
+      // We still render buttons, but disable if state says unmanaged.
+      const unmanaged = (state || '').toLowerCase() === 'unmanaged';
 
+      const btnUp   = btn('Up',   async () => { await run(NM, ['device', 'connect', dev]); await refreshAll(); });
+      const btnDown = btn('Down', async () => { await run(NM, ['device', 'disconnect', dev]); await refreshAll(); });
       const btnEditIP = btn('Set IP', async () => {
         const cidr = prompt(`Enter IPv4 address/CIDR for ${dev} (blank to skip):`, d.ipv4 || '');
-        if (cidr) {
-          // create or modify a dummy connection for manual IPv4
-          const conname = `xos-${dev}-manual`;
-          try {
-            await run('nmcli', ['con', 'add', 'type', 'ethernet', 'ifname', dev, 'con-name', conname]);
-          } catch (e) { /* may exist */ }
-          await run('nmcli', ['con', 'mod', conname, 'ipv4.addresses', cidr, 'ipv4.method', 'manual']);
-          if (d.ipv4gw) {
-            await run('nmcli', ['con', 'mod', conname, 'ipv4.gateway', d.ipv4gw]);
-          }
-          await run('nmcli', ['con', 'up', conname]);
-          await refreshAll();
-        }
+        if (!cidr) return;
+        const conname = `xos-${dev}-manual`;
+        try { await run(NM, ['con','add','type','ethernet','ifname',dev,'con-name',conname]); } catch (_) { /* may already exist */ }
+        await run(NM, ['con','mod', conname, 'ipv4.addresses', cidr, 'ipv4.method', 'manual']);
+        if (d.ipv4gw) await run(NM, ['con','mod', conname, 'ipv4.gateway', d.ipv4gw]);
+        await run(NM, ['con','up', conname]);
+        await refreshAll();
       });
-
       const btnDelIP = btn('Clear IP', async () => {
         const con = await bestConnectionFor(dev);
-        if (con) {
-          await run('nmcli', ['con', 'mod', con, 'ipv4.method', 'auto', 'ipv4.addresses', '', 'ipv4.gateway', '']);
-          await run('nmcli', ['con', 'up', con]);
-          await refreshAll();
-        } else {
-          alert('No connection found to modify.');
-        }
+        if (!con) return alert('No connection found to modify.');
+        await run(NM, ['con','mod', con, 'ipv4.method', 'auto', 'ipv4.addresses', '', 'ipv4.gateway', '']);
+        await run(NM, ['con','up', con]);
+        await refreshAll();
       });
 
-      act.append(btnUp, btnDown, btnEditIP, btnDelIP);
+      if (unmanaged) [btnUp, btnDown, btnEditIP, btnDelIP].forEach(b => b.disabled = true);
+
+      acts.append(btnUp, btnDown, btnEditIP, btnDelIP);
 
       tr.append(
         td(dev),
         td(type),
-        tdEl(stateBadge(state)),
+        tdEl(stateBadge(state || 'unknown')),
         td(d.mac || ''),
         td(d.ipv4 || ''),
         td(d.ipv6 || ''),
         td(d.mtu || ''),
-        act
+        acts
       );
       tbody.appendChild(tr);
     }
@@ -110,48 +130,29 @@
   }
 
   async function parseDevicesDetail() {
-    const out = await run('bash', ['-lc', "nmcli -t -f GENERAL.DEVICE,GENERAL.MTU,GENERAL.HWADDR,IP4.ADDRESS,IP6.ADDRESS device show | sed 's/  */ /g'"]);
+    // Use absolute nmcli path inside a login shell to get all fields reliably
+    const out = await run('bash', ['-lc', `${NM} -t -f GENERAL.DEVICE,GENERAL.MTU,GENERAL.HWADDR,IP4.ADDRESS,IP6.ADDRESS device show`]);
     const map = new Map();
     let cur = null;
     out.split('\n').forEach(line => {
       if (!line.includes(':')) return;
-      const [k, v] = line.split(':').map(s => s.trim());
-      if (k === 'GENERAL.DEVICE') {
-        cur = v;
-        map.set(cur, {});
-      } else if (cur) {
+      const [k, vRaw] = line.split(':');
+      const v = (vRaw || '').trim();
+      if (k === 'GENERAL.DEVICE') { cur = v; map.set(cur, {}); }
+      else if (cur) {
         const d = map.get(cur);
         if (k === 'GENERAL.MTU') d.mtu = v;
         if (k === 'GENERAL.HWADDR') d.mac = v;
-        if (k === 'IP4.ADDRESS[1]' || k === 'IP4.ADDRESS') d.ipv4 = v.split(' ')[0];
-        if (k === 'IP6.ADDRESS[1]' || k === 'IP6.ADDRESS') d.ipv6 = v.split(' ')[0];
+        if (k.startsWith('IP4.ADDRESS')) d.ipv4 = (v.split(' ')[0] || '');
+        if (k.startsWith('IP6.ADDRESS')) d.ipv6 = (v.split(' ')[0] || '');
       }
     });
     return map;
   }
 
-  function td(text) { const e = document.createElement('td'); e.textContent = text; return e; }
-  function tdEl(el) { const e = document.createElement('td'); e.appendChild(el); return e; }
-  function btn(label, handler) {
-    const b = document.createElement('button');
-    b.textContent = label;
-    b.className = 'btn';
-    b.addEventListener('click', async () => {
-      try {
-        setStatus(`${label}…`);
-        await handler();
-      } catch (e) {
-        alert(`${label} failed:\n` + e);
-      } finally {
-        setStatus('');
-      }
-    });
-    return b;
-  }
-
   async function bestConnectionFor(dev) {
     try {
-      const out = await run('nmcli', ['-t', '-f', 'NAME,DEVICE,UUID,TYPE', 'con', 'show', '--active']);
+      const out = await run(NM, ['-t', '-f', 'NAME,DEVICE,UUID,TYPE', 'con', 'show', '--active']);
       const match = out.split('\n').map(l => l.split(':')).find(a => a[1] === dev);
       return match ? match[0] : null;
     } catch { return null; }
@@ -160,7 +161,18 @@
   // -------- Connections --------
   async function listConnections() {
     setStatus('Loading connections…');
-    const out = await run('nmcli', ['-t', '-f', 'NAME,UUID,TYPE,DEVICE,AUTOCONNECT,IP4.ADDRESS,IP6.ADDRESS', 'connection', 'show']);
+    let out = '';
+    try {
+      out = await run(NM, ['-t', '-f', 'NAME,UUID,TYPE,DEVICE,AUTOCONNECT,IP4.ADDRESS,IP6.ADDRESS', 'connection', 'show']);
+    } catch (e) {
+      const tbody = $('#table-connections tbody');
+      tbody.innerHTML = '';
+      const tr = document.createElement('tr');
+      tr.append(td('nmcli error: ' + e), td('—'), td('—'), td('—'), td('—'), td('—'), td('—'), td('—'));
+      tbody.appendChild(tr);
+      setStatus('');
+      return;
+    }
     const lines = out.split('\n').filter(Boolean);
     const tbody = $('#table-connections tbody');
     tbody.innerHTML = '';
@@ -169,20 +181,17 @@
       const tr = document.createElement('tr');
       const acts = document.createElement('td'); acts.className = 'actions';
 
-      const up = btn('Up', async () => { await run('nmcli', ['con', 'up', uuid]); await refreshAll(); });
-      const down = btn('Down', async () => { await run('nmcli', ['con', 'down', uuid]); await refreshAll(); });
+      const up   = btn('Up',   async () => { await run(NM, ['con', 'up', uuid || name]);   await refreshAll(); });
+      const down = btn('Down', async () => { await run(NM, ['con', 'down', uuid || name]); await refreshAll(); });
       const edit = btn('Edit', async () => openConnModal({name, device: dev, type, uuid}));
-      const del = btn('Delete', async () => {
-        if (confirm(`Delete connection "${name}"?`)) {
-          await run('nmcli', ['con', 'delete', uuid]); await refreshAll();
-        }
+      const del  = btn('Delete', async () => {
+        if (confirm(`Delete connection "${name}"?`)) { await run(NM, ['con', 'delete', uuid || name]); await refreshAll(); }
       });
 
+      // If everything is unmanaged, these are likely no-ops; keep enabled for environments where NM manages some links.
       acts.append(up, down, edit, del);
 
-      tr.append(
-        td(name), td(uuid), td(type), td(dev || ''), td(auto || ''), td(ip4 || ''), td(ip6 || ''), acts
-      );
+      tr.append(td(name||''), td(uuid||''), td(type||''), td(dev||''), td(auto||''), td(ip4||''), td(ip6||''), acts);
       tbody.appendChild(tr);
     }
     setStatus('');
@@ -192,10 +201,8 @@
   $('#search-iface').addEventListener('input', () => filterTable('#table-interfaces', $('#search-iface').value));
   $('#search-conn').addEventListener('input',  () => filterTable('#table-connections', $('#search-conn').value));
   function filterTable(sel, term) {
-    const t = term.toLowerCase();
-    $$(sel + ' tbody tr').forEach(tr => {
-      tr.style.display = tr.textContent.toLowerCase().includes(t) ? '' : 'none';
-    });
+    const t = (term || '').toLowerCase();
+    $$(sel + ' tbody tr').forEach(tr => { tr.style.display = tr.textContent.toLowerCase().includes(t) ? '' : 'none'; });
   }
 
   // Add/Edit connection modal
@@ -228,26 +235,17 @@
 
     try {
       if (!uuid) {
-        // add
         const args = ['con','add','type',type];
         if (dev) args.push('ifname', dev);
         args.push('con-name', name || `${type}-${dev || '0'}`);
-        await run('nmcli', args);
+        await run(NM, args);
       } else {
-        // rename if changed
-        if (name) await run('nmcli', ['con','mod', uuid, 'connection.id', name]);
+        if (name) await run(NM, ['con','mod', uuid, 'connection.id', name]);
       }
-      // IP config
-      if (ip4) {
-        await run('nmcli', ['con','mod', name || uuid, 'ipv4.addresses', ip4, 'ipv4.method', 'manual']);
-      }
-      if (gw) {
-        await run('nmcli', ['con','mod', name || uuid, 'ipv4.gateway', gw]);
-      }
-      if (dns) {
-        await run('nmcli', ['con','mod', name || uuid, 'ipv4.dns', dns.replace(/,/g,' ')]);
-      }
-      await run('nmcli', ['con','up', name || uuid]);
+      if (ip4) await run(NM, ['con','mod', name || uuid, 'ipv4.addresses', ip4, 'ipv4.method', 'manual']);
+      if (gw)  await run(NM, ['con','mod', name || uuid, 'ipv4.gateway', gw]);
+      if (dns) await run(NM, ['con','mod', name || uuid, 'ipv4.dns', dns.replace(/,/g,' ')]);
+      await run(NM, ['con','up', name || uuid]);
       connModal.close();
       await refreshAll();
     } catch (err) {
@@ -262,13 +260,11 @@
     const ifname = $('#vlan-name').value.trim() || `${parent}.${id}`;
     if (!parent || !id) return alert('Parent and VLAN ID required.');
     try {
-      const out = await run('nmcli', ['con','add','type','vlan','ifname',ifname,'dev',parent,'id',id,'con-name',ifname]);
-      $('#vlan-out').textContent = out || 'VLAN created.';
-      await run('nmcli', ['con','up', ifname]);
+      await run(NM, ['con','add','type','vlan','ifname',ifname,'dev',parent,'id',id,'con-name',ifname]);
+      await run(NM, ['con','up', ifname]);
+      $('#vlan-out').textContent = `VLAN ${ifname} created.`;
       await refreshAll();
-    } catch (e) {
-      $('#vlan-out').textContent = String(e);
-    }
+    } catch (e) { $('#vlan-out').textContent = String(e); }
   });
 
   $('#btn-create-bridge').addEventListener('click', async () => {
@@ -276,16 +272,12 @@
     const ports = $('#br-ports').value.trim().split(',').map(s => s.trim()).filter(Boolean);
     if (!br) return alert('Bridge name required.');
     try {
-      await run('nmcli', ['con','add','type','bridge','ifname',br,'con-name',br]);
-      for (const p of ports) {
-        await run('nmcli', ['con','add','type','bridge-slave','ifname',p,'master',br]);
-      }
-      await run('nmcli', ['con','up', br]);
+      await run(NM, ['con','add','type','bridge','ifname',br,'con-name',br]);
+      for (const p of ports) await run(NM, ['con','add','type','bridge-slave','ifname',p,'master',br]);
+      await run(NM, ['con','up', br]);
       $('#br-out').textContent = `Bridge ${br} created with ports: ${ports.join(', ')}`;
       await refreshAll();
-    } catch (e) {
-      $('#br-out').textContent = String(e);
-    }
+    } catch (e) { $('#br-out').textContent = String(e); }
   });
 
   $('#btn-create-bond').addEventListener('click', async () => {
@@ -294,26 +286,19 @@
     const slaves = $('#bond-slaves').value.trim().split(',').map(s => s.trim()).filter(Boolean);
     if (!bond || slaves.length < 2) return alert('Bond name and at least two slaves required.');
     try {
-      await run('nmcli', ['con','add','type','bond','ifname',bond,'con-name',bond]);
-      await run('nmcli', ['con','mod', bond, 'bond.options', `mode=${mode}`]);
-      for (const s of slaves) {
-        await run('nmcli', ['con','add','type','bond-slave','ifname',s,'master',bond]);
-      }
-      await run('nmcli', ['con','up', bond]);
+      await run(NM, ['con','add','type','bond','ifname',bond,'con-name',bond]);
+      await run(NM, ['con','mod', bond, 'bond.options', `mode=${mode}`]);
+      for (const s of slaves) await run(NM, ['con','add','type','bond-slave','ifname',s,'master',bond]);
+      await run(NM, ['con','up', bond]);
       $('#bond-out').textContent = `Bond ${bond} (${mode}) created with slaves: ${slaves.join(', ')}`;
       await refreshAll();
-    } catch (e) {
-      $('#bond-out').textContent = String(e);
-    }
+    } catch (e) { $('#bond-out').textContent = String(e); }
   });
 
   // -------- Diagnostics --------
   async function refreshDiagnostics() {
-    try {
-      const routes = await run('ip', ['route']);
-      $('#routes-out').textContent = routes || '(no routes)';
-    } catch (e) { $('#routes-out').textContent = String(e); }
-
+    try { $('#routes-out').textContent = await run('ip', ['route']) || '(no routes)'; }
+    catch (e) { $('#routes-out').textContent = String(e); }
     try {
       const resolv = await run('bash', ['-lc', 'grep -E "^(nameserver|search)" -n /etc/resolv.conf || true']);
       $('#dns-out').textContent = resolv || '(no resolv.conf)';
@@ -322,25 +307,17 @@
 
   $('#btn-ping').addEventListener('click', async () => {
     const host = $('#diag-host').value.trim() || '8.8.8.8';
-    try {
-      const out = await run('ping', ['-c', '4', host]);
-      $('#ping-out').textContent = out;
-    } catch (e) {
-      $('#ping-out').textContent = String(e);
-    }
+    try { $('#ping-out').textContent = await run('ping', ['-c', '4', host]); }
+    catch (e) { $('#ping-out').textContent = String(e); }
   });
 
   $('#btn-traceroute').addEventListener('click', async () => {
     const host = $('#diag-host').value.trim() || '8.8.8.8';
     try {
-      const out = await run('bash', ['-lc', `command -v traceroute >/dev/null && traceroute -n ${shq(host)} || (command -v tracepath >/dev/null && tracepath -n ${shq(host)} || echo "traceroute/tracepath not installed")`]);
+      const out = await run('bash', ['-lc', `command -v traceroute >/dev/null && traceroute -n '${host.replace(/'/g,"'\\''")}' || (command -v tracepath >/dev/null && tracepath -n '${host.replace(/'/g,"'\\''")}' || echo "traceroute/tracepath not installed")`]);
       $('#ping-out').textContent = out;
-    } catch (e) {
-      $('#ping-out').textContent = String(e);
-    }
+    } catch (e) { $('#ping-out').textContent = String(e); }
   });
-
-  function shq(s){ return `'${String(s).replace(/'/g,"'\\''")}'`; }
 
   // -------- Refresh all --------
   async function refreshAll() {

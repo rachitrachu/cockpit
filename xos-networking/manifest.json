@@ -2,7 +2,6 @@
   "version": 1,
   "requires": { "cockpit": "186" },
   "content-security-policy": "default-src 'self'; connect-src 'self' blob:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src 'self'",
-  "preload": ["xos-networking"],
   "tools": {
     "xos-networking": {
       "label": "XOS Networking",
