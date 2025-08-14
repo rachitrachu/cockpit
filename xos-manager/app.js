@@ -17,27 +17,28 @@
     $("#" + b.dataset.tab).classList.add("active");
   }));
 
-  // HORIZON
-  const hzUrl = $("#hz-url"), hzFrame = $("#hz-frame");
+  // ===== Horizon =====
+  const hzUrl = $("#hz-url"), hzFrame = $("#hz-frame"), hzNew = $("#hz-newtab");
   const saved = localStorage.getItem("xos.hz");
-  if (saved) hzUrl.value = saved;
+  if (saved) { hzUrl.value = saved; hzNew.href = saved; }
   $("#hz-save").addEventListener("click", () => {
-    localStorage.setItem("xos.hz", hzUrl.value.trim());
+    const v = (hzUrl.value || "").trim();
+    localStorage.setItem("xos.hz", v);
+    hzNew.href = v || "about:blank";
   });
   $("#hz-open").addEventListener("click", () => {
     const u = (hzUrl.value || "").trim();
     if (u) hzFrame.src = u;
   });
 
-  // CLI
-  const out = $("#os-out");
-  let proc = null;
+  // ===== OpenStack CLI =====
+  const osOut = $("#os-out");
+  let osProc = null;
   function streamTo(el){ return d => { el.textContent += d; el.scrollTop = el.scrollHeight; }; }
-
   function runOpenStack(cmd) {
     if (!cmd.trim()) return;
-    if (proc) proc.close("cancel");
-    out.textContent = "";
+    if (osProc) osProc.close("cancel");
+    osOut.textContent = "";
     $("#os-stop").disabled = false;
 
     const mode = $("#auth-mode").value;
@@ -47,20 +48,18 @@
     if (cloud) args.push("--cloud", cloud);
     args.push("--", cmd);
 
-    proc = cockpit.spawn(args, { superuser: "require" });
-    proc.stream(streamTo(out));
-    proc.done(() => { out.textContent += "\n==> Done.\n"; $("#os-stop").disabled = true; proc=null; });
-    proc.fail(ex  => { out.textContent += `\n[ERROR] ${ex}\n`; $("#os-stop").disabled = true; proc=null; });
+    osProc = cockpit.spawn(args, { superuser: "require" });
+    osProc.stream(streamTo(osOut));
+    osProc.done(() => { osOut.textContent += "\n==> Done.\n"; $("#os-stop").disabled = true; osProc=null; });
+    osProc.fail(ex  => { osOut.textContent += `\n[ERROR] ${ex}\n`; $("#os-stop").disabled = true; osProc=null; });
   }
-
   $("#btn-os-list").addEventListener("click", () => { $("#os-cmd").value = "openstack server list --long"; runOpenStack($("#os-cmd").value); });
   $("#btn-os-projects").addEventListener("click", () => { $("#os-cmd").value = "openstack project list"; runOpenStack($("#os-cmd").value); });
   $("#btn-os-nova").addEventListener("click", () => { $("#os-cmd").value = "openstack hypervisor list"; runOpenStack($("#os-cmd").value); });
-
   $("#os-run").addEventListener("click", () => runOpenStack($("#os-cmd").value));
-  $("#os-stop").addEventListener("click", () => { if (proc) proc.close("cancelled"); $("#os-stop").disabled = true; });
+  $("#os-stop").addEventListener("click", () => { if (osProc) osProc.close("cancelled"); $("#os-stop").disabled = true; });
 
-  // CONTAINERS
+  // ===== Containers =====
   const ctOut = $("#ct-out"), ctTable = $("#ct-table"), ctFilter = $("#ct-filter");
   const btnLogs = $("#ct-logs"), btnStart = $("#ct-start"), btnStop = $("#ct-stop");
   let selectedId = null, currentList = [];

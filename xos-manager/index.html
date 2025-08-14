@@ -25,11 +25,15 @@
       <input id="hz-url" placeholder="https://<controller>:8080 (Horizon URL)">
       <button id="hz-save" class="btn">Save</button>
       <button id="hz-open" class="btn btn-outline">Open</button>
+      <a id="hz-newtab" class="btn btn-outline" target="_blank" rel="noreferrer noopener">Open in new tab</a>
     </div>
     <div class="iframe-wrap">
       <iframe id="hz-frame" src="about:blank" referrerpolicy="no-referrer"></iframe>
     </div>
-    <p class="hint">Tip: save a Horizon URL reachable from this host. You can embed HTTPS or HTTP.</p>
+    <p class="hint">
+      Tip: If Horizon refuses to embed (X-Frame-Options), use <b>Open in new tab</b> or set
+      <code>X_FRAME_OPTIONS='SAMEORIGIN'</code> in Horizon’s settings.
+    </p>
   </section>
 
   <!-- OPENSTACK CLI TAB -->
