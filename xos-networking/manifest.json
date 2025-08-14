@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "xos-networking",
+  "label": "XOS Networking",
+  "icon": "icon.svg",
+  "preload": ["style.css", "main.js"],
+  "tools": [
+    {
+      "label": "XOS Networking",
+      "keywords": "network, interfaces, nmcli, vlan, bridge, bond, ip",
+      "order": 50,
+      "path": "index.html"
+    }
+  ],
+  "content-security-policy": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' blob:;"
+}

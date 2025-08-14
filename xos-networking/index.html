@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>XOS Networking</title>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="style.css" rel="stylesheet">
+</head>
+<body>
+  <header class="xos-header">
+    <div class="xos-title">
+      <svg class="xos-logo" viewBox="0 0 24 24" aria-hidden="true">
+        <use href="icon.svg#logo"></use>
+      </svg>
+      <h1>XOS Networking</h1>
+    </div>
+    <div class="xos-actions">
+      <button id="btn-refresh" class="btn primary">Refresh</button>
+    </div>
+  </header>
+
+  <nav class="xos-tabs">
+    <button class="tab active" data-tab="interfaces">Interfaces</button>
+    <button class="tab" data-tab="connections">Connections</button>
+    <button class="tab" data-tab="constructs">VLAN / Bridge / Bond</button>
+    <button class="tab" data-tab="diagnostics">Diagnostics</button>
+  </nav>
+
+  <main>
+    <!-- Interfaces -->
+    <section id="tab-interfaces" class="tab-panel active">
+      <div class="toolbar">
+        <div class="search">
+          <input id="search-iface" placeholder="Filter interfaces…" />
+        </div>
+      </div>
+      <table class="table" id="table-interfaces">
+        <thead>
+          <tr>
+            <th>Device</th><th>Type</th><th>State</th><th>MAC</th><th>IPv4</th><th>IPv6</th><th>MTU</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <!-- Connections -->
+    <section id="tab-connections" class="tab-panel">
+      <div class="toolbar">
+        <button id="btn-add-connection" class="btn">Add Connection</button>
+        <div class="spacer"></div>
+        <input id="search-conn" placeholder="Filter connections…" />
+      </div>
+      <table class="table" id="table-connections">
+        <thead>
+          <tr>
+            <th>Name</th><th>UUID</th><th>Type</th><th>Device</th><th>Autoconnect</th><th>IP4</th><th>IP6</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <!-- Add/Edit Connection Modal -->
+      <dialog id="conn-modal">
+        <form method="dialog" id="conn-form" class="form">
+          <h2 id="conn-modal-title">Add Connection</h2>
+          <label>Connection Name
+            <input name="name" required>
+          </label>
+          <label>Device
+            <input name="device" placeholder="e.g. eth0" required>
+          </label>
+          <label>Type
+            <select name="type">
+              <option value="ethernet">ethernet</option>
+              <option value="vlan">vlan</option>
+              <option value="bridge">bridge</option>
+              <option value="bond">bond</option>
+            </select>
+          </label>
+          <fieldset>
+            <legend>IPv4 (optional)</legend>
+            <label>Address/CIDR
+              <input name="ip4addr" placeholder="e.g. 10.0.1.10/24">
+            </label>
+            <label>Gateway
+              <input name="ip4gw" placeholder="e.g. 10.0.1.1">
+            </label>
+            <label>DNS (comma separated)
+              <input name="ip4dns" placeholder="e.g. 1.1.1.1,8.8.8.8">
+            </label>
+          </fieldset>
+          <menu>
+            <button id="conn-cancel" value="cancel" class="btn">Cancel</button>
+            <button id="conn-save" value="default" class="btn primary">Save</button>
+          </menu>
+        </form>
+      </dialog>
+    </section>
+
+    <!-- VLAN/Bridge/Bond -->
+    <section id="tab-constructs" class="tab-panel">
+      <div class="grid">
+        <div class="card">
+          <h3>Create VLAN</h3>
+          <label>Parent (e.g. eth0)
+            <input id="vlan-parent" placeholder="eth0">
+          </label>
+          <label>VLAN ID
+            <input id="vlan-id" type="number" min="1" max="4094" placeholder="10">
+          </label>
+          <label>New iface name (optional)
+            <input id="vlan-name" placeholder="eth0.10">
+          </label>
+          <button id="btn-create-vlan" class="btn primary">Create VLAN</button>
+          <pre id="vlan-out" class="out"></pre>
+        </div>
+
+        <div class="card">
+          <h3>Create Bridge</h3>
+          <label>Bridge Name
+            <input id="br-name" placeholder="br0">
+          </label>
+          <label>Ports (comma separated)
+            <input id="br-ports" placeholder="eth0,eth1">
+          </label>
+          <button id="btn-create-bridge" class="btn primary">Create Bridge</button>
+          <pre id="br-out" class="out"></pre>
+        </div>
+
+        <div class="card">
+          <h3>Create Bond</h3>
+          <label>Bond Name
+            <input id="bond-name" placeholder="bond0">
+          </label>
+          <label>Mode
+            <select id="bond-mode">
+              <option value="active-backup">active-backup</option>
+              <option value="balance-rr">balance-rr</option>
+              <option value="802.3ad">802.3ad (LACP)</option>
+            </select>
+          </label>
+          <label>Slaves (comma separated)
+            <input id="bond-slaves" placeholder="eth0,eth1">
+          </label>
+          <button id="btn-create-bond" class="btn primary">Create Bond</button>
+          <pre id="bond-out" class="out"></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Diagnostics -->
+    <section id="tab-diagnostics" class="tab-panel">
+      <div class="diag-row">
+        <label>Host/IP
+          <input id="diag-host" placeholder="8.8.8.8">
+        </label>
+        <button id="btn-ping" class="btn">Ping</button>
+        <button id="btn-traceroute" class="btn">Traceroute</button>
+      </div>
+      <div class="grid">
+        <div class="card">
+          <h3>Ping Output</h3>
+          <pre id="ping-out" class="out"></pre>
+        </div>
+        <div class="card">
+          <h3>Routes</h3>
+          <pre id="routes-out" class="out"></pre>
+        </div>
+        <div class="card">
+          <h3>DNS</h3>
+          <pre id="dns-out" class="out"></pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="xos-footer">
+    <span id="status"></span>
+  </footer>
+
+  <script src="main.js"></script>
+</body>
+</html>
