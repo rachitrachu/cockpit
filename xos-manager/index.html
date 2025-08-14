@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>XOS Manager</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="../base1/cockpit.js"></script>
+</head>
+<body>
+  <header class="xhdr">
+    <h1>XOS Manager</h1>
+    <span id="ver" class="pill">…</span>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="horizon">Horizon</button>
+    <button class="tab" data-tab="cli">OpenStack CLI</button>
+    <button class="tab" data-tab="containers">Containers</button>
+  </nav>
+
+  <!-- HORIZON -->
+  <section id="horizon" class="pane active">
+    <div class="row">
+      <input id="hz-url" placeholder="https://<controller>:8080 (Horizon URL)">
+      <button id="hz-save" class="btn">Save</button>
+      <button id="hz-open" class="btn btn-outline">Open</button>
+    </div>
+    <div class="iframe-wrap">
+      <iframe id="hz-frame" src="about:blank" referrerpolicy="no-referrer"></iframe>
+    </div>
+    <p class="hint">Tip: set a Horizon URL that’s reachable from this host. CSP allows any https/http frame.</p>
+  </section>
+
+  <!-- CLI -->
+  <section id="cli" class="pane">
+    <div class="row">
+      <select id="auth-mode">
+        <option value="auto" selected>Auth: auto (OS_* env / keystonerc / clouds.yaml)</option>
+        <option value="env">Auth: OS_* env</option>
+        <option value="rc">Auth: /root/keystonerc</option>
+        <option value="clouds">Auth: clouds.yaml + cloud name</option>
+      </select>
+      <input id="cloud-name" placeholder="cloud name (for clouds.yaml)" style="max-width:260px;">
+      <button id="btn-os-list" class="btn">Servers</button>
+      <button id="btn-os-projects" class="btn btn-outline">Projects</button>
+      <button id="btn-os-nova" class="btn btn-outline">Hypervisors</button>
+    </div>
+    <div class="row">
+      <input id="os-cmd" placeholder="openstack server list --long">
+      <button id="os-run" class="btn">Run</button>
+      <button id="os-stop" class="btn btn-danger" disabled>Stop</button>
+    </div>
+    <pre id="os-out" class="term"></pre>
+    <p class="hint">Config: edit <code>/usr/local/bin/xos-cli.sh</code> to hard‑set paths if needed.</p>
+  </section>
+
+  <!-- CONTAINERS -->
+  <section id="containers" class="pane">
+    <div class="row">
+      <button id="ct-refresh" class="btn">Refresh</button>
+      <input id="ct-filter" placeholder="filter by name…">
+      <button id="ct-logs" class="btn btn-outline" disabled>Logs</button>
+      <button id="ct-start" class="btn btn-outline" disabled>Start</button>
+      <button id="ct-stop" class="btn btn-danger" disabled>Stop</button>
+    </div>
+    <div id="ct-table" class="table"></div>
+    <pre id="ct-out" class="term"></pre>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>
