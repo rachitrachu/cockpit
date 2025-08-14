@@ -6,7 +6,7 @@
       "label": "XOS Ops",
       "path": "index.html",
       "icon": "server",
-      "order": 10
+      "order": 15
     }
   },
   "content-security-policy": "default-src 'self' data: blob:; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss: http: https:"
