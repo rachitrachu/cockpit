@@ -1,0 +1,191 @@
+﻿/* global cockpit */
+(() => {
+  'use strict';
+
+  // Use systemd-networkd commands instead of nmcli
+  const $  = (q, root = document) => root.querySelector(q);
+  const $$ = (q, root = document) => Array.from(root.querySelectorAll(q));
+  const statusEl = $('#status');
+
+  function setStatus(msg) { statusEl.textContent = msg || ''; }
+
+  // spawn wrapper: default to non-blocking privilege behavior
+  async function run(cmd, args = [], opts = {}) {
+    const proc = cockpit.spawn([cmd, ...args], {
+      superuser: "try",
+      err: "out",
+      ...opts
+    });
+    let out = "";
+    proc.stream(d => out += d);
+    try {
+      await proc;
+      return out.trim();
+    } catch (e) {
+      console.error(`spawn failed: ${cmd} ${args.join(' ')}`, e, out);
+      throw (out || e).toString();
+    }
+  }
+
+  function td(text) { const e = document.createElement('td'); e.textContent = text; return e; }
+  function tdEl(el) { const e = document.createElement('td'); e.appendChild(el); return e; }
+  function btn(label, handler) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.className = 'btn';
+    b.addEventListener('click', async () => {
+      try { setStatus(`${label}…`); await handler(); }
+      catch (e) { alert(`${label} failed:\n${e}`); }
+      finally { setStatus(''); }
+    });
+    return b;
+  }
+  function stateBadge(state) {
+    const span = document.createElement('span');
+    const s = (state || 'unknown').toUpperCase();
+    span.className = 'badge ' + (s === 'CONFIGURED' || s === 'CARRIER' ? 'state-up'
+                      : s === 'OFFLINE' || s === 'NO-CARRIER' ? 'state-down'
+                      : 'state-unknown');
+    span.textContent = s;
+    return span;
+  }
+
+  // -------- Tabs --------
+  function setActiveTab(id) {
+    $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === id));
+    $$('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + id));
+  }
+  $$('.tab').forEach(btn => btn.addEventListener('click', () => setActiveTab(btn.dataset.tab)));
+
+  // -------- Interfaces --------
+  async function listInterfaces() {
+    setStatus('Loading interfaces…');
+    let lines = [];
+    try {
+      const out = await run('networkctl', ['list']);
+      lines = out.split('\n').filter(Boolean).slice(1); // skip header
+    } catch (e) {
+      const tbody = $('#table-interfaces tbody');
+      tbody.innerHTML = '';
+      const tr = document.createElement('tr');
+      tr.append(td('—'), td('—'), tdEl(stateBadge('unknown')), td('—'), td('—'), td('—'), td('—'), td('networkctl error: ' + e));
+      tbody.appendChild(tr);
+      setStatus('');
+      return;
+    }
+
+    const tbody = $('#table-interfaces tbody');
+    tbody.innerHTML = '';
+
+    for (const l of lines) {
+      const parts = l.trim().split(/\s+/);
+      if (parts.length < 5) continue;
+      const [dev, type, state, , , ] = parts;
+      // Get more details using 'ip' command
+      let mac = '', ipv4 = '', ipv6 = '', mtu = '';
+      try {
+        const ipOut = await run('ip', ['addr', 'show', dev]);
+        mac = (ipOut.match(/link\/\w+ ([0-9a-f:]+)/) || [])[1] || '';
+        ipv4 = (ipOut.match(/inet ([0-9.\/]+)/) || [])[1] || '';
+        ipv6 = (ipOut.match(/inet6 ([0-9a-f:\/]+)/) || [])[1] || '';
+        mtu = (ipOut.match(/mtu (\d+)/) || [])[1] || '';
+      } catch {}
+      const tr = document.createElement('tr');
+      const acts = document.createElement('td'); acts.className = 'actions';
+
+      const btnUp   = btn('Up',   async () => { await run('ip', ['link', 'set', dev, 'up']); await refreshAll(); });
+      const btnDown = btn('Down', async () => { await run('ip', ['link', 'set', dev, 'down']); await refreshAll(); });
+      // Set IP and Clear IP require manual config file edits for systemd-networkd, so disable for now
+      const btnEditIP = btn('Set IP', () => alert('Set IP: Please edit .network files for systemd-networkd.'));
+      const btnDelIP = btn('Clear IP', () => alert('Clear IP: Please edit .network files for systemd-networkd.'));
+
+      acts.append(btnUp, btnDown, btnEditIP, btnDelIP);
+
+      tr.append(
+        td(dev),
+        td(type),
+        tdEl(stateBadge(state || 'unknown')),
+        td(mac),
+        td(ipv4),
+        td(ipv6),
+        td(mtu),
+        acts
+      );
+      tbody.appendChild(tr);
+    }
+    setStatus('');
+  }
+
+  // -------- Connections --------
+  async function listConnections() {
+    // systemd-networkd does not use connections like NetworkManager
+    const tbody = $('#table-connections tbody');
+    tbody.innerHTML = '';
+    const tr = document.createElement('tr');
+    tr.append(td('Not applicable for systemd-networkd'), td('—'), td('—'), td('—'), td('—'), td('—'), td('—'), td('—'));
+    tbody.appendChild(tr);
+    setStatus('');
+  }
+
+  // Filter boxes
+  $('#search-iface').addEventListener('input', () => filterTable('#table-interfaces', $('#search-iface').value));
+  $('#search-conn').addEventListener('input',  () => filterTable('#table-connections', $('#search-conn').value));
+  function filterTable(sel, term) {
+    const t = (term || '').toLowerCase();
+    $$(sel + ' tbody tr').forEach(tr => { tr.style.display = tr.textContent.toLowerCase().includes(t) ? '' : 'none'; });
+  }
+
+  // Add/Edit connection modal
+  // Disabled for systemd-networkd
+  $('#btn-add-connection').addEventListener('click', () => alert('Add Connection: Not supported for systemd-networkd.'));
+
+  // -------- Constructs: VLAN / Bridge / Bond --------
+  $('#btn-create-vlan').addEventListener('click', async () => {
+    alert('Create VLAN: Please create .netdev and .network files for systemd-networkd.');
+  });
+
+  $('#btn-create-bridge').addEventListener('click', async () => {
+    alert('Create Bridge: Please create .netdev and .network files for systemd-networkd.');
+  });
+
+  $('#btn-create-bond').addEventListener('click', async () => {
+    alert('Create Bond: Please create .netdev and .network files for systemd-networkd.');
+  });
+
+  // -------- Diagnostics --------
+  async function refreshDiagnostics() {
+    try { $('#routes-out').textContent = await run('ip', ['route']) || '(no routes)'; }
+    catch (e) { $('#routes-out').textContent = String(e); }
+    try {
+      const resolv = await run('bash', ['-lc', 'grep -E "^(nameserver|search)" -n /etc/resolv.conf || true']);
+      $('#dns-out').textContent = resolv || '(no resolv.conf)';
+    } catch (e) { $('#dns-out').textContent = String(e); }
+  }
+
+  $('#btn-ping').addEventListener('click', async () => {
+    const host = $('#diag-host').value.trim() || '8.8.8.8';
+    try { $('#ping-out').textContent = await run('ping', ['-c', '4', host]); }
+    catch (e) { $('#ping-out').textContent = String(e); }
+  });
+
+  $('#btn-traceroute').addEventListener('click', async () => {
+    const host = $('#diag-host').value.trim() || '8.8.8.8';
+    try {
+      const out = await run('bash', ['-lc', `command -v traceroute >/dev/null && traceroute -n '${host.replace(/'/g,"'\\''")}' || (command -v tracepath >/dev/null && tracepath -n '${host.replace(/'/g,"'\\''")}' || echo "traceroute/tracepath not installed")`]);
+      $('#ping-out').textContent = out;
+    } catch (e) { $('#ping-out').textContent = String(e); }
+  });
+
+  // -------- Refresh all --------
+  async function refreshAll() {
+    await Promise.all([listInterfaces(), listConnections(), refreshDiagnostics()]);
+  }
+
+  // Header refresh
+  $('#btn-refresh').addEventListener('click', refreshAll);
+
+  // Initial
+  document.addEventListener('DOMContentLoaded', () => {
+    refreshAll().catch(e => setStatus(String(e));
+  });
+})();
