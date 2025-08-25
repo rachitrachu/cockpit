@@ -69,7 +69,10 @@ def ensure_ethernets(network):
 def add_empty_ethernets(network, ifaces):
     eths = ensure_ethernets(network)
     for iface in ifaces:
-        eths.setdefault(iface, {})
+        # Mark slave/member links optional per netplan docs to avoid boot delays
+        if iface not in eths or not isinstance(eths.get(iface), dict):
+            eths[iface] = {}
+        eths[iface].setdefault('optional', True)
 
 
 def main():

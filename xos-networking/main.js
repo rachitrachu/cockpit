@@ -330,8 +330,9 @@
     console.log('JSON payload to send:', payload);
     try {
       console.log('About to spawn netplan script...');
+      // IMPORTANT: do NOT use PTY here, stdin (input:) won't be delivered under PTY
       const result = await cockpit.spawn([
-        'python3',
+        '/usr/bin/python3',
         '/usr/share/cockpit/xos-networking/netplan_manager.py'
       ], {
         input: payload,
@@ -346,8 +347,6 @@
       return parsed;
     } catch (e) {
       console.error('netplanAction exception:', e);
-      console.error('Exception type:', typeof e);
-      console.error('Exception details:', e.toString());
       let errorMsg = 'Unknown error';
       if (e.exit_status !== undefined) {
         errorMsg = `Script exited with code ${e.exit_status}`;
