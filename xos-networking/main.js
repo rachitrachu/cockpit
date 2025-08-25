@@ -343,26 +343,34 @@
     }
   }
 
-  // Helper to get available interfaces
-  async function getInterfaces() {
-    const interfaces = [];
+  // Helper to get available interfaces using ip (more reliable than networkctl)
+  async function getInterfacesIP({ physicalOnly = false } = {}) {
+    const ifaces = [];
     try {
-      const terse = await run('networkctl', ['list']);
-      const lines = terse.split('\n').slice(1).filter(Boolean);
-      for (const l of lines) {
-        const parts = l.trim().split(/\s+/);
-        const dev = parts[1];
-        if (dev) interfaces.push(dev);
-      }
-    } catch (e) {}
-    return interfaces;
+      const out = await run('bash', ['-lc', "ip -o link show | awk -F': ' '{print $2}'"], { superuser: 'try' });
+      out.split('\n').map(s => s.trim()).filter(Boolean).forEach(dev => {
+        // Skip loopback and virtuals when physicalOnly requested
+        if (physicalOnly) {
+          if (dev === 'lo') return;
+          if (dev.startsWith('bond')) return;
+          if (dev.startsWith('br')) return;
+          if (dev.includes('.')) return; // vlan like eth0.10
+          if (dev.startsWith('veth') || dev.startsWith('docker') || dev.startsWith('virbr') || dev.startsWith('tap')) return;
+        }
+        ifaces.push(dev);
+      });
+    } catch (e) {
+      console.error('Failed to get interfaces via ip:', e);
+    }
+    return ifaces;
   }
 
   // Populate VLAN parent dropdown
   async function populateVlanParentDropdown() {
     const select = document.getElementById('vlan-parent');
+    if (!select) return;
     select.innerHTML = '';
-    const interfaces = await getInterfaces();
+    const interfaces = await getInterfacesIP({ physicalOnly: true });
     interfaces.forEach(dev => {
       const option = document.createElement('option');
       option.value = dev;
@@ -374,8 +382,9 @@
   // Populate Bridge ports multi-select
   async function populateBridgePortsDropdown() {
     const select = document.getElementById('br-ports');
+    if (!select) return;
     select.innerHTML = '';
-    const interfaces = await getInterfaces();
+    const interfaces = await getInterfacesIP({ physicalOnly: true });
     interfaces.forEach(dev => {
       const option = document.createElement('option');
       option.value = dev;
@@ -387,8 +396,9 @@
   // Populate Bond slaves multi-select
   async function populateBondSlavesDropdown() {
     const select = document.getElementById('bond-slaves');
+    if (!select) return;
     select.innerHTML = '';
-    const interfaces = await getInterfaces();
+    const interfaces = await getInterfacesIP({ physicalOnly: true });
     interfaces.forEach(dev => {
       const option = document.createElement('option');
       option.value = dev;
@@ -447,20 +457,28 @@
   });
 
   $('#btn-create-bond').addEventListener('click', async () => {
+    console.log('Create Bond clicked');
     const bond = $('#bond-name').value.trim();
     const mode = $('#bond-mode').value;
     const select = document.getElementById('bond-slaves');
     const slaves = Array.from(select.selectedOptions).map(opt => opt.value);
+    console.log('Create Bond inputs:', { bond, mode, slaves });
     // Validation
-    if (!bond.match(/^[a-zA-Z0-9_.-]+$/)) return alert('Bond name is invalid.');
-    if (slaves.length < 2 || !slaves.every(s => s.match(/^[a-zA-Z0-9_.-]+$/))) return alert('At least two valid slave interfaces required.');
-    if (!mode) return alert('Bond mode is required.');
-    const res = await netplanAction('add_bond', { name: bond, mode, interfaces: slaves });
-    if (res.error) {
-      $('#bond-out').textContent = res.error;
-    } else {
-      $('#bond-out').textContent = `Bond ${bond} (${mode}) created with slaves: ${slaves.join(', ')}`;
-      await refreshAll();
+    if (!bond.match(/^[a-zA-Z0-9_.-]+$/)) { alert('Bond name is invalid.'); return; }
+    if (slaves.length < 2 || !slaves.every(s => s.match(/^[a-zA-Z0-9_.-]+$/))) { alert('At least two valid slave interfaces required.'); return; }
+    if (!mode) { alert('Bond mode is required.'); return; }
+    const btnEl = $('#btn-create-bond');
+    btnEl.disabled = true;
+    try {
+      const res = await netplanAction('add_bond', { name: bond, mode, interfaces: slaves });
+      if (res.error) {
+        $('#bond-out').textContent = res.error;
+      } else {
+        $('#bond-out').textContent = `Bond ${bond} (${mode}) created with slaves: ${slaves.join(', ')}`;
+        await refreshAll();
+      }
+    } finally {
+      btnEl.disabled = false;
     }
   });
 
