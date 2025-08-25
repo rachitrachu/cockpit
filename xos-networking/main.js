@@ -331,14 +331,15 @@
     
     try {
       console.log('About to spawn netplan script...');
-      // Use test script first to isolate the issue
+      // Switch back to original working script
       const result = await cockpit.spawn([
         'python3',
-        '/usr/share/cockpit/xos-networking/netplan_manager_test.py'
+        '/usr/share/cockpit/xos-networking/netplan_manager.py'
       ], {
         input: payload,
         superuser: 'require',
-        err: 'message'
+        err: 'ignore',  // Ignore stderr to avoid Open vSwitch warnings
+        directory: '/usr/share/cockpit/xos-networking'  // Set working directory
       });
       console.log('Netplan script raw output:', result);
       
@@ -353,16 +354,20 @@
       console.error('Exception type:', typeof e);
       console.error('Exception details:', e.toString());
       
+      // Better error extraction for cockpit spawn errors
       let errorMsg = 'Unknown error';
-      if (typeof e === 'string') {
-        errorMsg = e;
+      if (e.exit_status !== undefined) {
+        errorMsg = `Script exited with code ${e.exit_status}`;
+        if (e.message) errorMsg += `: ${e.message}`;
       } else if (e.message) {
         errorMsg = e.message;
       } else if (e.problem) {
         errorMsg = e.problem;
+      } else if (typeof e === 'string') {
+        errorMsg = e;
       }
       
-      alert('Netplan error: ' + errorMsg);
+      console.error('Processed error message:', errorMsg);
       return { error: errorMsg };
     }
   }
