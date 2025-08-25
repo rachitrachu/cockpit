@@ -326,24 +326,45 @@
   // -------- Constructs: VLAN / Bridge / Bond --------
   async function netplanAction(action, config) {
     console.log('netplanAction called with:', { action, config });
+    const payload = JSON.stringify({ action, config });
+    console.log('JSON payload to send:', payload);
+    
     try {
       console.log('About to spawn netplan script...');
       const result = await cockpit.spawn([
         'python3',
         '/usr/share/cockpit/xos-networking/netplan_manager.py'
       ], {
-        input: JSON.stringify({ action, config }),
+        input: payload,
         superuser: 'require',
-        err: 'out'
+        err: 'message'  // Changed from 'out' to 'message' to separate stderr from stdout
       });
       console.log('Netplan script raw output:', result);
-      const parsed = JSON.parse(result);
+      
+      // Clean up result - remove any extra whitespace or non-JSON content
+      const cleanResult = result.trim();
+      console.log('Cleaned result:', cleanResult);
+      
+      const parsed = JSON.parse(cleanResult);
       console.log('Netplan script parsed output:', parsed);
       return parsed;
     } catch (e) {
       console.error('netplanAction exception:', e);
-      alert('Netplan error: ' + e);
-      return { error: e.toString() };
+      console.error('Exception type:', typeof e);
+      console.error('Exception details:', e.toString());
+      
+      // Try to extract useful error information
+      let errorMsg = 'Unknown error';
+      if (typeof e === 'string') {
+        errorMsg = e;
+      } else if (e.message) {
+        errorMsg = e.message;
+      } else if (e.problem) {
+        errorMsg = e.problem;
+      }
+      
+      alert('Netplan error: ' + errorMsg);
+      return { error: errorMsg };
     }
   }
 
@@ -487,10 +508,19 @@
     
     console.log('Validation passed, calling netplanAction...');
     const btnEl = $('#btn-create-bond');
+    const originalText = btnEl.textContent;
     btnEl.disabled = true;
+    btnEl.textContent = 'Creating...';
     
     try {
-      const res = await netplanAction('add_bond', { name: bond, mode, interfaces: slaves });
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout: Bond creation took too long')), 30000)
+      );
+      
+      const netplanPromise = netplanAction('add_bond', { name: bond, mode, interfaces: slaves });
+      
+      const res = await Promise.race([netplanPromise, timeoutPromise]);
       console.log('netplanAction result:', res);
       
       if (res.error) {
@@ -500,12 +530,17 @@
         $('#bond-out').textContent = `Bond ${bond} (${mode}) created with slaves: ${slaves.join(', ')}`;
         console.log('Bond creation successful, refreshing interfaces...');
         await refreshAll();
+        // Clear form
+        $('#bond-name').value = '';
+        $('#bond-mode').selectedIndex = 0;
+        Array.from(select.options).forEach(opt => opt.selected = false);
       }
     } catch (error) {
       console.error('Exception during bond creation:', error);
-      $('#bond-out').textContent = 'Error: ' + error;
+      $('#bond-out').textContent = 'Error: ' + error.message;
     } finally {
       btnEl.disabled = false;
+      btnEl.textContent = originalText;
     }
   });
 
