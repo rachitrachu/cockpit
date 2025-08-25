@@ -171,23 +171,26 @@ body {
 
 /* Badges */
 .badge {
-  padding: 2px 8px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 14px;
+  border: 2px solid var(--border);
+  font-size: 16px;
+  font-weight: bold;
+  display: inline-block;
+  letter-spacing: 1px;
 }
 .state-up {
-  background: rgba(25,117,96,.2);
-  border-color: var(--ok);
-  color: #b7e3d7;
+  background: #197560;
+  border-color: #197560;
+  color: #fff;
 }
 .state-down {
-  background: rgba(239,68,68,.18);
-  border-color: var(--bad);
-  color: #fecaca;
+  background: #ef4444;
+  border-color: #ef4444;
+  color: #fff;
 }
 .state-unknown {
-  background: var(--bg);
+  background: #f8f9fa;
   color: var(--muted);
 }
 
