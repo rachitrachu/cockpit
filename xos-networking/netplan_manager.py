@@ -46,6 +46,8 @@ def main():
         configs = load_netplan()
         netplan = configs.get(fname, {'network': {}})
         network = netplan['network']
+        # Always set renderer: networkd for standard Linux bonding
+        netplan['network']['renderer'] = 'networkd'
 
         if action == 'add_bond':
             # config: {name, mode, interfaces}
