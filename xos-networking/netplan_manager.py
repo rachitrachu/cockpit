@@ -14,7 +14,10 @@ def load_netplan():
     for fname in os.listdir(NETPLAN_DIR):
         if fname.endswith('.yaml') or fname.endswith('.yml'):
             with open(os.path.join(NETPLAN_DIR, fname)) as f:
-                configs[fname] = yaml.safe_load(f)
+                loaded = yaml.safe_load(f)
+                if loaded is None:
+                    loaded = {}
+                configs[fname] = loaded
     return configs
 
 
