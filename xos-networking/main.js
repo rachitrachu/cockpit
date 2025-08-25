@@ -463,20 +463,43 @@
     const select = document.getElementById('bond-slaves');
     const slaves = Array.from(select.selectedOptions).map(opt => opt.value);
     console.log('Create Bond inputs:', { bond, mode, slaves });
+    
     // Validation
-    if (!bond.match(/^[a-zA-Z0-9_.-]+$/)) { alert('Bond name is invalid.'); return; }
-    if (slaves.length < 2 || !slaves.every(s => s.match(/^[a-zA-Z0-9_.-]+$/))) { alert('At least two valid slave interfaces required.'); return; }
-    if (!mode) { alert('Bond mode is required.'); return; }
+    if (!bond.match(/^[a-zA-Z0-9_.-]+$/)) { 
+      alert('Bond name is invalid.'); 
+      console.log('Validation failed: Bond name invalid');
+      return; 
+    }
+    if (slaves.length < 2 || !slaves.every(s => s.match(/^[a-zA-Z0-9_.-]+$/))) { 
+      alert('At least two valid slave interfaces required.'); 
+      console.log('Validation failed: Slaves invalid', slaves);
+      return; 
+    }
+    if (!mode) { 
+      alert('Bond mode is required.'); 
+      console.log('Validation failed: Mode required');
+      return; 
+    }
+    
+    console.log('Validation passed, calling netplanAction...');
     const btnEl = $('#btn-create-bond');
     btnEl.disabled = true;
+    
     try {
       const res = await netplanAction('add_bond', { name: bond, mode, interfaces: slaves });
+      console.log('netplanAction result:', res);
+      
       if (res.error) {
         $('#bond-out').textContent = res.error;
+        console.error('Bond creation failed with error:', res.error);
       } else {
         $('#bond-out').textContent = `Bond ${bond} (${mode}) created with slaves: ${slaves.join(', ')}`;
+        console.log('Bond creation successful, refreshing interfaces...');
         await refreshAll();
       }
+    } catch (error) {
+      console.error('Exception during bond creation:', error);
+      $('#bond-out').textContent = 'Error: ' + error;
     } finally {
       btnEl.disabled = false;
     }
