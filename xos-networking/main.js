@@ -62,7 +62,7 @@
     setStatus('Loading interfaces…');
     let ifaceList = [];
     try {
-      const out = await run('ip', ['-details', 'link', 'show']);
+      const out = await run('ip', ['-details', 'addr', 'show']);
       // Parse output
       const blocks = out.split(/\n(?=\d+: )/); // Each interface starts with 'N: '
       for (const block of blocks) {
@@ -92,11 +92,11 @@
             const stateMatch = line.match(/state (\w+)/);
             if (stateMatch) state = stateMatch[1];
           }
-          if (line.includes('inet ')) {
+          if (line.trim().startsWith('inet ')) {
             const ipMatch = line.match(/inet ([^\s]+)/);
             if (ipMatch) ipv4 = ipMatch[1];
           }
-          if (line.includes('inet6 ')) {
+          if (line.trim().startsWith('inet6 ')) {
             const ip6Match = line.match(/inet6 ([^\s]+)/);
             if (ip6Match) ipv6 = ip6Match[1];
           }
@@ -107,7 +107,7 @@
       const tbody = $('#table-interfaces tbody');
       tbody.innerHTML = '';
       const tr = document.createElement('tr');
-      tr.append(td('—'), td('—'), tdEl(stateBadge('unknown')), td('—'), td('—'), td('—'), td('—'), td('ip link error: ' + e));
+      tr.append(td('—'), td('—'), tdEl(stateBadge('unknown')), td('—'), td('—'), td('—'), td('—'), td('ip addr error: ' + e));
       tbody.appendChild(tr);
       setStatus('');
       return;
