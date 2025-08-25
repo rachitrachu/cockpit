@@ -230,9 +230,99 @@
             alert(`Failed to get info for ${iface.dev}: ${e}`);
           }
         });
+
+        const btnSetIP = createButton('Set IP', async () => {
+          const newIP = prompt(`Enter IPv4 address/CIDR for ${iface.dev}:`, iface.ipv4 || '192.168.1.100/24');
+          if (!newIP) return;
+          
+          // Basic IP validation
+          const ipRegex = /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([0-9]|[1-2][0-9]|3[0-2])$/;
+          if (!ipRegex.test(newIP)) {
+            alert('❌ Invalid IP format! Use CIDR notation (e.g., 192.168.1.100/24)');
+            return;
+          }
+          
+          try {
+            // Remove old IP if exists
+            if (iface.ipv4) {
+              try {
+                await run('ip', ['addr', 'del', iface.ipv4, 'dev', iface.dev], { superuser: 'require' });
+              } catch (e) {
+                console.warn('Could not remove old IP:', e);
+              }
+            }
+            
+            // Add new IP
+            await run('ip', ['addr', 'add', newIP, 'dev', iface.dev], { superuser: 'require' });
+            alert(`✅ IP ${newIP} set on ${iface.dev}`);
+            await loadInterfaces();
+          } catch (e) {
+            alert(`❌ Failed to set IP: ${e}`);
+          }
+        });
+
+        const btnSetMTU = createButton('Set MTU', async () => {
+          const newMTU = prompt(`Enter MTU for ${iface.dev}:`, iface.mtu || '1500');
+          if (!newMTU) return;
+          
+          const mtu = parseInt(newMTU);
+          if (isNaN(mtu) || mtu < 68 || mtu > 9000) {
+            alert('❌ MTU must be between 68 and 9000');
+            return;
+          }
+          
+          try {
+            await run('ip', ['link', 'set', 'dev', iface.dev, 'mtu', mtu.toString()], { superuser: 'require' });
+            alert(`✅ MTU ${mtu} set on ${iface.dev}`);
+            await loadInterfaces();
+          } catch (e) {
+            alert(`❌ Failed to set MTU: ${e}`);
+          }
+        });
+
+        // Add delete buttons for constructed interfaces
+        if (iface.dev.startsWith('bond')) {
+          const btnDeleteBond = createButton('Delete', async () => {
+            if (!confirm(`Delete bond ${iface.dev}?`)) return;
+            try {
+              await run('ip', ['link', 'delete', iface.dev], { superuser: 'require' });
+              await netplanAction('delete', { type: 'bonds', name: iface.dev });
+              await loadInterfaces();
+            } catch (e) {
+              alert(`❌ Failed to delete bond: ${e}`);
+            }
+          }, 'btn btn-danger');
+          actionsCell.appendChild(btnDeleteBond);
+        } else if (iface.dev.includes('.') && !iface.dev.startsWith('br')) {
+          const btnDeleteVlan = createButton('Delete', async () => {
+            if (!confirm(`Delete VLAN ${iface.dev}?`)) return;
+            try {
+              await run('ip', ['link', 'delete', iface.dev], { superuser: 'require' });
+              await netplanAction('delete', { type: 'vlans', name: iface.dev });
+              await loadInterfaces();
+            } catch (e) {
+              alert(`❌ Failed to delete VLAN: ${e}`);
+            }
+          }, 'btn btn-danger');
+          actionsCell.appendChild(btnDeleteVlan);
+        } else if (iface.dev.startsWith('br')) {
+          const btnDeleteBridge = createButton('Delete', async () => {
+            if (!confirm(`Delete bridge ${iface.dev}?`)) return;
+            try {
+              await run('ip', ['link', 'delete', iface.dev], { superuser: 'require' });
+              await netplanAction('delete', { type: 'bridges', name: iface.dev });
+              await loadInterfaces();
+            } catch (e) {
+              alert(`❌ Failed to delete bridge: ${e}`);
+            }
+          }, 'btn btn-danger');
+          actionsCell.appendChild(btnDeleteBridge);
+        }
         
         actionsCell.appendChild(btnUp);
         actionsCell.appendChild(btnDown);
+        actionsCell.appendChild(btnSetIP);
+        actionsCell.appendChild(btnSetMTU);
         actionsCell.appendChild(btnInfo);
         
         // Create cells
@@ -410,6 +500,308 @@
     }
   }
 
+  // Enhanced netplan action function
+  async function netplanAction(action, config) {
+    console.log('netplanAction called with:', { action, config });
+    const payload = JSON.stringify({ action, config });
+    console.log('JSON payload to send:', payload);
+    
+    try {
+      console.log('About to spawn netplan script...');
+      
+      // Use a simpler approach - write to temp file and execute
+      const tempScript = `
+#!/bin/bash
+cd /usr/share/cockpit/xos-networking
+echo '${payload.replace(/'/g, "'\\''")}' | python3 netplan_manager.py
+`;
+      
+      const result = await cockpit.spawn([
+        'bash', '-c', tempScript
+      ], {
+        superuser: 'require',
+        err: 'out'
+      });
+      
+      console.log('Netplan script raw output:', result);
+      const cleanResult = result.trim();
+      console.log('Cleaned result:', cleanResult);
+      
+      // Find JSON in the output (might have other text before it)
+      const jsonMatch = cleanResult.match(/\{.*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        console.log('Netplan script parsed output:', parsed);
+        return parsed;
+      } else {
+        return { error: 'No JSON response found in output: ' + cleanResult };
+      }
+    } catch (e) {
+      console.error('netplanAction exception:', e);
+      let errorMsg = 'Script execution failed';
+      if (e.exit_status !== undefined) {
+        errorMsg = `Script exited with code ${e.exit_status}`;
+      }
+      if (e.message && e.message.trim()) {
+        errorMsg += `: ${e.message}`;
+      }
+      console.error('Processed error message:', errorMsg);
+      return { error: errorMsg };
+    }
+  }
+
+  // Get available physical interfaces for dropdowns
+  async function getPhysicalInterfaces() {
+    try {
+      const output = await run('ip', ['-o', 'link', 'show']);
+      const interfaces = [];
+      
+      output.split('\n').forEach(line => {
+        const match = line.match(/^\d+:\s+([^:]+):/);
+        if (match) {
+          const dev = match[1].trim();
+          // Skip virtual and special interfaces
+          if (dev !== 'lo' && 
+              !dev.startsWith('virbr') && 
+              !dev.startsWith('docker') && 
+              !dev.startsWith('veth') && 
+              !dev.startsWith('bond') && 
+              !dev.startsWith('br') && 
+              !dev.includes('.')) {
+            interfaces.push(dev);
+          }
+        }
+      });
+      
+      return interfaces;
+    } catch (e) {
+      console.error('Failed to get physical interfaces:', e);
+      return [];
+    }
+  }
+
+  // Setup network construction forms
+  async function setupNetworkingForms() {
+    console.log('Setting up networking forms...');
+    
+    // Get physical interfaces for dropdowns
+    const physicalInterfaces = await getPhysicalInterfaces();
+    console.log('Available physical interfaces:', physicalInterfaces);
+    
+    // Populate VLAN parent dropdown
+    const vlanParent = $('#vlan-parent');
+    if (vlanParent) {
+      vlanParent.innerHTML = '<option value="">Select parent interface...</option>';
+      physicalInterfaces.forEach(iface => {
+        const option = document.createElement('option');
+        option.value = iface;
+        option.textContent = iface;
+        vlanParent.appendChild(option);
+      });
+    }
+    
+    // Populate bridge ports multi-select
+    const bridgePorts = $('#br-ports');
+    if (bridgePorts) {
+      bridgePorts.innerHTML = '';
+      physicalInterfaces.forEach(iface => {
+        const option = document.createElement('option');
+        option.value = iface;
+        option.textContent = iface;
+        bridgePorts.appendChild(option);
+      });
+    }
+    
+    // Populate bond slaves multi-select
+    const bondSlaves = $('#bond-slaves');
+    if (bondSlaves) {
+      bondSlaves.innerHTML = '';
+      physicalInterfaces.forEach(iface => {
+        const option = document.createElement('option');
+        option.value = iface;
+        option.textContent = iface;
+        bondSlaves.appendChild(option);
+      });
+    }
+
+    // Setup VLAN creation
+    const btnCreateVlan = $('#btn-create-vlan');
+    if (btnCreateVlan) {
+      btnCreateVlan.addEventListener('click', async () => {
+        const parent = $('#vlan-parent')?.value?.trim();
+        const id = $('#vlan-id')?.value?.trim();
+        const name = $('#vlan-name')?.value?.trim() || `${parent}.${id}`;
+        
+        if (!parent || !id) {
+          alert('❌ Parent interface and VLAN ID are required!');
+          return;
+        }
+        
+        if (!id.match(/^\d+$/) || parseInt(id) < 1 || parseInt(id) > 4094) {
+          alert('❌ VLAN ID must be between 1 and 4094!');
+          return;
+        }
+        
+        try {
+          setStatus('Creating VLAN...');
+          const result = await netplanAction('add_vlan', {
+            name: name,
+            id: parseInt(id),
+            link: parent
+          });
+          
+          const output = $('#vlan-out');
+          if (result.error) {
+            if (output) output.textContent = `❌ Error: ${result.error}`;
+          } else {
+            if (output) output.textContent = `✅ VLAN ${name} created successfully!`;
+            // Clear form
+            $('#vlan-parent').selectedIndex = 0;
+            $('#vlan-id').value = '';
+            $('#vlan-name').value = '';
+            await loadInterfaces();
+          }
+        } catch (e) {
+          const output = $('#vlan-out');
+          if (output) output.textContent = `❌ Failed to create VLAN: ${e}`;
+        } finally {
+          setStatus('Ready');
+        }
+      });
+    }
+
+    // Setup Bridge creation
+    const btnCreateBridge = $('#btn-create-bridge');
+    if (btnCreateBridge) {
+      btnCreateBridge.addEventListener('click', async () => {
+        const name = $('#br-name')?.value?.trim();
+        const portsSelect = $('#br-ports');
+        const ports = portsSelect ? Array.from(portsSelect.selectedOptions).map(opt => opt.value) : [];
+        
+        if (!name) {
+          alert('❌ Bridge name is required!');
+          return;
+        }
+        
+        if (ports.length === 0) {
+          alert('❌ At least one port interface is required!');
+          return;
+        }
+        
+        try {
+          setStatus('Creating bridge...');
+          const result = await netplanAction('add_bridge', {
+            name: name,
+            interfaces: ports
+          });
+          
+          const output = $('#br-out');
+          if (result.error) {
+            if (output) output.textContent = `❌ Error: ${result.error}`;
+          } else {
+            if (output) output.textContent = `✅ Bridge ${name} created with ports: ${ports.join(', ')}`;
+            // Clear form
+            $('#br-name').value = '';
+            if (portsSelect) {
+              Array.from(portsSelect.options).forEach(opt => opt.selected = false);
+            }
+            await loadInterfaces();
+          }
+        } catch (e) {
+          const output = $('#br-out');
+          if (output) output.textContent = `❌ Failed to create bridge: ${e}`;
+        } finally {
+          setStatus('Ready');
+        }
+      });
+    }
+
+    // Setup Bond creation
+    const btnCreateBond = $('#btn-create-bond');
+    if (btnCreateBond) {
+      btnCreateBond.addEventListener('click', async () => {
+        const name = $('#bond-name')?.value?.trim();
+        const mode = $('#bond-mode')?.value;
+        const slavesSelect = $('#bond-slaves');
+        const slaves = slavesSelect ? Array.from(slavesSelect.selectedOptions).map(opt => opt.value) : [];
+        
+        if (!name) {
+          alert('❌ Bond name is required!');
+          return;
+        }
+        
+        if (!mode) {
+          alert('❌ Bond mode is required!');
+          return;
+        }
+        
+        if (slaves.length < 2) {
+          alert('❌ At least two slave interfaces are required!');
+          return;
+        }
+        
+        try {
+          setStatus('Creating bond...');
+          const result = await netplanAction('add_bond', {
+            name: name,
+            mode: mode,
+            interfaces: slaves
+          });
+          
+          const output = $('#bond-out');
+          if (result.error) {
+            if (output) output.textContent = `❌ Error: ${result.error}`;
+          } else {
+            if (output) output.textContent = `✅ Bond ${name} (${mode}) created with slaves: ${slaves.join(', ')}`;
+            // Clear form
+            $('#bond-name').value = '';
+            $('#bond-mode').selectedIndex = 0;
+            if (slavesSelect) {
+              Array.from(slavesSelect.options).forEach(opt => opt.selected = false);
+            }
+            await loadInterfaces();
+          }
+        } catch (e) {
+          const output = $('#bond-out');
+          if (output) output.textContent = `❌ Failed to create bond: ${e}`;
+        } finally {
+          setStatus('Ready');
+        }
+      });
+    }
+
+    // Setup other networking buttons
+    const btnShowNetplan = $('#btn-show-netplan');
+    if (btnShowNetplan) {
+      btnShowNetplan.addEventListener('click', async () => {
+        try {
+          const config = await run('cat', ['/etc/netplan/99-cockpit.yaml'], { superuser: 'try' });
+          alert(`Current Netplan Configuration:\n\n${config}`);
+        } catch (e) {
+          alert(`Failed to show Netplan config: ${e}`);
+        }
+      });
+    }
+
+    const btnApplyNetplan = $('#btn-apply-netplan');
+    if (btnApplyNetplan) {
+      btnApplyNetplan.addEventListener('click', async () => {
+        if (!confirm('Apply Netplan configuration? This may disrupt network connectivity.')) return;
+        
+        try {
+          setStatus('Applying Netplan...');
+          await run('netplan', ['apply'], { superuser: 'require' });
+          alert('✅ Netplan configuration applied successfully!');
+          await loadInterfaces();
+        } catch (e) {
+          alert(`❌ Failed to apply Netplan: ${e}`);
+        } finally {
+          setStatus('Ready');
+        }
+      });
+    }
+  }
+
   // Main initialization
   async function initialize() {
     console.log('Initializing XOS Networking...');
@@ -423,6 +815,7 @@
       // Setup UI components
       setupTabs();
       setupEventHandlers();
+      await setupNetworkingForms();
       
       // Load initial data
       setStatus('Loading data...');
