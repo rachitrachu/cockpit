@@ -11,259 +11,330 @@
 
   <!-- Styles -->
   <link href="style.css" rel="stylesheet">
+  
+  <!-- Icons (using Unicode emojis for now, can be replaced with icon font) -->
+  <style>
+    .icon { display: inline-block; width: 1em; margin-right: 0.5em; }
+  </style>
 </head>
 <body>
-    <div class="xos-container">
-  <header class="xos-header">
-    <div class="xos-title">
-      <svg class="xos-logo" viewBox="0 0 24 24" aria-hidden="true">
-        <use href="icon.svg#logo"></use>
-      </svg>
-      <h1>XOS Networking</h1>
-    </div>
-    <div class="xos-actions">
-      <button id="btn-refresh" class="btn primary">Refresh</button>
-    </div>
-  </header>
-
-  <nav class="xos-tabs">
-    <button class="tab active" data-tab="interfaces">Interfaces</button>
-    <button class="tab" data-tab="connections">Connections</button>
-    <button class="tab" data-tab="constructs">VLAN / Bridge / Bond</button>
-    <button class="tab" data-tab="diagnostics">Diagnostics</button>
-  </nav>
-
-  <main>
-    <!-- Interfaces -->
-    <section id="tab-interfaces" class="tab-panel active">
-      <div class="toolbar">
-        <div class="search">
-          <input id="search-iface" placeholder="Filter interfaces…" />
-        </div>
-        <div style="margin-left:8px;">
-          <label for="iface-sort">Sort by:</label>
-          <select id="iface-sort">
-            <option value="name">Name</option>
-            <option value="type">Type</option>
-            <option value="state">State</option>
-          </select>
-        </div>
-        <div class="spacer" style="flex: 1;"></div>
-        <div class="quick-actions">
-          <button id="btn-refresh-interfaces" class="btn">Refresh</button>
-          <button id="btn-show-netplan" class="btn btn-outline">Show Netplan</button>
-          <button id="btn-apply-netplan" class="btn btn-outline">Apply Netplan</button>
-          <button id="btn-backup-netplan" class="btn btn-outline">Backup Config</button>
-        </div>
+  <div class="xos-container">
+    <header class="xos-header">
+      <div class="xos-title">
+        <svg class="xos-logo" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none"/>
+          <path d="M8 12h8M12 8v8" stroke="currentColor" stroke-width="2"/>
+        </svg>
+        <h1>🌐 XOS Networking</h1>
       </div>
-      <table class="table" id="table-interfaces">
-        <thead>
-          <tr>
-            <th>Device</th><th>Type</th><th>State</th><th>MAC</th><th>IPv4</th><th>IPv6</th><th>MTU</th><th>Actions</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </section>
-
-    <!-- Connections -->
-    <section id="tab-connections" class="tab-panel">
-      <div class="toolbar">
-        <button id="btn-add-connection" class="btn">Add Connection</button>
-        <div class="spacer"></div>
-        <input id="search-conn" placeholder="Filter connections…" />
+      <div class="xos-actions">
+        <button id="btn-refresh" class="btn primary">
+          <span class="icon">🔄</span> Refresh All
+        </button>
       </div>
-      <table class="table" id="table-connections">
-        <thead>
-          <tr>
-            <th>Name</th><th>UUID</th><th>Type</th><th>Device</th><th>Autoconnect</th><th>IP4</th><th>IP6</th><th>Actions</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+    </header>
 
-      <!-- Add/Edit Connection Modal -->
-      <dialog id="conn-modal">
-        <form method="dialog" id="conn-form" class="form">
-          <h2 id="conn-modal-title">Add Connection</h2>
-          <label>Connection Name
-            <input name="name" required>
-          </label>
-          <label>Device
-            <input name="device" placeholder="e.g. eth0" required>
-          </label>
-          <label>Type
-            <select name="type">
-              <option value="ethernet">ethernet</option>
-              <option value="vlan">vlan</option>
-              <option value="bridge">bridge</option>
-              <option value="bond">bond</option>
-            </select>
-          </label>
-          <fieldset>
-            <legend>IPv4 (optional)</legend>
-            <label>Address/CIDR
-              <input name="ip4addr" placeholder="e.g. 10.0.1.10/24">
-            </label>
-            <label>Gateway
-              <input name="ip4gw" placeholder="e.g. 10.0.1.1">
-            </label>
-            <label>DNS (comma separated)
-              <input name="ip4dns" placeholder="e.g. 1.1.1.1,8.8.8.8">
-            </label>
-          </fieldset>
-          <menu>
-            <button id="conn-cancel" value="cancel" class="btn">Cancel</button>
-            <button id="conn-save" value="default" class="btn primary">Save</button>
-          </menu>
-        </form>
-      </dialog>
-    </section>
+    <nav class="xos-tabs">
+      <button class="tab active" data-tab="interfaces">
+        <span class="icon">🔌</span> Interfaces
+      </button>
+      <button class="tab" data-tab="connections">
+        <span class="icon">🔗</span> Connections  
+      </button>
+      <button class="tab" data-tab="constructs">
+        <span class="icon">🏗️</span> VLAN / Bridge / Bond
+      </button>
+      <button class="tab" data-tab="diagnostics">
+        <span class="icon">🩺</span> Diagnostics
+      </button>
+    </nav>
 
-    <!-- VLAN/Bridge/Bond -->
-    <section id="tab-constructs" class="tab-panel">
-      <div class="toolbar">
-        <button id="btn-import-config" class="btn btn-outline">Import Config</button>
-        <button id="btn-export-config" class="btn btn-outline">Export Config</button>
-        <div class="spacer" style="flex: 1;"></div>
-        <button id="btn-reset-forms" class="btn btn-outline">Reset Forms</button>
-      </div>
-      <div class="grid">
-        <!-- VLAN -->
-        <div class="card">
-          <h3>Create VLAN</h3>
-          <label>Parent (e.g. eth0)
-            <select id="vlan-parent" required></select>
-          </label>
-          <label>VLAN ID
-            <input id="vlan-id" type="number" min="1" max="4094" required placeholder="10">
-          </label>
-          <label>New iface name (optional)
-            <input id="vlan-name" type="text" pattern="[a-zA-Z0-9_.-]+" placeholder="eth0.10">
-          </label>
-          <div class="advanced-options" style="margin-top: 8px;">
-            <details>
-              <summary>Advanced Options</summary>
-              <label>MTU
-                <input id="vlan-mtu" type="number" min="68" max="9000" placeholder="1500">
-              </label>
-              <label>Static IP (optional)
-                <input id="vlan-static-ip" placeholder="192.168.1.10/24">
-              </label>
-              <label>Gateway (optional)
-                <input id="vlan-gateway" placeholder="192.168.1.1">
-              </label>
-            </details>
+    <main>
+      <!-- Interfaces -->
+      <section id="tab-interfaces" class="tab-panel active">
+        <div class="toolbar">
+          <div class="search">
+            <input id="search-iface" placeholder="Search interfaces..." />
           </div>
-          <button id="btn-create-vlan" class="btn primary">Create VLAN</button>
-          <pre id="vlan-out" class="out"></pre>
+          <div style="margin-left: 8px;">
+            <label for="iface-sort" style="margin-right: 8px; font-weight: 500;">Sort by:</label>
+            <select id="iface-sort" style="padding: 0.5rem; border-radius: var(--border-radius);">
+              <option value="name">📝 Name</option>
+              <option value="type">🏷️ Type</option>
+              <option value="state">📊 State</option>
+            </select>
+          </div>
+          <div class="spacer"></div>
+          <div class="quick-actions">
+            <button id="btn-refresh-interfaces" class="btn">
+              <span class="icon">🔄</span> Refresh
+            </button>
+            <button id="btn-show-netplan" class="btn btn-outline">
+              <span class="icon">📋</span> Show Config
+            </button>
+            <button id="btn-apply-netplan" class="btn btn-outline">
+              <span class="icon">⚡</span> Apply Config
+            </button>
+            <button id="btn-backup-netplan" class="btn btn-outline">
+              <span class="icon">💾</span> Backup
+            </button>
+          </div>
+        </div>
+        
+        <div class="table-responsive">
+          <table class="table" id="table-interfaces">
+            <thead>
+              <tr>
+                <th>🔌 Device</th>
+                <th>🏷️ Type</th>
+                <th>📊 State</th>
+                <th>🔖 MAC</th>
+                <th>🌐 IPv4</th>
+                <th>🌍 IPv6</th>
+                <th>📏 MTU</th>
+                <th>⚙️ Actions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Connections -->
+      <section id="tab-connections" class="tab-panel">
+        <div class="toolbar">
+          <button id="btn-add-connection" class="btn primary">
+            <span class="icon">➕</span> Add Connection
+          </button>
+          <div class="spacer"></div>
+          <div class="search">
+            <input id="search-conn" placeholder="Search connections..." />
+          </div>
+        </div>
+        
+        <div class="table-responsive">
+          <table class="table" id="table-connections">
+            <thead>
+              <tr>
+                <th>📛 Name</th>
+                <th>🆔 UUID</th>
+                <th>🏷️ Type</th>
+                <th>🔌 Device</th>
+                <th>🔄 Auto</th>
+                <th>🌐 IP4</th>
+                <th>🌍 IP6</th>
+                <th>⚙️ Actions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
         </div>
 
-        <!-- Bridge -->
-        <div class="card">
-          <h3>Create Bridge</h3>
-          <label>Bridge Name
-            <input id="br-name" type="text" required pattern="[a-zA-Z0-9_.-]+" placeholder="br0">
-          </label>
-          <label>Ports (select one or more)
-            <input id="br-ports-filter" type="text" placeholder="Filter interfaces...">
-            <select id="br-ports" multiple required style="height:100px;"></select>
-          </label>
-          <div class="advanced-options" style="margin-top: 8px;">
-            <details>
-              <summary>Advanced Options</summary>
-              <label>STP (Spanning Tree Protocol)
-                <select id="br-stp">
-                  <option value="true">Enable</option>
-                  <option value="false" selected>Disable</option>
+        <!-- Add/Edit Connection Modal -->
+        <dialog id="conn-modal">
+          <form method="dialog" id="conn-form" class="form">
+            <div class="modal-content">
+              <h2 id="conn-modal-title">➕ Add Connection</h2>
+              <label>📛 Connection Name
+                <input name="name" required>
+              </label>
+              <label>🔌 Device
+                <input name="device" placeholder="e.g. eth0" required>
+              </label>
+              <label>🏷️ Type
+                <select name="type">
+                  <option value="ethernet">🔌 Ethernet</option>
+                  <option value="vlan">🏷️ VLAN</option>
+                  <option value="bridge">🌉 Bridge</option>
+                  <option value="bond">🔗 Bond</option>
                 </select>
               </label>
-              <label>Forward Delay (seconds)
-                <input id="br-forward-delay" type="number" min="2" max="30" placeholder="15">
-              </label>
-              <label>Hello Time (seconds)
-                <input id="br-hello-time" type="number" min="1" max="10" placeholder="2">
-              </label>
-            </details>
+              <fieldset style="margin: 1rem 0; padding: 1rem; border: 1px solid var(--border-color); border-radius: var(--border-radius);">
+                <legend style="font-weight: 600; color: var(--primary-color);">🌐 IPv4 Configuration (Optional)</legend>
+                <label>📍 Address/CIDR
+                  <input name="ip4addr" placeholder="e.g. 10.0.1.10/24">
+                </label>
+                <label>🚪 Gateway
+                  <input name="ip4gw" placeholder="e.g. 10.0.1.1">
+                </label>
+                <label>🌐 DNS (comma separated)
+                  <input name="ip4dns" placeholder="e.g. 1.1.1.1,8.8.8.8">
+                </label>
+              </fieldset>
+              <menu style="display: flex; gap: 1rem; justify-content: flex-end; margin: 0; padding: 0;">
+                <button id="conn-cancel" value="cancel" class="btn">❌ Cancel</button>
+                <button id="conn-save" value="default" class="btn primary">💾 Save</button>
+              </menu>
+            </div>
+          </form>
+        </dialog>
+      </section>
+
+      <!-- VLAN/Bridge/Bond -->
+      <section id="tab-constructs" class="tab-panel">
+        <div class="toolbar">
+          <button id="btn-import-config" class="btn btn-outline">
+            <span class="icon">📤</span> Import Config
+          </button>
+          <button id="btn-export-config" class="btn btn-outline">
+            <span class="icon">📥</span> Export Config
+          </button>
+          <div class="spacer"></div>
+          <button id="btn-reset-forms" class="btn btn-outline">
+            <span class="icon">🔄</span> Reset Forms
+          </button>
+        </div>
+        
+        <div class="grid">
+          <!-- VLAN -->
+          <div class="card">
+            <h3>🏷️ Create VLAN</h3>
+            <label>🔌 Parent Interface
+              <select id="vlan-parent" required></select>
+            </label>
+            <label>🔢 VLAN ID
+              <input id="vlan-id" type="number" min="1" max="4094" required placeholder="10">
+            </label>
+            <label>📛 Interface Name (optional)
+              <input id="vlan-name" type="text" pattern="[a-zA-Z0-9_.-]+" placeholder="eth0.10">
+            </label>
+            <div class="advanced-options">
+              <details>
+                <summary>⚙️ Advanced Options</summary>
+                <label>📏 MTU
+                  <input id="vlan-mtu" type="number" min="68" max="9000" placeholder="1500">
+                </label>
+                <label>🌐 Static IP (optional)
+                  <input id="vlan-static-ip" placeholder="192.168.1.10/24">
+                </label>
+                <label>🚪 Gateway (optional)
+                  <input id="vlan-gateway" placeholder="192.168.1.1">
+                </label>
+              </details>
+            </div>
+            <button id="btn-create-vlan" class="btn primary">
+              <span class="icon">➕</span> Create VLAN
+            </button>
+            <pre id="vlan-out" class="out"></pre>
           </div>
-          <button id="btn-create-bridge" class="btn primary">Create Bridge</button>
-          <pre id="br-out" class="out"></pre>
-        </div>
 
-        <!-- Bond -->
-        <div class="card">
-          <h3>Create Bond</h3>
-          <label>Bond Name
-            <input id="bond-name" type="text" required pattern="[a-zA-Z0-9_.-]+" placeholder="bond0">
-          </label>
-          <label>Mode
-            <select id="bond-mode" required>
-              <option value="active-backup">active-backup (failover)</option>
-              <option value="balance-rr">balance-rr (round-robin)</option>
-              <option value="balance-xor">balance-xor (XOR)</option>
-              <option value="broadcast">broadcast</option>
-              <option value="802.3ad">802.3ad (LACP)</option>
-              <option value="balance-tlb">balance-tlb (adaptive TLB)</option>
-              <option value="balance-alb">balance-alb (adaptive ALB)</option>
-            </select>
-          </label>
-          <label>Slaves (select two or more)
-            <input id="bond-slaves-filter" type="text" placeholder="Filter interfaces...">
-            <select id="bond-slaves" multiple required style="height:100px;"></select>
-          </label>
-          <div class="advanced-options" style="margin-top: 8px;">
-            <details>
-              <summary>Advanced Options</summary>
-              <label>MII Monitoring Interval (ms)
-                <input id="bond-miimon" type="number" min="0" placeholder="100">
-              </label>
-              <label>Primary Interface (for active-backup)
-                <select id="bond-primary"></select>
-              </label>
-              <label>Link Monitoring
-                <select id="bond-link-mon">
-                  <option value="miimon">MII Monitor</option>
-                  <option value="arpmon">ARP Monitor</option>
-                </select>
-              </label>
-            </details>
+          <!-- Bridge -->
+          <div class="card">
+            <h3>🌉 Create Bridge</h3>
+            <label>📛 Bridge Name
+              <input id="br-name" type="text" required pattern="[a-zA-Z0-9_.-]+" placeholder="br0">
+            </label>
+            <label>🔌 Port Interfaces
+              <input id="br-ports-filter" type="text" placeholder="Filter interfaces..." style="margin-bottom: 0.5rem;">
+              <select id="br-ports" multiple required style="height:100px;"></select>
+            </label>
+            <div class="advanced-options">
+              <details>
+                <summary>⚙️ Advanced Options</summary>
+                <label>🌲 STP (Spanning Tree Protocol)
+                  <select id="br-stp">
+                    <option value="true">✅ Enable</option>
+                    <option value="false" selected>❌ Disable</option>
+                  </select>
+                </label>
+                <label>⏱️ Forward Delay (seconds)
+                  <input id="br-forward-delay" type="number" min="2" max="30" placeholder="15">
+                </label>
+                <label>👋 Hello Time (seconds)
+                  <input id="br-hello-time" type="number" min="1" max="10" placeholder="2">
+                </label>
+              </details>
+            </div>
+            <button id="btn-create-bridge" class="btn primary">
+              <span class="icon">➕</span> Create Bridge
+            </button>
+            <pre id="br-out" class="out"></pre>
           </div>
-          <button id="btn-create-bond" class="btn primary">Create Bond</button>
-          <pre id="bond-out" class="out"></pre>
-        </div>
-      </div>
-    </section>
 
-    <!-- Diagnostics -->
-    <section id="tab-diagnostics" class="tab-panel">
-      <div class="diag-row">
-        <label>Host/IP
-          <input id="diag-host" placeholder="8.8.8.8">
-        </label>
-        <button id="btn-ping" class="btn">Ping</button>
-        <button id="btn-traceroute" class="btn">Traceroute</button>
-      </div>
-      <div class="grid">
-        <div class="card">
-          <h3>Ping Output</h3>
-          <pre id="ping-out" class="out"></pre>
+          <!-- Bond -->
+          <div class="card">
+            <h3>🔗 Create Bond</h3>
+            <label>📛 Bond Name
+              <input id="bond-name" type="text" required pattern="[a-zA-Z0-9_.-]+" placeholder="bond0">
+            </label>
+            <label>⚙️ Bonding Mode
+              <select id="bond-mode" required>
+                <option value="active-backup">🔄 Active-Backup (Failover)</option>
+                <option value="balance-rr">⚖️ Balance Round-Robin</option>
+                <option value="balance-xor">🔀 Balance XOR</option>
+                <option value="broadcast">📡 Broadcast</option>
+                <option value="802.3ad">🔗 802.3ad (LACP)</option>
+                <option value="balance-tlb">⚡ Balance TLB</option>
+                <option value="balance-alb">⚡ Balance ALB</option>
+              </select>
+            </label>
+            <label>🔌 Slave Interfaces (select two or more)
+              <input id="bond-slaves-filter" type="text" placeholder="Filter interfaces..." style="margin-bottom: 0.5rem;">
+              <select id="bond-slaves" multiple required style="height:100px;"></select>
+            </label>
+            <div class="advanced-options">
+              <details>
+                <summary>⚙️ Advanced Options</summary>
+                <label>⏱️ MII Monitoring Interval (ms)
+                  <input id="bond-miimon" type="number" min="0" placeholder="100">
+                </label>
+                <label>👑 Primary Interface (for active-backup)
+                  <select id="bond-primary"></select>
+                </label>
+                <label>📊 Link Monitoring
+                  <select id="bond-link-mon">
+                    <option value="miimon">📡 MII Monitor</option>
+                    <option value="arpmon">🌐 ARP Monitor</option>
+                  </select>
+                </label>
+              </details>
+            </div>
+            <button id="btn-create-bond" class="btn primary">
+              <span class="icon">➕</span> Create Bond
+            </button>
+            <pre id="bond-out" class="out"></pre>
+          </div>
         </div>
-        <div class="card">
-          <h3>Routes</h3>
-          <pre id="routes-out" class="out"></pre>
-        </div>
-        <div class="card">
-          <h3>DNS</h3>
-          <pre id="dns-out" class="out"></pre>
-        </div>
-      </div>
-    </section>
-  </main>
+      </section>
 
-  <footer class="xos-footer">
-    <span id="status"></span>
-  </footer>
-</div>
+      <!-- Diagnostics -->
+      <section id="tab-diagnostics" class="tab-panel">
+        <div class="card">
+          <h3>🩺 Network Diagnostics</h3>
+          <div style="display: flex; gap: 1rem; align-items: end; margin-bottom: 1.5rem; flex-wrap: wrap;">
+            <label style="flex: 1; min-width: 200px;">🎯 Target Host/IP
+              <input id="diag-host" placeholder="8.8.8.8" value="8.8.8.8">
+            </label>
+            <button id="btn-ping" class="btn primary">
+              <span class="icon">📡</span> Ping
+            </button>
+            <button id="btn-traceroute" class="btn btn-outline">
+              <span class="icon">🗺️</span> Traceroute
+            </button>
+          </div>
+        </div>
+        
+        <div class="grid">
+          <div class="card">
+            <h3>📡 Ping Results</h3>
+            <pre id="ping-out" class="out" style="min-height: 200px;">Click "Ping" to test connectivity...</pre>
+          </div>
+          <div class="card">
+            <h3>🛣️ Routing Table</h3>
+            <pre id="routes-out" class="out" style="min-height: 200px;">Loading routes...</pre>
+          </div>
+          <div class="card">
+            <h3>🌐 DNS Configuration</h3>
+            <pre id="dns-out" class="out" style="min-height: 200px;">Loading DNS config...</pre>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="xos-footer">
+      <span id="status">Ready</span> | XOS Networking Management Interface
+    </footer>
+  </div>
   <script src="main.js"></script>
 </body>
 </html>

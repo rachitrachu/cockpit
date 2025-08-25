@@ -6,7 +6,17 @@
   const $$ = (q, root = document) => Array.from(root.querySelectorAll(q));
   const statusEl = $('#status');
 
-  function setStatus(msg) { statusEl.textContent = msg || ''; }
+  function setStatus(msg) { 
+    statusEl.textContent = msg || 'Ready'; 
+    // Add visual feedback
+    if (msg) {
+      statusEl.style.color = 'var(--primary-color)';
+      statusEl.style.fontWeight = '600';
+    } else {
+      statusEl.style.color = '';
+      statusEl.style.fontWeight = '';
+    }
+  }
 
   // spawn wrapper: default to non-blocking privilege behavior
   async function run(cmd, args = [], opts = {}) {
@@ -33,10 +43,26 @@
     const b = document.createElement('button');
     b.textContent = label;
     b.className = 'btn';
-    b.addEventListener('click', async () => {
-      try { setStatus(`${label}…`); await handler(); }
-      catch (e) { alert(`${label} failed:\n${e}`); }
-      finally { setStatus(''); }
+    b.addEventListener('click', async (e) => {
+      try { 
+        // Add loading state
+        const originalText = b.textContent;
+        b.disabled = true;
+        b.textContent = 'Loading...';
+        setStatus(`${label}…`); 
+        
+        await handler(); 
+      }
+      catch (e) { 
+        alert(`${label} failed:\n${e}`);
+        console.error(`${label} failed:`, e);
+      }
+      finally { 
+        // Restore button state
+        b.disabled = false;
+        b.textContent = b.textContent === 'Loading...' ? label : b.textContent;
+        setStatus(''); 
+      }
     });
     return b;
   }
@@ -556,17 +582,36 @@ echo '${payload.replace(/'/g, "'\\''")}' | python3 netplan_manager.py
     const slaves = Array.from(select.selectedOptions).map(opt => opt.value);
     console.log('Create Bond inputs:', { bond, mode, slaves });
     
-    // Validation
+    // Enhanced validation with better user feedback
+    if (!bond) {
+      $('#bond-name').focus();
+      $('#bond-name').style.borderColor = 'var(--danger-color)';
+      setTimeout(() => $('#bond-name').style.borderColor = '', 3000);
+      alert('❌ Bond name is required!');
+      return;
+    }
+    
     if (!bond.match(/^[a-zA-Z0-9_.-]+$/)) { 
-      alert('Bond name is invalid.'); 
+      $('#bond-name').focus();
+      $('#bond-name').style.borderColor = 'var(--danger-color)';
+      setTimeout(() => $('#bond-name').style.borderColor = '', 3000);
+      alert('❌ Bond name contains invalid characters!\n\n✅ Allowed: letters, numbers, underscore, dash, dot'); 
       return; 
     }
+    
     if (slaves.length < 2) { 
-      alert('At least two slave interfaces required.'); 
+      $('#bond-slaves').focus();
+      $('#bond-slaves').style.borderColor = 'var(--danger-color)';
+      setTimeout(() => $('#bond-slaves').style.borderColor = '', 3000);
+      alert('❌ At least two slave interfaces are required for bonding!'); 
       return; 
     }
+    
     if (!mode) { 
-      alert('Bond mode is required.'); 
+      $('#bond-mode').focus();
+      $('#bond-mode').style.borderColor = 'var(--danger-color)';
+      setTimeout(() => $('#bond-mode').style.borderColor = '', 3000);
+      alert('❌ Bond mode must be selected!'); 
       return; 
     }
     
@@ -574,31 +619,51 @@ echo '${payload.replace(/'/g, "'\\''")}' | python3 netplan_manager.py
     const btnEl = $('#btn-create-bond');
     const originalText = btnEl.textContent;
     btnEl.disabled = true;
-    btnEl.textContent = 'Creating...';
+    btnEl.innerHTML = '<span class="icon">⏳</span> Creating Bond...';
+    setStatus('Creating network bond...');
     
     try {
       const res = await netplanAction('add_bond', { name: bond, mode, interfaces: slaves });
       console.log('netplanAction result:', res);
       
       if (res.error) {
-        $('#bond-out').textContent = 'Error: ' + res.error;
+        $('#bond-out').innerHTML = `<div style="color: var(--danger-color); font-weight: 600;">❌ Error: ${res.error}</div>`;
         console.error('Bond creation failed with error:', res.error);
       } else {
-        $('#bond-out').textContent = `Bond ${bond} (${mode}) created with slaves: ${slaves.join(', ')}`;
+        // Success animation and message
+        const successMessage = `✅ Bond "${bond}" created successfully!\n\n🔗 Mode: ${mode}\n🔌 Slaves: ${slaves.join(', ')}\n⏰ Time: ${new Date().toLocaleTimeString()}`;
+        $('#bond-out').innerHTML = `<div style="color: var(--success-color); font-weight: 600; animation: fadeIn 0.5s ease-in;">${successMessage.replace(/\n/g, '<br>')}</div>`;
+        
         console.log('Bond creation successful, refreshing interfaces...');
+        setStatus('✅ Bond created successfully - refreshing interface list...');
         await refreshAll();
         
-        // Clear form on success
-        $('#bond-name').value = '';
+        // Clear form on success with animation
+        ['#bond-name', '#bond-slaves'].forEach(selector => {
+          const el = $(selector);
+          if (el) {
+            el.style.borderColor = 'var(--success-color)';
+            setTimeout(() => {
+              el.style.borderColor = '';
+              if (el.tagName === 'SELECT' && el.multiple) {
+                Array.from(el.options).forEach(opt => opt.selected = false);
+              } else {
+                el.value = '';
+              }
+            }, 1000);
+          }
+        });
         $('#bond-mode').selectedIndex = 0;
-        Array.from(select.options).forEach(opt => opt.selected = false);
+        
+        setStatus('✅ Ready for next operation');
+        setTimeout(() => setStatus(''), 3000);
       }
     } catch (error) {
       console.error('Exception during bond creation:', error);
-      $('#bond-out').textContent = 'Unexpected error: ' + error.message;
+      $('#bond-out').innerHTML = `<div style="color: var(--danger-color); font-weight: 600;">❌ Unexpected error: ${error.message}</div>`;
     } finally {
       btnEl.disabled = false;
-      btnEl.textContent = originalText;
+      btnEl.innerHTML = originalText;
     }
   });
 
@@ -673,110 +738,183 @@ echo '${payload.replace(/'/g, "'\\''")}' | python3 netplan_manager.py
   });
 
   // -------- Enhanced Interface Management --------
-  $('#btn-refresh-interfaces').addEventListener('click', refreshAll);
+  $('#btn-refresh-interfaces')?.addEventListener('click', refreshAll);
   
-  $('#btn-show-netplan').addEventListener('click', async () => {
+  $('#btn-show-netplan')?.addEventListener('click', async () => {
     try {
+      setStatus('Loading Netplan configuration...');
       const result = await run('cat', ['/etc/netplan/*.yaml'], { superuser: 'try' });
       const modal = document.createElement('dialog');
       modal.innerHTML = `
         <div class="modal-content">
-          <h2>Current Netplan Configuration</h2>
-          <pre style="max-height: 400px; overflow: auto; background: #f5f5f5; padding: 12px; border-radius: 4px;">${result}</pre>
-          <button class="btn" onclick="this.closest('dialog').close()">Close</button>
+          <h2>📋 Current Netplan Configuration</h2>
+          <pre style="max-height: 60vh; overflow: auto; background: #f8f9fa; padding: 1.5rem; border-radius: var(--border-radius); border: 1px solid var(--border-color); font-family: 'Consolas', monospace;">${result}</pre>
+          <div style="text-align: right; margin-top: 1.5rem;">
+            <button class="btn" onclick="this.closest('dialog').close()">✅ Close</button>
+          </div>
         </div>
       `;
+      modal.style.maxWidth = '80vw';
       document.body.appendChild(modal);
       modal.showModal();
+      
+      // Auto-remove modal when closed
+      modal.addEventListener('close', () => {
+        document.body.removeChild(modal);
+      });
     } catch (e) {
-      alert('Failed to show Netplan config: ' + e);
-    }
-  });
-  
-  $('#btn-apply-netplan').addEventListener('click', async () => {
-    if (!confirm('Apply current Netplan configuration? This may disrupt network connectivity.')) return;
-    try {
-      setStatus('Applying Netplan configuration...');
-      await run('netplan', ['apply'], { superuser: 'require' });
-      setStatus('Netplan applied successfully');
-      await refreshAll();
-    } catch (e) {
-      alert('Failed to apply Netplan: ' + e);
+      alert('❌ Failed to show Netplan config: ' + e);
     } finally {
       setStatus('');
     }
   });
   
-  $('#btn-backup-netplan').addEventListener('click', async () => {
+  $('#btn-apply-netplan')?.addEventListener('click', async () => {
+    if (!confirm('⚡ Apply current Netplan configuration?\n\n⚠️ This may disrupt network connectivity temporarily.')) return;
     try {
-      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-      await run('cp', ['-r', '/etc/netplan', `/tmp/netplan-backup-${timestamp}`], { superuser: 'require' });
-      alert(`Netplan configuration backed up to /tmp/netplan-backup-${timestamp}`);
+      setStatus('Applying Netplan configuration...');
+      await run('netplan', ['apply'], { superuser: 'require' });
+      setStatus('✅ Netplan applied successfully');
+      setTimeout(() => setStatus(''), 3000);
+      await refreshAll();
     } catch (e) {
-      alert('Failed to backup Netplan config: ' + e);
+      alert('❌ Failed to apply Netplan: ' + e);
+    }
+  });
+  
+  $('#btn-backup-netplan')?.addEventListener('click', async () => {
+    try {
+      setStatus('Creating backup...');
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+      const backupPath = `/tmp/netplan-backup-${timestamp}`;
+      await run('cp', ['-r', '/etc/netplan', backupPath], { superuser: 'require' });
+      
+      // Show success message with better formatting
+      const successMsg = `💾 Configuration Backup Created\n\n📁 Location: ${backupPath}\n⏰ Time: ${new Date().toLocaleString()}`;
+      alert(successMsg);
+      setStatus('✅ Backup created successfully');
+      setTimeout(() => setStatus(''), 3000);
+    } catch (e) {
+      alert('❌ Failed to backup Netplan config: ' + e);
     }
   });
 
   // -------- Advanced Construct Management --------
-  $('#btn-reset-forms').addEventListener('click', () => {
-    // Reset all form fields
-    $('#vlan-parent').selectedIndex = 0;
-    $('#vlan-id').value = '';
-    $('#vlan-name').value = '';
-    $('#vlan-mtu').value = '';
-    $('#vlan-static-ip').value = '';
-    $('#vlan-gateway').value = '';
+  $('#btn-reset-forms')?.addEventListener('click', () => {
+    if (!confirm('🔄 Reset all form fields?\n\nThis will clear all your current inputs.')) return;
     
-    $('#br-name').value = '';
-    $('#br-ports').selectedIndex = -1;
-    $('#br-stp').value = 'false';
-    $('#br-forward-delay').value = '';
-    $('#br-hello-time').value = '';
+    // Reset all form fields with animation
+    const fields = [
+      '#vlan-parent', '#vlan-id', '#vlan-name', '#vlan-mtu', '#vlan-static-ip', '#vlan-gateway',
+      '#br-name', '#br-ports', '#br-stp', '#br-forward-delay', '#br-hello-time',
+      '#bond-name', '#bond-mode', '#bond-slaves', '#bond-miimon', '#bond-primary', '#bond-link-mon'
+    ];
     
-    $('#bond-name').value = '';
-    $('#bond-mode').selectedIndex = 0;
-    $('#bond-slaves').selectedIndex = -1;
-    $('#bond-miimon').value = '';
-    $('#bond-primary').selectedIndex = 0;
-    $('#bond-link-mon').value = 'miimon';
+    fields.forEach(selector => {
+      const element = $(selector);
+      if (element) {
+        if (element.tagName === 'SELECT') {
+          element.selectedIndex = element.multiple ? -1 : 0;
+        } else {
+          element.value = '';
+        }
+        // Add visual feedback
+        element.style.background = '#e8f5e8';
+        setTimeout(() => {
+          element.style.background = '';
+        }, 500);
+      }
+    });
     
-    // Clear outputs
-    $('#vlan-out').textContent = '';
-    $('#br-out').textContent = '';
-    $('#bond-out').textContent = '';
+    // Clear outputs with fade effect
+    ['#vlan-out', '#br-out', '#bond-out'].forEach(selector => {
+      const element = $(selector);
+      if (element) {
+        element.style.opacity = '0.5';
+        element.textContent = '';
+        setTimeout(() => {
+          element.style.opacity = '';
+        }, 300);
+      }
+    });
+    
+    setStatus('✅ Forms reset');
+    setTimeout(() => setStatus(''), 2000);
   });
 
-  $('#btn-import-config').addEventListener('click', () => {
+  $('#btn-import-config')?.addEventListener('click', () => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.yaml,.yml';
+    input.style.display = 'none';
+    
     input.onchange = async (e) => {
       const file = e.target.files[0];
       if (!file) return;
       
       try {
+        setStatus('Reading configuration file...');
         const content = await file.text();
-        // TODO: Validate and import YAML config
-        alert('Config import not yet implemented. Would import:\n' + content.slice(0, 200) + '...');
+        
+        // Create preview modal
+        const modal = document.createElement('dialog');
+        modal.innerHTML = `
+          <div class="modal-content">
+            <h2>📤 Import Configuration Preview</h2>
+            <p><strong>📁 File:</strong> ${file.name}</p>
+            <p><strong>📏 Size:</strong> ${(file.size / 1024).toFixed(2)} KB</p>
+            <pre style="max-height: 40vh; overflow: auto; background: #f8f9fa; padding: 1rem; border-radius: var(--border-radius); border: 1px solid var(--border-color); font-family: 'Consolas', monospace; font-size: 0.875rem;">${content}</pre>
+            <div style="text-align: center; margin-top: 1.5rem; color: var(--warning-color);">
+              ⚠️ Configuration import functionality is not yet implemented
+            </div>
+            <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
+              <button class="btn" onclick="this.closest('dialog').close()">❌ Cancel</button>
+              <button class="btn btn-outline" onclick="alert('🚧 Import functionality coming soon!'); this.closest('dialog').close()">📋 Preview Only</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(modal);
+        modal.showModal();
+        
+        modal.addEventListener('close', () => {
+          document.body.removeChild(modal);
+        });
       } catch (e) {
-        alert('Failed to read file: ' + e);
+        alert('❌ Failed to read file: ' + e);
+      } finally {
+        setStatus('');
       }
     };
+    
+    document.body.appendChild(input);
     input.click();
+    document.body.removeChild(input);
   });
 
-  $('#btn-export-config').addEventListener('click', async () => {
+  $('#btn-export-config')?.addEventListener('click', async () => {
     try {
+      setStatus('Preparing configuration export...');
       const result = await run('cat', ['/etc/netplan/99-cockpit.yaml'], { superuser: 'try' });
+      
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+      const filename = `xos-networking-config-${timestamp}.yaml`;
+      
       const blob = new Blob([result], { type: 'application/x-yaml' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = '99-cockpit.yaml';
+      a.download = filename;
+      a.style.display = 'none';
+      
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      
+      setStatus('✅ Configuration exported');
+      setTimeout(() => setStatus(''), 3000);
     } catch (e) {
-      alert('Failed to export config: ' + e);
+      alert('❌ Failed to export config: ' + e);
     }
   });
 })();
