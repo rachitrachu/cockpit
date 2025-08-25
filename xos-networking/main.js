@@ -2,7 +2,7 @@
 (() => {
   'use strict';
 
-  const NM = '/usr/bin/nmcli';        // absolute path to avoid PATH issues in cockpit hi hello
+  // Using systemd-networkd and networkctl only
   const $  = (q, root = document) => root.querySelector(q);
   const $$ = (q, root = document) => Array.from(root.querySelectorAll(q));
   const statusEl = $('#status');
@@ -63,14 +63,14 @@
     setStatus('Loading interfaces…');
     let lines = [];
     try {
-      const terse = await run(NM, ['-t', '-f', 'DEVICE,TYPE,STATE,CONNECTION', 'device']);
-      lines = terse.split('\n').filter(Boolean);
+      const terse = await run('networkctl', ['list']);
+      // networkctl list output: IDX  LINK  TYPE  OPERATIONAL  SETUP
+      lines = terse.split('\n').slice(1).filter(Boolean); // skip header
     } catch (e) {
-      // If nmcli is missing or blocked, show a single error row
       const tbody = $('#table-interfaces tbody');
       tbody.innerHTML = '';
       const tr = document.createElement('tr');
-      tr.append(td('—'), td('—'), tdEl(stateBadge('unknown')), td('—'), td('—'), td('—'), td('—'), td('nmcli error: ' + e));
+      tr.append(td('—'), td('—'), tdEl(stateBadge('unknown')), td('—'), td('—'), td('—'), td('—'), td('networkctl error: ' + e));
       tbody.appendChild(tr);
       setStatus('');
       return;
@@ -81,36 +81,28 @@
     tbody.innerHTML = '';
 
     for (const l of lines) {
-      const [dev, type, state, conn] = l.split(':');
+      const parts = l.trim().split(/\s+/);
+      const dev = parts[1];
+      const type = parts[2];
+      const state = parts[3];
       const d = devMap.get(dev) || {};
       const tr = document.createElement('tr');
       const acts = document.createElement('td'); acts.className = 'actions';
 
-      // When unmanaged, Up/Down via nmcli device connect/disconnect will fail.
-      // We still render buttons, but disable if state says unmanaged.
-      const unmanaged = (state || '').toLowerCase() === 'unmanaged';
-
-      const btnUp   = btn('Up',   async () => { await run(NM, ['device', 'connect', dev]); await refreshAll(); });
-      const btnDown = btn('Down', async () => { await run(NM, ['device', 'disconnect', dev]); await refreshAll(); });
+      // Up/Down via systemctl if possible
+      const btnUp   = btn('Up',   async () => { await run('ip', ['link', 'set', dev, 'up']); await refreshAll(); });
+      const btnDown = btn('Down', async () => { await run('ip', ['link', 'set', dev, 'down']); await refreshAll(); });
       const btnEditIP = btn('Set IP', async () => {
         const cidr = prompt(`Enter IPv4 address/CIDR for ${dev} (blank to skip):`, d.ipv4 || '');
         if (!cidr) return;
-        const conname = `xos-${dev}-manual`;
-        try { await run(NM, ['con','add','type','ethernet','ifname',dev,'con-name',conname]); } catch (_) { /* may already exist */ }
-        await run(NM, ['con','mod', conname, 'ipv4.addresses', cidr, 'ipv4.method', 'manual']);
-        if (d.ipv4gw) await run(NM, ['con','mod', conname, 'ipv4.gateway', d.ipv4gw]);
-        await run(NM, ['con','up', conname]);
+        await run('ip', ['addr', 'add', cidr, 'dev', dev]);
         await refreshAll();
       });
       const btnDelIP = btn('Clear IP', async () => {
-        const con = await bestConnectionFor(dev);
-        if (!con) return alert('No connection found to modify.');
-        await run(NM, ['con','mod', con, 'ipv4.method', 'auto', 'ipv4.addresses', '', 'ipv4.gateway', '']);
-        await run(NM, ['con','up', con]);
+        if (!d.ipv4) return alert('No IP found to delete.');
+        await run('ip', ['addr', 'del', d.ipv4, 'dev', dev]);
         await refreshAll();
       });
-
-      if (unmanaged) [btnUp, btnDown, btnEditIP, btnDelIP].forEach(b => b.disabled = true);
 
       acts.append(btnUp, btnDown, btnEditIP, btnDelIP);
 
@@ -130,21 +122,21 @@
   }
 
   async function parseDevicesDetail() {
-    // Use absolute nmcli path inside a login shell to get all fields reliably
-    const out = await run('bash', ['-lc', `${NM} -t -f GENERAL.DEVICE,GENERAL.MTU,GENERAL.HWADDR,IP4.ADDRESS,IP6.ADDRESS device show`]);
+    // Use networkctl and ip to get device details
+    const out = await run('networkctl', ['status']);
     const map = new Map();
     let cur = null;
     out.split('\n').forEach(line => {
-      if (!line.includes(':')) return;
-      const [k, vRaw] = line.split(':');
-      const v = (vRaw || '').trim();
-      if (k === 'GENERAL.DEVICE') { cur = v; map.set(cur, {}); }
-      else if (cur) {
+      if (line.startsWith('Link File:')) {
+        cur = line.split(':')[1].trim();
+        map.set(cur, {});
+      }
+      if (cur) {
         const d = map.get(cur);
-        if (k === 'GENERAL.MTU') d.mtu = v;
-        if (k === 'GENERAL.HWADDR') d.mac = v;
-        if (k.startsWith('IP4.ADDRESS')) d.ipv4 = (v.split(' ')[0] || '');
-        if (k.startsWith('IP6.ADDRESS')) d.ipv6 = (v.split(' ')[0] || '');
+        if (line.includes('MTU:')) d.mtu = line.split('MTU:')[1].trim();
+        if (line.includes('MAC:')) d.mac = line.split('MAC:')[1].trim();
+        if (line.includes('IPv4:')) d.ipv4 = line.split('IPv4:')[1].trim();
+        if (line.includes('IPv6:')) d.ipv6 = line.split('IPv6:')[1].trim();
       }
     });
     return map;
@@ -160,38 +152,40 @@
 
   // -------- Connections --------
   async function listConnections() {
-    setStatus('Loading connections…');
+    setStatus('Loading links…');
     let out = '';
     try {
-      out = await run(NM, ['-t', '-f', 'NAME,UUID,TYPE,DEVICE,AUTOCONNECT,IP4.ADDRESS,IP6.ADDRESS', 'connection', 'show']);
+      out = await run('networkctl', ['list']);
     } catch (e) {
       const tbody = $('#table-connections tbody');
       tbody.innerHTML = '';
       const tr = document.createElement('tr');
-      tr.append(td('nmcli error: ' + e), td('—'), td('—'), td('—'), td('—'), td('—'), td('—'), td('—'));
+      tr.append(td('networkctl error: ' + e), td('—'), td('—'), td('—'), td('—'), td('—'), td('—'), td('—'));
       tbody.appendChild(tr);
       setStatus('');
       return;
     }
-    const lines = out.split('\n').filter(Boolean);
+    const lines = out.split('\n').slice(1).filter(Boolean);
     const tbody = $('#table-connections tbody');
     tbody.innerHTML = '';
     for (const l of lines) {
-      const [name, uuid, type, dev, auto, ip4, ip6] = l.split(':');
+      const parts = l.trim().split(/\s+/);
+      const name = parts[1];
+      const type = parts[2];
+      const state = parts[3];
       const tr = document.createElement('tr');
       const acts = document.createElement('td'); acts.className = 'actions';
 
-      const up   = btn('Up',   async () => { await run(NM, ['con', 'up', uuid || name]);   await refreshAll(); });
-      const down = btn('Down', async () => { await run(NM, ['con', 'down', uuid || name]); await refreshAll(); });
-      const edit = btn('Edit', async () => openConnModal({name, device: dev, type, uuid}));
+      const up   = btn('Up',   async () => { await run('ip', ['link', 'set', name, 'up']);   await refreshAll(); });
+      const down = btn('Down', async () => { await run('ip', ['link', 'set', name, 'down']); await refreshAll(); });
+      const edit = btn('Edit', async () => openConnModal({name, type}));
       const del  = btn('Delete', async () => {
-        if (confirm(`Delete connection "${name}"?`)) { await run(NM, ['con', 'delete', uuid || name]); await refreshAll(); }
+        if (confirm(`Delete link "${name}"?`)) { await run('ip', ['link', 'delete', name]); await refreshAll(); }
       });
 
-      // If everything is unmanaged, these are likely no-ops; keep enabled for environments where NM manages some links.
       acts.append(up, down, edit, del);
 
-      tr.append(td(name||''), td(uuid||''), td(type||''), td(dev||''), td(auto||''), td(ip4||''), td(ip6||''), acts);
+      tr.append(td(name||''), td('—'), td(type||''), td(state||''), td('—'), td('—'), td('—'), acts);
       tbody.appendChild(tr);
     }
     setStatus('');
