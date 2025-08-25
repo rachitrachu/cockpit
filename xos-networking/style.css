@@ -136,10 +136,14 @@ body {
 }
 .tab.active {
   color: #fff;
-  background: var(--accent);
-  border-color: var(--accent);
+  background: #197560;
+  border-color: #197560;
   font-weight: 700;
   text-shadow: 0 1px 2px rgba(0,0,0,0.15);
+}
+.tab.active:hover {
+  background: #14594c;
+  border-color: #14594c;
 }
 
 /* Panels */
