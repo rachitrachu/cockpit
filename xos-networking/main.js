@@ -1,421 +1,447 @@
 /* global cockpit */
 (() => {
   'use strict';
-  // Using systemd-networkd and networkctl only
-  const $  = (q, root = document) => root.querySelector(q);
-  const $$ = (q, root = document) => Array.from(root.querySelectorAll(q));
-  const statusEl = $('#status');
+  
+  console.log('XOS Networking starting...');
+  
+  // Wait for both DOM and Cockpit to be ready
+  function waitForReady() {
+    return new Promise((resolve) => {
+      let domReady = document.readyState === 'complete' || document.readyState === 'interactive';
+      let cockpitReady = typeof cockpit !== 'undefined';
+      
+      console.log('DOM ready:', domReady, 'Cockpit ready:', cockpitReady);
+      
+      if (domReady && cockpitReady) {
+        resolve();
+      } else {
+        // Wait for DOM
+        if (!domReady) {
+          document.addEventListener('DOMContentLoaded', () => {
+            console.log('DOM ready event fired');
+            if (typeof cockpit !== 'undefined') resolve();
+          });
+        }
+        
+        // Fallback timeout
+        setTimeout(resolve, 2000);
+      }
+    });
+  }
+  
+  const $ = (q, root = document) => {
+    try {
+      return root.querySelector(q);
+    } catch (e) {
+      console.warn('Selector error:', q, e);
+      return null;
+    }
+  };
+  
+  const $$ = (q, root = document) => {
+    try {
+      return Array.from(root.querySelectorAll(q));
+    } catch (e) {
+      console.warn('Selector error:', q, e);
+      return [];
+    }
+  };
 
   function setStatus(msg) { 
-    statusEl.textContent = msg || 'Ready'; 
-    // Add visual feedback
-    if (msg) {
-      statusEl.style.color = 'var(--primary-color)';
-      statusEl.style.fontWeight = '600';
-    } else {
-      statusEl.style.color = '';
-      statusEl.style.fontWeight = '';
+    const statusEl = $('#status');
+    if (statusEl) {
+      statusEl.textContent = msg || 'Ready'; 
+      console.log('Status:', msg || 'Ready');
     }
   }
 
-  // spawn wrapper: default to non-blocking privilege behavior
+  // Robust spawn wrapper
   async function run(cmd, args = [], opts = {}) {
-    const proc = cockpit.spawn([cmd, ...args], {
-      superuser: "try",     // don't force polkit for read ops; write ops still escalate as needed
-      err: "out",
-      ...opts
-    });
-    let out = "";
-    proc.stream(d => out += d);
     try {
+      console.log('Running command:', cmd, args);
+      setStatus(`Running ${cmd}...`);
+      
+      if (typeof cockpit === 'undefined') {
+        throw new Error('Cockpit API not available');
+      }
+      
+      const proc = cockpit.spawn([cmd, ...args], {
+        superuser: "try",
+        err: "out",
+        ...opts
+      });
+      
+      let out = "";
+      proc.stream(d => out += d);
       await proc;
+      
+      console.log(`Command ${cmd} completed, output length:`, out.length);
       return out.trim();
+      
     } catch (e) {
-      // surface errors in UI and rethrow for caller to handle
-      console.error(`spawn failed: ${cmd} ${args.join(' ')}`, e, out);
-      throw (out || e).toString();
+      console.error(`Command failed: ${cmd}`, e);
+      setStatus('');
+      throw e.toString();
     }
   }
 
-  function td(text) { const e = document.createElement('td'); e.textContent = text; return e; }
-  function tdEl(el) { const e = document.createElement('td'); e.appendChild(el); return e; }
-  function btn(label, handler) {
-    const b = document.createElement('button');
-    b.textContent = label;
-    b.className = 'btn';
-    b.addEventListener('click', async (e) => {
-      try { 
-        // Add loading state
-        const originalText = b.textContent;
-        b.disabled = true;
-        b.textContent = 'Loading...';
-        setStatus(`${label}…`); 
-        
-        await handler(); 
-      }
-      catch (e) { 
-        alert(`${label} failed:\n${e}`);
+  function createButton(label, handler, className = 'btn') {
+    const btn = document.createElement('button');
+    btn.textContent = label;
+    btn.className = className;
+    
+    btn.addEventListener('click', async () => {
+      const originalText = btn.textContent;
+      try {
+        btn.disabled = true;
+        btn.textContent = 'Loading...';
+        await handler();
+      } catch (e) {
         console.error(`${label} failed:`, e);
-      }
-      finally { 
-        // Restore button state
-        b.disabled = false;
-        b.textContent = b.textContent === 'Loading...' ? label : b.textContent;
-        setStatus(''); 
+        alert(`${label} failed:\n${e}`);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
       }
     });
-    return b;
+    
+    return btn;
   }
-  function stateBadge(state) {
+
+  function createStatusBadge(state) {
     const span = document.createElement('span');
     const s = (state || 'unknown').toUpperCase();
-    span.className = 'badge ' + (s === 'CONNECTED' || s === 'UP' ? 'state-up'
-                      : s === 'DISCONNECTED' || s === 'DOWN' ? 'state-down'
+    span.className = 'badge ' + (s === 'UP' || s === 'CONNECTED' ? 'state-up'
+                      : s === 'DOWN' || s === 'DISCONNECTED' ? 'state-down'
                       : 'state-unknown');
     span.textContent = s;
     return span;
   }
 
-  // -------- Tabs --------
-  function setActiveTab(id) {
-    $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === id));
-    $$('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + id));
-  }
-  $$('.tab').forEach(btn => btn.addEventListener('click', () => setActiveTab(btn.dataset.tab)));
-
-  // -------- Interfaces --------
-  async function listInterfaces() {
-    setStatus('Loading interfaces…');
-    let ifaceList = [];
-    try {
-      const out = await run('ip', ['-details', 'addr', 'show']);
-      // Parse output
-      const blocks = out.split(/\n(?=\d+: )/); // Each interface starts with 'N: '
-      for (const block of blocks) {
-        const lines = block.split('\n');
-        const first = lines[0];
-        const match = first.match(/^(\d+): ([^:]+):/);
-        if (!match) continue;
-        const dev = match[2];
-        let type = 'unknown';
-        let state = 'DOWN';
-        let mac = '';
-        let mtu = '';
-        let ipv4 = '';
-        let ipv6 = '';
-        for (const line of lines) {
-          if (line.includes('mtu')) {
-            const mtuMatch = line.match(/mtu (\d+)/);
-            if (mtuMatch) mtu = mtuMatch[1];
-          }
-          if (line.includes('link/')) {
-            const macMatch = line.match(/link\/\w+ ([0-9a-fA-F:]+)/);
-            if (macMatch) mac = macMatch[1];
-            const typeMatch = line.match(/link\/(\w+)/);
-            if (typeMatch) type = typeMatch[1];
-          }
-          if (line.includes('state')) {
-            const stateMatch = line.match(/state (\w+)/);
-            if (stateMatch) state = stateMatch[1];
-          }
-          if (line.trim().startsWith('inet ')) {
-            const ipMatch = line.match(/inet ([^\s]+)/);
-            if (ipMatch) ipv4 = ipMatch[1];
-          }
-          if (line.trim().startsWith('inet6 ')) {
-            const ip6Match = line.match(/inet6 ([^\s]+)/);
-            if (ip6Match) ipv6 = ip6Match[1];
-          }
-        }
-        ifaceList.push({ dev, type, state, mac, mtu, ipv4, ipv6 });
-      }
-    } catch (e) {
-      const tbody = $('#table-interfaces tbody');
-      tbody.innerHTML = '';
-      const tr = document.createElement('tr');
-      tr.append(td('—'), td('—'), tdEl(stateBadge('unknown')), td('—'), td('—'), td('—'), td('—'), td('ip addr error: ' + e));
-      tbody.appendChild(tr);
-      setStatus('');
+  async function loadInterfaces() {
+    console.log('Loading interfaces...');
+    setStatus('Loading interfaces...');
+    
+    const tbody = $('#table-interfaces tbody');
+    if (!tbody) {
+      console.error('Interface table body not found');
+      setStatus('Interface table not found');
       return;
     }
 
-    // Sort interfaces
-    const sortValue = document.getElementById('iface-sort')?.value || 'name';
-    ifaceList.sort((a, b) => {
-      if (sortValue === 'name') return a.dev.localeCompare(b.dev);
-      if (sortValue === 'type') return a.type.localeCompare(b.type);
-      if (sortValue === 'state' ) return a.state.localeCompare(b.state);
-      return 0;
-    });
-
-    const tbody = $('#table-interfaces tbody');
-    tbody.innerHTML = '';
-    for (const iface of ifaceList) {
-      const tr = document.createElement('tr');
-      const acts = document.createElement('td'); acts.className = 'actions';
-      const btnUp   = btn('Up',   async () => { await run('ip', ['link', 'set', iface.dev, 'up']); await refreshAll(); });
-      const btnDown = btn('Down', async () => { await run('ip', ['link', 'set', iface.dev, 'down']); await refreshAll(); });
-      const btnEditIP = btn('Set IP', async () => {
-        const modal = document.createElement('dialog');
-        modal.innerHTML = `
-          <div class="modal-content" style="min-width: 400px;">
-            <h2>🌐 Set IP Address for ${iface.dev}</h2>
-            <form id="set-ip-form">
-              <label>Current IPv4 Address
-                <input type="text" value="${iface.ipv4 || 'None'}" readonly style="background: #f5f5f5;">
-              </label>
-              <label>New IPv4 Address/CIDR
-                <input type="text" id="new-ip-addr" placeholder="192.168.1.10/24" required 
-                       pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([0-9]|[1-2][0-9]|3[0-2])$">
-              </label>
-              <label>Gateway (optional)
-                <input type="text" id="new-gateway" placeholder="192.168.1.1"
-                       pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$">
-              </label>
-              <label>DNS Servers (optional, comma separated)
-                <input type="text" id="new-dns" placeholder="8.8.8.8,1.1.1.1">
-              </label>
-              <div style="margin: 1rem 0; padding: 1rem; background: #e8f4fd; border-radius: var(--border-radius); border: 1px solid #bee5eb;">
-                <label style="display: flex; align-items: center; gap: 0.5rem; margin: 0;">
-                  <input type="checkbox" id="persist-ip" checked>
-                  💾 Persist configuration to netplan (recommended)
-                </label>
-              </div>
-              <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
-                <button type="button" class="btn" onclick="this.closest('dialog').close()">❌ Cancel</button>
-                <button type="button" class="btn primary" id="apply-ip-config">💾 Apply Configuration</button>
-              </div>
-            </form>
-          </div>
-        `;
+    try {
+      // Test basic connectivity first
+      try {
+        await run('echo', ['test']);
+        console.log('Basic command test passed');
+      } catch (e) {
+        throw new Error('Cockpit command execution not working: ' + e);
+      }
+      
+      const output = await run('ip', ['-details', 'addr', 'show']);
+      console.log('IP command output received, length:', output.length);
+      
+      if (!output || output.length < 10) {
+        throw new Error('No output from ip command');
+      }
+      
+      // Parse interfaces
+      const interfaces = [];
+      const blocks = output.split(/\n(?=\d+: )/);
+      console.log('Processing', blocks.length, 'interface blocks');
+      
+      for (const block of blocks) {
+        const lines = block.split('\n');
+        const firstLine = lines[0];
+        const match = firstLine.match(/^(\d+): ([^:]+):/);
         
-        document.body.appendChild(modal);
-        
-        $('#apply-ip-config', modal).addEventListener('click', async () => {
-          const newIp = $('#new-ip-addr', modal).value.trim();
-          const gateway = $('#new-gateway', modal).value.trim();
-          const dns = $('#new-dns', modal).value.trim();
-          const persist = $('#persist-ip', modal).checked;
+        if (match) {
+          const dev = match[2];
+          let type = 'ethernet', state = 'DOWN', mac = '', ipv4 = '', ipv6 = '', mtu = '1500';
           
-          // Validation
-          if (!newIp) {
-            alert('❌ IP address is required!');
-            return;
-          }
-          
-          const ipRegex = /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([0-9]|[1-2][0-9]|3[0-2])$/;
-          if (!ipRegex.test(newIp)) {
-            alert('❌ Invalid IP address format! Use CIDR notation (e.g., 192.168.1.10/24)');
-            return;
-          }
-          
-          if (gateway && !/^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(gateway)) {
-            alert('❌ Invalid gateway address format!');
-            return;
-          }
-          
-          try {
-            setStatus('Configuring IP address...');
-            
-            // Remove existing IP addresses first
-            if (iface.ipv4) {
-              try {
-                await run('ip', ['addr', 'del', iface.ipv4, 'dev', iface.dev], { superuser: 'require' });
-              } catch (e) {
-                console.warn('Could not remove old IP:', e);
-              }
+          for (const line of lines) {
+            if (line.includes('mtu')) {
+              const mtuMatch = line.match(/mtu (\d+)/);
+              if (mtuMatch) mtu = mtuMatch[1];
             }
-            
-            // Add new IP address
-            await run('ip', ['addr', 'add', newIp, 'dev', iface.dev], { superuser: 'require' });
-            
-            // Add gateway if specified
-            if (gateway) {
-              try {
-                // Remove existing default route for this interface (best effort)
-                await run('ip', ['route', 'del', 'default', 'dev', iface.dev], { superuser: 'require' });
-              } catch (e) {
-                // Ignore if no existing route
-              }
-              await run('ip', ['route', 'add', 'default', 'via', gateway, 'dev', iface.dev], { superuser: 'require' });
+            if (line.includes('link/')) {
+              const macMatch = line.match(/link\/\w+ ([0-9a-fA-F:]+)/);
+              if (macMatch) mac = macMatch[1];
+              const typeMatch = line.match(/link\/(\w+)/);
+              if (typeMatch) type = typeMatch[1];
             }
-            
-            // Persist to netplan if requested
-            if (persist) {
-              try {
-                const netplanConfig = {
-                  name: iface.dev,
-                  static_ip: newIp,
-                  gateway: gateway || undefined,
-                  dns: dns || undefined
-                };
-                
-                const res = await netplanAction('set_ip', netplanConfig);
-                if (res.error) {
-                  console.warn('Netplan persistence failed:', res.error);
-                  alert('⚠️ IP set successfully but netplan persistence failed: ' + res.error);
-                } else {
-                  alert('✅ IP address configured and persisted successfully!');
-                }
-              } catch (error) {
-                console.warn('Netplan error:', error);
-                alert('⚠️ IP set successfully but netplan persistence failed: ' + error.message);
-              }
-            } else {
-              alert('✅ IP address configured successfully!\\n\\n⚠️ Note: Configuration is temporary and will be lost after reboot.');
+            if (line.includes('state')) {
+              const stateMatch = line.match(/state (\w+)/);
+              if (stateMatch) state = stateMatch[1];
             }
-            
-            modal.close();
-            setStatus('✅ IP configuration applied');
-            setTimeout(() => setStatus(''), 3000);
-            await refreshAll();
-            
-          } catch (error) {
-            alert('❌ Failed to set IP address: ' + error.message);
-            console.error('IP configuration error:', error);
-          }
-        });
-        
-        modal.showModal();
-        modal.addEventListener('close', () => document.body.removeChild(modal));
-      });
-      const btnDelIP = btn('Remove IP', async () => {
-        if (!confirm(`Remove IP configuration from "${iface.dev}"?`)) return;
-        try {
-          // Remove IP address
-          if (iface.ipv4) {
-            await run('ip', ['addr', 'del', iface.ipv4, 'dev', iface.dev], { superuser: 'require' });
+            if (line.trim().startsWith('inet ')) {
+              const ipMatch = line.match(/inet ([^\s]+)/);
+              if (ipMatch) ipv4 = ipMatch[1];
+            }
+            if (line.trim().startsWith('inet6 ')) {
+              const ip6Match = line.match(/inet6 ([^\s]+)/);
+              if (ip6Match && !ip6Match[1].startsWith('fe80')) ipv6 = ip6Match[1];
+            }
           }
           
-          // Remove from netplan
-          await netplanAction('delete_ip', { name: iface.dev });
-          
-          setStatus('IP configuration removed');
-          setTimeout(() => setStatus(''), 3000);
-          await refreshAll();
-        } catch (e) {
-          alert('Failed to remove IP configuration: ' + e);
+          interfaces.push({ dev, type, state, mac, ipv4, ipv6, mtu });
         }
-      });
-      const btnSetMTU = btn('Set MTU', async () => {
-        const modal = document.createElement('dialog');
-        modal.innerHTML = `
-          <div class="modal-content" style="min-width: 400px;">
-            <h2>📏 Set MTU for ${iface.dev}</h2>
-            <form id="set-mtu-form">
-              <label>Current MTU
-                <input type="text" value="${iface.mtu || 'Unknown'}" readonly style="background: #f5f5f5;">
-              </label>
-              <label>New MTU Value
-                <input type="number" id="new-mtu" min="68" max="9000" value="${iface.mtu || '1500'}" required>
-              </label>
-              <div style="margin: 1rem 0; padding: 1rem; background: #fff3cd; border-radius: var(--border-radius); border: 1px solid #ffeaa7;">
-                <h4 style="margin: 0 0 0.5rem 0;">📋 Common MTU Values:</h4>
-                <ul style="margin: 0; padding-left: 1.5rem;">
-                  <li><strong>1500:</strong> Standard Ethernet</li>
-                  <li><strong>9000:</strong> Jumbo frames (LAN)</li>
-                  <li><strong>1492:</strong> PPPoE connections</li>
-                  <li><strong>1280:</strong> IPv6 minimum</li>
-                </ul>
-              </div>
-              <div style="margin: 1rem 0; padding: 1rem; background: #e8f4fd; border-radius: var(--border-radius); border: 1px solid #bee5eb;">
-                <label style="display: flex; align-items: center; gap: 0.5rem; margin: 0;">
-                  <input type="checkbox" id="persist-mtu" checked>
-                  💾 Persist configuration to netplan (recommended)
-                </label>
-              </div>
-              <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
-                <button type="button" class="btn" onclick="this.closest('dialog').close()">❌ Cancel</button>
-                <button type="button" class="btn primary" id="apply-mtu-config">💾 Apply MTU</button>
-              </div>
-            </form>
-          </div>
-        `;
+      }
+
+      console.log('Parsed', interfaces.length, 'interfaces:', interfaces.map(i => i.dev));
+      
+      // Clear and populate table
+      tbody.innerHTML = '';
+      
+      if (interfaces.length === 0) {
+        const row = document.createElement('tr');
+        row.innerHTML = '<td colspan="8" style="text-align: center; padding: 2rem;">No network interfaces found</td>';
+        tbody.appendChild(row);
+        setStatus('No interfaces found');
+        return;
+      }
+
+      // Sort by name
+      interfaces.sort((a, b) => a.dev.localeCompare(b.dev));
+
+      // Create table rows
+      interfaces.forEach(iface => {
+        const row = document.createElement('tr');
         
-        document.body.appendChild(modal);
+        // Create action buttons
+        const actionsCell = document.createElement('td');
+        actionsCell.className = 'actions';
         
-        $('#apply-mtu-config', modal).addEventListener('click', async () => {
-          const newMtu = parseInt($('#new-mtu', modal).value);
-          const persist = $('#persist-mtu', modal).checked;
-          
-          // Validation
-          if (!newMtu || newMtu < 68 || newMtu > 9000) {
-            alert('❌ MTU must be between 68 and 9000!');
-            return;
-          }
-          
-          if (iface.mtu && parseInt(iface.mtu) === newMtu) {
-            alert('ℹ️ MTU is already set to ' + newMtu);
-            modal.close();
-            return;
-          }
-          
+        const btnUp = createButton('Up', async () => {
+          await run('ip', ['link', 'set', iface.dev, 'up'], { superuser: 'require' });
+          await loadInterfaces();
+        });
+        
+        const btnDown = createButton('Down', async () => {
+          await run('ip', ['link', 'set', iface.dev, 'down'], { superuser: 'require' });
+          await loadInterfaces();
+        });
+        
+        const btnInfo = createButton('Info', async () => {
           try {
-            setStatus('Setting MTU...');
-            
-            // Set MTU via ip command
-            await run('ip', ['link', 'set', 'dev', iface.dev, 'mtu', newMtu.toString()], { superuser: 'require' });
-            
-            // Persist to netplan if requested
-            if (persist) {
-              try {
-                const res = await netplanAction('set_mtu', { name: iface.dev, mtu: newMtu });
-                if (res.error) {
-                  console.warn('Netplan persistence failed:', res.error);
-                  alert('⚠️ MTU set successfully but netplan persistence failed: ' + res.error);
-                } else {
-                  alert('✅ MTU configured and persisted successfully!');
-                }
-              } catch (error) {
-                console.warn('Netplan error:', error);
-                alert('⚠️ MTU set successfully but netplan persistence failed: ' + error.message);
-              }
-            } else {
-              alert('✅ MTU configured successfully!\\n\\n⚠️ Note: Configuration is temporary and will be lost after reboot.');
-            }
-            
-            modal.close();
-            setStatus('✅ MTU configuration applied');
-            setTimeout(() => setStatus(''), 3000);
-            await refreshAll();
-            
-          } catch (error) {
-            alert('❌ Failed to set MTU: ' + error.message);
-            console.error('MTU configuration error:', error);
+            const info = await run('ip', ['addr', 'show', iface.dev]);
+            alert(`Interface ${iface.dev} details:\n\n${info}`);
+          } catch (e) {
+            alert(`Failed to get info for ${iface.dev}: ${e}`);
           }
         });
         
-        modal.showModal();
-        modal.addEventListener('close', () => document.body.removeChild(modal));
+        actionsCell.appendChild(btnUp);
+        actionsCell.appendChild(btnDown);
+        actionsCell.appendChild(btnInfo);
+        
+        // Create cells
+        const cells = [
+          iface.dev,
+          iface.type,
+          createStatusBadge(iface.state),
+          iface.mac,
+          iface.ipv4,
+          iface.ipv6,
+          iface.mtu,
+          actionsCell
+        ];
+        
+        cells.forEach(content => {
+          const cell = document.createElement('td');
+          if (typeof content === 'string') {
+            cell.textContent = content;
+          } else {
+            cell.appendChild(content);
+          }
+          row.appendChild(cell);
+        });
+        
+        tbody.appendChild(row);
       });
       
-      acts.append(btnUp, btnDown, btnEditIP, btnDelIP, btnSetMTU);
-      tr.append(
-        td(iface.dev),
-        td(iface.type),
-        tdEl(stateBadge(iface.state || 'unknown')),
-        td(iface.mac),
-        td(iface.ipv4),
-        td(iface.ipv6),
-        td(iface.mtu),
-        acts
-      );
-      tbody.appendChild(tr);
+      setStatus(`Loaded ${interfaces.length} interfaces`);
+      
+    } catch (e) {
+      console.error('Failed to load interfaces:', e);
+      tbody.innerHTML = '';
+      const row = document.createElement('tr');
+      row.innerHTML = `<td colspan="8" style="text-align: center; padding: 2rem; color: red;">Error: ${e}</td>`;
+      tbody.appendChild(row);
+      setStatus('Error loading interfaces');
     }
-    setStatus('');
   }
 
-  // Re-render interfaces when sort option changes
-  $('#iface-sort').addEventListener('change', listInterfaces);
+  async function loadConnections() {
+    console.log('Loading connections...');
+    const tbody = $('#table-connections tbody');
+    if (!tbody) return;
 
-  async function parseDevicesDetail() {
-    // Use networkctl and ip to get device details
-    const out = await run('networkctl', ['status']);
-    const map = new Map();
-    let cur = null;
-    out.split('\n').forEach(line => {
-      if (line.startsWith('Link File:')) {
-        cur = line.split(':')[1].trim();
-        map.set(cur, {});
-      }
-      if cur?
+    try {
+      const output = await run('networkctl', ['list']);
+      const lines = output.split('\n').slice(1).filter(line => line.trim());
+      
+      tbody.innerHTML = '';
+      
+      lines.forEach(line => {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length >= 4) {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${parts[1] || ''}</td>
+            <td>—</td>
+            <td>${parts[2] || ''}</td>
+            <td>${parts[3] || ''}</td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+            <td class="actions">—</td>
+          `;
+          tbody.appendChild(row);
+        }
+      });
+      
+      console.log('Loaded', lines.length, 'connections');
+      
+    } catch (e) {
+      console.warn('Failed to load connections:', e);
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Connection data unavailable</td></tr>';
+    }
+  }
+
+  async function loadDiagnostics() {
+    console.log('Loading diagnostics...');
+    
+    // Routes
+    try {
+      const routes = await run('ip', ['route']);
+      const routesEl = $('#routes-out');
+      if (routesEl) routesEl.textContent = routes || '(no routes)';
+    } catch (e) {
+      const routesEl = $('#routes-out');
+      if (routesEl) routesEl.textContent = 'Error loading routes: ' + e;
+    }
+
+    // DNS
+    try {
+      const dns = await run('cat', ['/etc/resolv.conf']);
+      const dnsEl = $('#dns-out');
+      if (dnsEl) dnsEl.textContent = dns || '(no DNS configuration)';
+    } catch (e) {
+      const dnsEl = $('#dns-out');
+      if (dnsEl) dnsEl.textContent = 'Error loading DNS config: ' + e;
+    }
+  }
+
+  function setupTabs() {
+    const tabs = $$('.tab');
+    const panels = $$('.tab-panel');
+    
+    console.log('Found', tabs.length, 'tabs and', panels.length, 'panels');
+    
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const targetId = tab.dataset.tab;
+        console.log('Tab clicked:', targetId);
+        
+        // Update active tab
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        
+        // Update active panel
+        panels.forEach(p => p.classList.remove('active'));
+        const targetPanel = $(`#tab-${targetId}`);
+        if (targetPanel) {
+          targetPanel.classList.add('active');
+        }
+      });
+    });
+  }
+
+  function setupEventHandlers() {
+    console.log('Setting up event handlers...');
+    
+    // Main refresh button
+    const refreshBtn = $('#btn-refresh');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', async () => {
+        await Promise.all([
+          loadInterfaces(),
+          loadConnections(), 
+          loadDiagnostics()
+        ]);
+      });
+    }
+
+    // Ping button
+    const pingBtn = $('#btn-ping');
+    if (pingBtn) {
+      pingBtn.addEventListener('click', async () => {
+        const host = $('#diag-host')?.value?.trim() || '8.8.8.8';
+        const pingOut = $('#ping-out');
+        if (!pingOut) return;
+        
+        try {
+          pingOut.textContent = 'Running ping...';
+          const result = await run('ping', ['-c', '4', host]);
+          pingOut.textContent = result;
+        } catch (e) {
+          pingOut.textContent = 'Ping failed: ' + e;
+        }
+      });
+    }
+
+    // Traceroute button
+    const traceBtn = $('#btn-traceroute');
+    if (traceBtn) {
+      traceBtn.addEventListener('click', async () => {
+        const host = $('#diag-host')?.value?.trim() || '8.8.8.8';
+        const pingOut = $('#ping-out');
+        if (!pingOut) return;
+        
+        try {
+          pingOut.textContent = 'Running traceroute...';
+          const result = await run('traceroute', [host]);
+          pingOut.textContent = result;
+        } catch (e) {
+          pingOut.textContent = 'Traceroute failed: ' + e;
+        }
+      });
+    }
+  }
+
+  // Main initialization
+  async function initialize() {
+    console.log('Initializing XOS Networking...');
+    
+    try {
+      await waitForReady();
+      console.log('Ready state achieved');
+      
+      setStatus('Initializing...');
+      
+      // Setup UI components
+      setupTabs();
+      setupEventHandlers();
+      
+      // Load initial data
+      setStatus('Loading data...');
+      await Promise.all([
+        loadInterfaces(),
+        loadConnections(),
+        loadDiagnostics()
+      ]);
+      
+      setStatus('Ready');
+      console.log('XOS Networking initialized successfully');
+      
+    } catch (e) {
+      console.error('Initialization failed:', e);
+      setStatus('Initialization failed: ' + e);
+    }
+  }
+
+  // Start the application
+  initialize();
+
+})();

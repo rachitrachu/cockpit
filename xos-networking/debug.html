@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>XOS Networking - Debug</title>
+  <script src="../base1/cockpit.js"></script>
+  <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      margin: 20px; 
+      background: #f5f5f5; 
+    }
+    .container { 
+      background: white; 
+      padding: 20px; 
+      border-radius: 8px; 
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
+    }
+    .btn { 
+      background: #0066cc; 
+      color: white; 
+      border: none; 
+      padding: 10px 20px; 
+      border-radius: 4px; 
+      cursor: pointer; 
+      margin: 5px; 
+    }
+    .btn:hover { background: #0056b3; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+    th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+    th { background: #f8f9fa; }
+    .status { 
+      background: #e8f4fd; 
+      padding: 10px; 
+      border-radius: 4px; 
+      margin: 10px 0; 
+      border-left: 4px solid #0066cc; 
+    }
+    .error { 
+      background: #f8d7da; 
+      color: #721c24; 
+      border-left-color: #dc3545; 
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>?? XOS Networking - Debug Mode</h1>
+    
+    <div id="status" class="status">Initializing...</div>
+    
+    <div>
+      <button id="btn-test" class="btn">Test Connection</button>
+      <button id="btn-list-interfaces" class="btn">List Interfaces</button>
+      <button id="btn-refresh" class="btn">Refresh</button>
+    </div>
+
+    <h2>Network Interfaces</h2>
+    <table id="interface-table">
+      <thead>
+        <tr>
+          <th>Device</th>
+          <th>Type</th>
+          <th>State</th>
+          <th>MAC</th>
+          <th>IPv4</th>
+          <th>MTU</th>
+        </tr>
+      </thead>
+      <tbody id="interface-tbody">
+        <tr><td colspan="6">No data loaded</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Debug Log</h2>
+    <div id="debug-log" style="background: #f8f9fa; padding: 15px; border-radius: 4px; max-height: 300px; overflow-y: auto; font-family: monospace; white-space: pre-wrap;"></div>
+  </div>
+
+  <script>
+    const $ = (q) => document.querySelector(q);
+    const statusEl = $('#status');
+    const debugLog = $('#debug-log');
+    
+    function log(message) {
+      const timestamp = new Date().toLocaleTimeString();
+      debugLog.textContent += `[${timestamp}] ${message}\n`;
+      debugLog.scrollTop = debugLog.scrollHeight;
+      console.log(message);
+    }
+
+    function setStatus(msg, isError = false) {
+      statusEl.textContent = msg;
+      statusEl.className = isError ? 'status error' : 'status';
+      log(`STATUS: ${msg}`);
+    }
+
+    async function testConnection() {
+      try {
+        setStatus('Testing Cockpit connection...');
+        log('Testing basic Cockpit functionality...');
+        
+        const result = await cockpit.spawn(['echo', 'Hello from Cockpit!']);
+        log(`Echo test result: ${result}`);
+        setStatus('? Cockpit connection working!');
+        return true;
+      } catch (e) {
+        log(`Echo test failed: ${e}`);
+        setStatus('? Cockpit connection failed: ' + e, true);
+        return false;
+      }
+    }
+
+    async function listInterfaces() {
+      try {
+        setStatus('Loading network interfaces...');
+        log('Running: ip -details addr show');
+        
+        const result = await cockpit.spawn(['ip', '-details', 'addr', 'show']);
+        log(`IP command result length: ${result.length} characters`);
+        
+        if (!result || result.length < 10) {
+          throw new Error('Empty or invalid response from ip command');
+        }
+        
+        // Parse the output
+        const interfaces = [];
+        const blocks = result.split(/\n(?=\d+: )/);
+        log(`Found ${blocks.length} interface blocks`);
+        
+        for (const block of blocks) {
+          const lines = block.split('\n');
+          const firstLine = lines[0];
+          const match = firstLine.match(/^(\d+): ([^:]+):/);
+          
+          if (match) {
+            const dev = match[2];
+            let type = 'unknown', state = 'DOWN', mac = '', ipv4 = '', mtu = '1500';
+            
+            for (const line of lines) {
+              if (line.includes('mtu')) {
+                const mtuMatch = line.match(/mtu (\d+)/);
+                if (mtuMatch) mtu = mtuMatch[1];
+              }
+              if (line.includes('link/')) {
+                const macMatch = line.match(/link\/\w+ ([0-9a-fA-F:]+)/);
+                if (macMatch) mac = macMatch[1];
+                const typeMatch = line.match(/link\/(\w+)/);
+                if (typeMatch) type = typeMatch[1];
+              }
+              if (line.includes('state')) {
+                const stateMatch = line.match(/state (\w+)/);
+                if (stateMatch) state = stateMatch[1];
+              }
+              if (line.trim().startsWith('inet ')) {
+                const ipMatch = line.match(/inet ([^\s]+)/);
+                if (ipMatch) ipv4 = ipMatch[1];
+              }
+            }
+            
+            interfaces.push({ dev, type, state, mac, ipv4, mtu });
+            log(`Parsed interface: ${dev} (${type}, ${state})`);
+          }
+        }
+        
+        // Update the table
+        const tbody = $('#interface-tbody');
+        tbody.innerHTML = '';
+        
+        if (interfaces.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #999;">No interfaces found</td></tr>';
+          setStatus('?? No network interfaces found');
+        } else {
+          interfaces.forEach(iface => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+              <td>${iface.dev}</td>
+              <td>${iface.type}</td>
+              <td><span style="color: ${iface.state === 'UP' ? 'green' : 'red'};">${iface.state}</span></td>
+              <td>${iface.mac}</td>
+              <td>${iface.ipv4}</td>
+              <td>${iface.mtu}</td>
+            `;
+            tbody.appendChild(row);
+          });
+          setStatus(`? Loaded ${interfaces.length} network interfaces`);
+        }
+        
+      } catch (e) {
+        log(`Interface listing failed: ${e}`);
+        setStatus('? Failed to load interfaces: ' + e, true);
+        
+        const tbody = $('#interface-tbody');
+        tbody.innerHTML = `<tr><td colspan="6" style="color: red;">Error: ${e}</td></tr>`;
+      }
+    }
+
+    // Event listeners
+    $('#btn-test').addEventListener('click', testConnection);
+    $('#btn-list-interfaces').addEventListener('click', listInterfaces);
+    $('#btn-refresh').addEventListener('click', async () => {
+      await testConnection() && await listInterfaces();
+    });
+
+    // Initialize
+    log('XOS Networking Debug Mode initialized');
+    setStatus('Ready - Click "Test Connection" to start');
+    
+    // Auto-test on load
+    setTimeout(async () => {
+      log('Auto-testing connection...');
+      if (await testConnection()) {
+        await listInterfaces();
+      }
+    }, 1000);
+  </script>
+</body>
+</html>
