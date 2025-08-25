@@ -390,34 +390,45 @@
     console.log('netplanAction called with:', { action, config });
     const payload = JSON.stringify({ action, config });
     console.log('JSON payload to send:', payload);
+    
     try {
       console.log('About to spawn netplan script...');
+      
+      // Use a simpler approach - write to temp file and execute
+      const tempScript = `
+#!/bin/bash
+cd /usr/share/cockpit/xos-networking
+echo '${payload.replace(/'/g, "'\\''")}' | python3 netplan_manager.py
+`;
+      
       const result = await cockpit.spawn([
-        '/usr/bin/python3',
-        '/usr/share/cockpit/xos-networking/netplan_manager.py'
+        'bash', '-c', tempScript
       ], {
-        input: payload,
         superuser: 'require',
         err: 'out'
       });
+      
       console.log('Netplan script raw output:', result);
       const cleanResult = result.trim();
       console.log('Cleaned result:', cleanResult);
-      const parsed = JSON.parse(cleanResult);
-      console.log('Netplan script parsed output:', parsed);
-      return parsed;
+      
+      // Find JSON in the output (might have other text before it)
+      const jsonMatch = cleanResult.match(/\{.*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        console.log('Netplan script parsed output:', parsed);
+        return parsed;
+      } else {
+        return { error: 'No JSON response found in output: ' + cleanResult };
+      }
     } catch (e) {
       console.error('netplanAction exception:', e);
-      let errorMsg = 'Unknown error';
+      let errorMsg = 'Script execution failed';
       if (e.exit_status !== undefined) {
         errorMsg = `Script exited with code ${e.exit_status}`;
-        if (e.message) errorMsg += `: ${e.message}`;
-      } else if (e.message) {
-        errorMsg = e.message;
-      } else if (e.problem) {
-        errorMsg = e.problem;
-      } else if (typeof e === 'string') {
-        errorMsg = e;
+      }
+      if (e.message && e.message.trim()) {
+        errorMsg += `: ${e.message}`;
       }
       console.error('Processed error message:', errorMsg);
       return { error: errorMsg };
@@ -548,17 +559,14 @@
     // Validation
     if (!bond.match(/^[a-zA-Z0-9_.-]+$/)) { 
       alert('Bond name is invalid.'); 
-      console.log('Validation failed: Bond name invalid');
       return; 
     }
-    if (slaves.length < 2 || !slaves.every(s => s.match(/^[a-zA-Z0-9_.-]+$/))) { 
-      alert('At least two valid slave interfaces required.'); 
-      console.log('Validation failed: Slaves invalid', slaves);
+    if (slaves.length < 2) { 
+      alert('At least two slave interfaces required.'); 
       return; 
     }
     if (!mode) { 
       alert('Bond mode is required.'); 
-      console.log('Validation failed: Mode required');
       return; 
     }
     
@@ -569,36 +577,25 @@
     btnEl.textContent = 'Creating...';
     
     try {
-      // Reduce timeout to 15 seconds for faster feedback
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Timeout: Bond creation took too long (15s)')), 15000)
-      );
-      
-      const netplanPromise = netplanAction('add_bond', { name: bond, mode, interfaces: slaves });
-      
-      const res = await Promise.race([netplanPromise, timeoutPromise]);
+      const res = await netplanAction('add_bond', { name: bond, mode, interfaces: slaves });
       console.log('netplanAction result:', res);
       
       if (res.error) {
-        $('#bond-out').textContent = res.error;
+        $('#bond-out').textContent = 'Error: ' + res.error;
         console.error('Bond creation failed with error:', res.error);
       } else {
         $('#bond-out').textContent = `Bond ${bond} (${mode}) created with slaves: ${slaves.join(', ')}`;
         console.log('Bond creation successful, refreshing interfaces...');
         await refreshAll();
-        // Clear form
+        
+        // Clear form on success
         $('#bond-name').value = '';
         $('#bond-mode').selectedIndex = 0;
         Array.from(select.options).forEach(opt => opt.selected = false);
       }
     } catch (error) {
       console.error('Exception during bond creation:', error);
-      $('#bond-out').textContent = 'Error: ' + error.message;
-      
-      // If timeout, show suggestion to try manual approach
-      if (error.message.includes('Timeout')) {
-        $('#bond-out').textContent += '\n\nTip: Try creating the bond manually with: echo \'{"action":"add_bond","config":{"name":"' + bond + '","mode":"' + mode + '","interfaces":["' + slaves.join('","') + '"]}}\' | sudo python3 /usr/share/cockpit/xos-networking/netplan_manager.py';
-      }
+      $('#bond-out').textContent = 'Unexpected error: ' + error.message;
     } finally {
       btnEl.disabled = false;
       btnEl.textContent = originalText;
