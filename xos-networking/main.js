@@ -141,6 +141,20 @@
         await refreshAll();
       });
       acts.append(btnUp, btnDown, btnEditIP, btnDelIP);
+      // Add Delete Bond button if interface is a bond
+      if (iface.dev.startsWith('bond')) {
+        const btnDeleteBond = btn('Delete Bond', async () => {
+          if (confirm(`Delete bond "${iface.dev}"? This will remove it from Netplan and apply changes.`)) {
+            const res = await netplanAction('delete', { type: 'bonds', name: iface.dev });
+            if (res.error) {
+              alert('Delete failed: ' + res.error);
+            } else {
+              await refreshAll();
+            }
+          }
+        });
+        acts.append(btnDeleteBond);
+      }
       tr.append(
         td(iface.dev),
         td(iface.type),
