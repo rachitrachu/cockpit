@@ -108,8 +108,12 @@ def main():
             }
         elif action == 'delete':
             # config: {type, name}
+            print(f"Attempting to delete {config.get('type')} named {config.get('name')}")
             if config and config.get('type') in network and config.get('name') in network[config['type']]:
                 del network[config['type']][config['name']]
+                print(f"Deleted {config.get('type')} named {config.get('name')}")
+            else:
+                print(f"No matching {config.get('type')} named {config.get('name')} found for deletion.")
         else:
             print(json.dumps({'error': 'Unknown action'}))
             sys.exit(1)
