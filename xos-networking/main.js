@@ -141,26 +141,68 @@
         await refreshAll();
       });
       acts.append(btnUp, btnDown, btnEditIP, btnDelIP);
-      // Add Delete Bond button if interface is a bond
+      
+      // Add specific action buttons based on interface type
       if (iface.dev.startsWith('bond')) {
+        const btnEditBond = btn('Edit Bond', async () => {
+          // TODO: Implement bond editing
+          alert('Bond editing not yet implemented');
+        });
         const btnDeleteBond = btn('Delete Bond', async () => {
           if (!confirm(`Delete bond "${iface.dev}"? This will remove it now and update Netplan.`)) return;
           try {
-            // Delete the runtime bond immediately
             await run('ip', ['link', 'delete', iface.dev], { superuser: 'require' });
           } catch (e) {
             alert('Failed to delete bond interface: ' + e);
             return;
           }
-          // Clean up Netplan to persist removal across reboots
           const res = await netplanAction('delete', { type: 'bonds', name: iface.dev });
           if (res.error) {
             alert('Netplan cleanup failed: ' + res.error);
           }
           await refreshAll();
         });
-        acts.append(btnDeleteBond);
+        acts.append(btnEditBond, btnDeleteBond);
+      } else if (iface.dev.includes('.') && !iface.dev.startsWith('br')) {
+        // VLAN interface (contains . but not bridge)
+        const btnEditVlan = btn('Edit VLAN', async () => {
+          alert('VLAN editing not yet implemented');
+        });
+        const btnDeleteVlan = btn('Delete VLAN', async () => {
+          if (!confirm(`Delete VLAN "${iface.dev}"?`)) return;
+          try {
+            await run('ip', ['link', 'delete', iface.dev], { superuser: 'require' });
+            const res = await netplanAction('delete', { type: 'vlans', name: iface.dev });
+            if (res.error) {
+              alert('Netplan cleanup failed: ' + res.error);
+            }
+            await refreshAll();
+          } catch (e) {
+            alert('Failed to delete VLAN: ' + e);
+          }
+        });
+        acts.append(btnEditVlan, btnDeleteVlan);
+      } else if (iface.dev.startsWith('br')) {
+        // Bridge interface
+        const btnEditBridge = btn('Edit Bridge', async () => {
+          alert('Bridge editing not yet implemented');
+        });
+        const btnDeleteBridge = btn('Delete Bridge', async () => {
+          if (!confirm(`Delete bridge "${iface.dev}"?`)) return;
+          try {
+            await run('ip', ['link', 'delete', iface.dev], { superuser: 'require' });
+            const res = await netplanAction('delete', { type: 'bridges', name: iface.dev });
+            if (res.error) {
+              alert('Netplan cleanup failed: ' + res.error);
+            }
+            await refreshAll();
+          } catch (e) {
+            alert('Failed to delete bridge: ' + e);
+          }
+        });
+        acts.append(btnEditBridge, btnDeleteBridge);
       }
+
       tr.append(
         td(iface.dev),
         td(iface.type),
@@ -323,6 +365,26 @@
     }
   });
 
+  // Test function for stdin handling
+  window.testStdin = async function() {
+    try {
+      console.log('Testing stdin handling...');
+      const result = await cockpit.spawn([
+        '/usr/bin/python3',
+        '/usr/share/cockpit/xos-networking/test_stdin.py'
+      ], {
+        input: JSON.stringify({"test": "data", "action": "test"}),
+        superuser: 'require',
+        err: 'out'
+      });
+      console.log('Stdin test result:', result);
+      return result;
+    } catch (e) {
+      console.error('Stdin test failed:', e);
+      return e;
+    }
+  };
+
   // -------- Constructs: VLAN / Bridge / Bond --------
   async function netplanAction(action, config) {
     console.log('netplanAction called with:', { action, config });
@@ -330,7 +392,6 @@
     console.log('JSON payload to send:', payload);
     try {
       console.log('About to spawn netplan script...');
-      // IMPORTANT: do NOT use PTY here, stdin (input:) won't be delivered under PTY
       const result = await cockpit.spawn([
         '/usr/bin/python3',
         '/usr/share/cockpit/xos-networking/netplan_manager.py'
@@ -612,5 +673,113 @@
   // Initial
   document.addEventListener('DOMContentLoaded', () => {
     refreshAll().catch(e => setStatus(String(e)));
+  });
+
+  // -------- Enhanced Interface Management --------
+  $('#btn-refresh-interfaces').addEventListener('click', refreshAll);
+  
+  $('#btn-show-netplan').addEventListener('click', async () => {
+    try {
+      const result = await run('cat', ['/etc/netplan/*.yaml'], { superuser: 'try' });
+      const modal = document.createElement('dialog');
+      modal.innerHTML = `
+        <div class="modal-content">
+          <h2>Current Netplan Configuration</h2>
+          <pre style="max-height: 400px; overflow: auto; background: #f5f5f5; padding: 12px; border-radius: 4px;">${result}</pre>
+          <button class="btn" onclick="this.closest('dialog').close()">Close</button>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      modal.showModal();
+    } catch (e) {
+      alert('Failed to show Netplan config: ' + e);
+    }
+  });
+  
+  $('#btn-apply-netplan').addEventListener('click', async () => {
+    if (!confirm('Apply current Netplan configuration? This may disrupt network connectivity.')) return;
+    try {
+      setStatus('Applying Netplan configuration...');
+      await run('netplan', ['apply'], { superuser: 'require' });
+      setStatus('Netplan applied successfully');
+      await refreshAll();
+    } catch (e) {
+      alert('Failed to apply Netplan: ' + e);
+    } finally {
+      setStatus('');
+    }
+  });
+  
+  $('#btn-backup-netplan').addEventListener('click', async () => {
+    try {
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+      await run('cp', ['-r', '/etc/netplan', `/tmp/netplan-backup-${timestamp}`], { superuser: 'require' });
+      alert(`Netplan configuration backed up to /tmp/netplan-backup-${timestamp}`);
+    } catch (e) {
+      alert('Failed to backup Netplan config: ' + e);
+    }
+  });
+
+  // -------- Advanced Construct Management --------
+  $('#btn-reset-forms').addEventListener('click', () => {
+    // Reset all form fields
+    $('#vlan-parent').selectedIndex = 0;
+    $('#vlan-id').value = '';
+    $('#vlan-name').value = '';
+    $('#vlan-mtu').value = '';
+    $('#vlan-static-ip').value = '';
+    $('#vlan-gateway').value = '';
+    
+    $('#br-name').value = '';
+    $('#br-ports').selectedIndex = -1;
+    $('#br-stp').value = 'false';
+    $('#br-forward-delay').value = '';
+    $('#br-hello-time').value = '';
+    
+    $('#bond-name').value = '';
+    $('#bond-mode').selectedIndex = 0;
+    $('#bond-slaves').selectedIndex = -1;
+    $('#bond-miimon').value = '';
+    $('#bond-primary').selectedIndex = 0;
+    $('#bond-link-mon').value = 'miimon';
+    
+    // Clear outputs
+    $('#vlan-out').textContent = '';
+    $('#br-out').textContent = '';
+    $('#bond-out').textContent = '';
+  });
+
+  $('#btn-import-config').addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.yaml,.yml';
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      try {
+        const content = await file.text();
+        // TODO: Validate and import YAML config
+        alert('Config import not yet implemented. Would import:\n' + content.slice(0, 200) + '...');
+      } catch (e) {
+        alert('Failed to read file: ' + e);
+      }
+    };
+    input.click();
+  });
+
+  $('#btn-export-config').addEventListener('click', async () => {
+    try {
+      const result = await run('cat', ['/etc/netplan/99-cockpit.yaml'], { superuser: 'try' });
+      const blob = new Blob([result], { type: 'application/x-yaml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = '99-cockpit.yaml';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('Failed to export config: ' + e);
+    }
   });
 })();
