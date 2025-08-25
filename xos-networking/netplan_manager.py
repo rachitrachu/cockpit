@@ -71,12 +71,14 @@ def main():
         netplan = configs.get(fname, {'network': {}})
         network = ensure_network_root(netplan)
 
+        # Always merge new constructs, never overwrite
         if action == 'add_bond':
             # Ensure slaves exist in ethernets
             slaves = list(config.get('interfaces') or [])
             add_empty_ethernets(network, slaves)
             # Create bonds section
             network.setdefault('bonds', {})
+            # Merge bond, preserve others
             network['bonds'][config['name']] = {
                 'interfaces': slaves,
                 'parameters': {'mode': config['mode']},
