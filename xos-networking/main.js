@@ -331,17 +331,17 @@
     
     try {
       console.log('About to spawn netplan script...');
+      // Use test script first to isolate the issue
       const result = await cockpit.spawn([
         'python3',
-        '/usr/share/cockpit/xos-networking/netplan_manager.py'
+        '/usr/share/cockpit/xos-networking/netplan_manager_test.py'
       ], {
         input: payload,
         superuser: 'require',
-        err: 'message'  // Changed from 'out' to 'message' to separate stderr from stdout
+        err: 'message'
       });
       console.log('Netplan script raw output:', result);
       
-      // Clean up result - remove any extra whitespace or non-JSON content
       const cleanResult = result.trim();
       console.log('Cleaned result:', cleanResult);
       
@@ -353,7 +353,6 @@
       console.error('Exception type:', typeof e);
       console.error('Exception details:', e.toString());
       
-      // Try to extract useful error information
       let errorMsg = 'Unknown error';
       if (typeof e === 'string') {
         errorMsg = e;
@@ -513,9 +512,9 @@
     btnEl.textContent = 'Creating...';
     
     try {
-      // Add timeout to prevent hanging
+      // Reduce timeout to 15 seconds for faster feedback
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Timeout: Bond creation took too long')), 30000)
+        setTimeout(() => reject(new Error('Timeout: Bond creation took too long (15s)')), 15000)
       );
       
       const netplanPromise = netplanAction('add_bond', { name: bond, mode, interfaces: slaves });
@@ -538,6 +537,11 @@
     } catch (error) {
       console.error('Exception during bond creation:', error);
       $('#bond-out').textContent = 'Error: ' + error.message;
+      
+      // If timeout, show suggestion to try manual approach
+      if (error.message.includes('Timeout')) {
+        $('#bond-out').textContent += '\n\nTip: Try creating the bond manually with: echo \'{"action":"add_bond","config":{"name":"' + bond + '","mode":"' + mode + '","interfaces":["' + slaves.join('","') + '"]}}\' | sudo python3 /usr/share/cockpit/xos-networking/netplan_manager.py';
+      }
     } finally {
       btnEl.disabled = false;
       btnEl.textContent = originalText;
