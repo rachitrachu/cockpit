@@ -325,7 +325,9 @@
 
   // -------- Constructs: VLAN / Bridge / Bond --------
   async function netplanAction(action, config) {
+    console.log('netplanAction called with:', { action, config });
     try {
+      console.log('About to spawn netplan script...');
       const result = await cockpit.spawn([
         'python3',
         '/usr/share/cockpit/xos-networking/netplan_manager.py'
@@ -334,11 +336,13 @@
         superuser: 'require',
         err: 'out'
       });
-      console.log('Netplan script output:', result);
-      return JSON.parse(result);
+      console.log('Netplan script raw output:', result);
+      const parsed = JSON.parse(result);
+      console.log('Netplan script parsed output:', parsed);
+      return parsed;
     } catch (e) {
+      console.error('netplanAction exception:', e);
       alert('Netplan error: ' + e);
-      console.error('Netplan error:', e);
       return { error: e.toString() };
     }
   }
