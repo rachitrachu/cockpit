@@ -108,47 +108,50 @@
     <!-- VLAN/Bridge/Bond -->
     <section id="tab-constructs" class="tab-panel">
       <div class="grid">
+        <!-- VLAN -->
         <div class="card">
           <h3>Create VLAN</h3>
           <label>Parent (e.g. eth0)
-            <input id="vlan-parent" placeholder="eth0">
+            <select id="vlan-parent" required></select>
           </label>
           <label>VLAN ID
-            <input id="vlan-id" type="number" min="1" max="4094" placeholder="10">
+            <input id="vlan-id" type="number" min="1" max="4094" required placeholder="10">
           </label>
           <label>New iface name (optional)
-            <input id="vlan-name" placeholder="eth0.10">
+            <input id="vlan-name" type="text" pattern="[a-zA-Z0-9_.-]+" placeholder="eth0.10">
           </label>
           <button id="btn-create-vlan" class="btn primary">Create VLAN</button>
           <pre id="vlan-out" class="out"></pre>
         </div>
 
+        <!-- Bridge -->
         <div class="card">
           <h3>Create Bridge</h3>
           <label>Bridge Name
-            <input id="br-name" placeholder="br0">
+            <input id="br-name" type="text" required pattern="[a-zA-Z0-9_.-]+" placeholder="br0">
           </label>
           <label>Ports (comma separated)
-            <input id="br-ports" placeholder="eth0,eth1">
+            <input id="br-ports" type="text" required pattern="([a-zA-Z0-9_.-]+,?)+" placeholder="eth0,eth1">
           </label>
           <button id="btn-create-bridge" class="btn primary">Create Bridge</button>
           <pre id="br-out" class="out"></pre>
         </div>
 
+        <!-- Bond -->
         <div class="card">
           <h3>Create Bond</h3>
           <label>Bond Name
-            <input id="bond-name" placeholder="bond0">
+            <input id="bond-name" type="text" required pattern="[a-zA-Z0-9_.-]+" placeholder="bond0">
           </label>
           <label>Mode
-            <select id="bond-mode">
+            <select id="bond-mode" required>
               <option value="active-backup">active-backup</option>
               <option value="balance-rr">balance-rr</option>
               <option value="802.3ad">802.3ad (LACP)</option>
             </select>
           </label>
           <label>Slaves (comma separated)
-            <input id="bond-slaves" placeholder="eth0,eth1">
+            <input id="bond-slaves" type="text" required pattern="([a-zA-Z0-9_.-]+,?)+" placeholder="eth0,eth1">
           </label>
           <button id="btn-create-bond" class="btn primary">Create Bond</button>
           <pre id="bond-out" class="out"></pre>

@@ -265,69 +265,70 @@
   });
 
   // -------- Constructs: VLAN / Bridge / Bond --------
+  async function netplanAction(action, config) {
+    try {
+      const result = await cockpit.spawn([
+        'python3',
+        'netplan_manager.py'
+      ], {
+        input: JSON.stringify({ action, config }),
+        superuser: 'require',
+        err: 'out',
+        cwd: 'xos-networking'
+      });
+      return JSON.parse(result);
+    } catch (e) {
+      return { error: e.toString() };
+    }
+  }
+
   $('#btn-create-vlan').addEventListener('click', async () => {
     const parent = $('#vlan-parent').value.trim();
     const id = $('#vlan-id').value.trim();
     const ifname = $('#vlan-name').value.trim() || `${parent}.${id}`;
-    if (!parent || !id) return alert('Parent and VLAN ID required.');
-    try {
-      // Create a .netdev and .network for the VLAN
-      const netdevPath = `/etc/systemd/network/${ifname}.netdev`;
-      const netPath = `/etc/systemd/network/${ifname}.network`;
-      const netdev = `[NetDev]\nName=${ifname}\nKind=vlan\n[NetDev.VLAN]\nId=${id}\n`;
-      const net = `[Match]\nName=${ifname}\n\n[Network]\nDHCP=yes\n`;
-      await run('bash', ['-lc', `cat > ${netdevPath} <<'EOF'\n${netdev}EOF`]);
-      await run('bash', ['-lc', `cat > ${netPath} <<'EOF'\n${net}EOF`]);
-      await run('bash', ['-lc', `systemctl restart systemd-networkd`]);
+    // Validation
+    if (!parent.match(/^[a-zA-Z0-9_.-]+$/)) return alert('Parent interface name is invalid.');
+    if (!id.match(/^\d+$/) || parseInt(id) < 1 || parseInt(id) > 4094) return alert('VLAN ID must be between 1 and 4094.');
+    if (ifname && !ifname.match(/^[a-zA-Z0-9_.-]+$/)) return alert('Interface name is invalid.');
+    const res = await netplanAction('add_vlan', { name: ifname, id: parseInt(id), link: parent });
+    if (res.error) {
+      $('#vlan-out').textContent = res.error;
+    } else {
       $('#vlan-out').textContent = `VLAN ${ifname} created.`;
       await refreshAll();
-    } catch (e) { $('#vlan-out').textContent = String(e); }
+    }
   });
 
   $('#btn-create-bridge').addEventListener('click', async () => {
     const br = $('#br-name').value.trim();
     const ports = $('#br-ports').value.trim().split(',').map(s => s.trim()).filter(Boolean);
-    if (!br) return alert('Bridge name required.');
-    try {
-      // Create bridge netdev and simple network file; attach ports via ip
-      const netdevPath = `/etc/systemd/network/${br}.netdev`;
-      const netPath = `/etc/systemd/network/${br}.network`;
-      const netdev = `[NetDev]\nName=${br}\nKind=bridge\n`;
-      const net = `[Match]\nName=${br}\n\n[Network]\nDHCP=yes\n`;
-      await run('bash', ['-lc', `cat > ${netdevPath} <<'EOF'\n${netdev}EOF`]);
-      await run('bash', ['-lc', `cat > ${netPath} <<'EOF'\n${net}EOF`]);
-      // Restart to create the bridge
-      await run('systemctl', ['restart', 'systemd-networkd']);
-      // Attach ports
-      for (const p of ports) {
-        await run('ip', ['link', 'set', p, 'master', br]);
-      }
+    // Validation
+    if (!br.match(/^[a-zA-Z0-9_.-]+$/)) return alert('Bridge name is invalid.');
+    if (ports.length < 1 || !ports.every(p => p.match(/^[a-zA-Z0-9_.-]+$/))) return alert('At least one valid port required.');
+    const res = await netplanAction('add_bridge', { name: br, interfaces: ports });
+    if (res.error) {
+      $('#br-out').textContent = res.error;
+    } else {
       $('#br-out').textContent = `Bridge ${br} created with ports: ${ports.join(', ')}`;
       await refreshAll();
-    } catch (e) { $('#br-out').textContent = String(e); }
+    }
   });
 
   $('#btn-create-bond').addEventListener('click', async () => {
     const bond = $('#bond-name').value.trim();
     const mode = $('#bond-mode').value;
     const slaves = $('#bond-slaves').value.trim().split(',').map(s => s.trim()).filter(Boolean);
-    if (!bond || slaves.length < 2) return alert('Bond name and at least two slaves required.');
-    try {
-      // Create bond netdev and network file
-      const netdevPath = `/etc/systemd/network/${bond}.netdev`;
-      const netPath = `/etc/systemd/network/${bond}.network`;
-      const netdev = `[NetDev]\nName=${bond}\nKind=bond\n[NetDev.Bond]\nMode=${mode}\n`;
-      const net = `[Match]\nName=${bond}\n\n[Network]\nDHCP=yes\n`;
-      await run('bash', ['-lc', `cat > ${netdevPath} <<'EOF'\n${netdev}EOF`]);
-      await run('bash', ['-lc', `cat > ${netPath} <<'EOF'\n${net}EOF`]);
-      await run('systemctl', ['restart', 'systemd-networkd']);
-      // Attach slaves
-      for (const s of slaves) {
-        await run('ip', ['link', 'set', s, 'master', bond]);
-      }
+    // Validation
+    if (!bond.match(/^[a-zA-Z0-9_.-]+$/)) return alert('Bond name is invalid.');
+    if (slaves.length < 2 || !slaves.every(s => s.match(/^[a-zA-Z0-9_.-]+$/))) return alert('At least two valid slave interfaces required.');
+    if (!mode) return alert('Bond mode is required.');
+    const res = await netplanAction('add_bond', { name: bond, mode, interfaces: slaves });
+    if (res.error) {
+      $('#bond-out').textContent = res.error;
+    } else {
       $('#bond-out').textContent = `Bond ${bond} (${mode}) created with slaves: ${slaves.join(', ')}`;
       await refreshAll();
-    } catch (e) { $('#bond-out').textContent = String(e); }
+    }
   });
 
   // -------- Diagnostics --------
@@ -361,6 +362,43 @@
 
   // Header refresh
   $('#btn-refresh').addEventListener('click', refreshAll);
+
+  // Populate VLAN parent dropdown with available interfaces
+  async function populateVlanParentDropdown() {
+    const select = document.getElementById('vlan-parent');
+    select.innerHTML = '';
+    try {
+      const terse = await run('networkctl', ['list']);
+      const lines = terse.split('\n').slice(1).filter(Boolean);
+      for (const l of lines) {
+        const parts = l.trim().split(/\s+/);
+        const dev = parts[1];
+        if (dev) {
+          const option = document.createElement('option');
+          option.value = dev;
+          option.textContent = dev;
+          select.appendChild(option);
+        }
+      }
+    } catch (e) {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'No interfaces found';
+      select.appendChild(option);
+    }
+  }
+
+  // Populate dropdown when VLAN tab is activated
+  function setupVlanTabDropdown() {
+    $$('.tab').forEach(btn => {
+      if (btn.dataset.tab === 'constructs') {
+        btn.addEventListener('click', populateVlanParentDropdown);
+      }
+    });
+    // Also populate on page load
+    document.addEventListener('DOMContentLoaded', populateVlanParentDropdown);
+  }
+  setupVlanTabDropdown();
 
   // Initial
   document.addEventListener('DOMContentLoaded', () => {
