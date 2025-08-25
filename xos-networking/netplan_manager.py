@@ -11,13 +11,17 @@ NETPLAN_DIR = '/etc/netplan'
 
 def load_netplan():
     configs = {}
-    for fname in os.listdir(NETPLAN_DIR):
-        if fname.endswith('.yaml') or fname.endswith('.yml'):
-            with open(os.path.join(NETPLAN_DIR, fname)) as f:
-                loaded = yaml.safe_load(f)
-                if loaded is None:
-                    loaded = {}
-                configs[fname] = loaded
+    try:
+        for fname in os.listdir(NETPLAN_DIR):
+            if fname.endswith('.yaml') or fname.endswith('.yml'):
+                with open(os.path.join(NETPLAN_DIR, fname)) as f:
+                    loaded = yaml.safe_load(f)
+                    if loaded is None:
+                        loaded = {}
+                    configs[fname] = loaded
+    except Exception as e:
+        print(json.dumps({'error': f'Failed to load netplan configs: {e}'}), file=sys.stdout, flush=True)
+        sys.exit(1)
     return configs
 
 
@@ -29,16 +33,20 @@ def write_netplan(fname, data):
         # Ensure secure permissions (rw for root only)
         os.chmod(path, 0o600)
     except Exception as e:
-        print(json.dumps({'error': f'Failed to write netplan file: {e}', 'trace': traceback.format_exc()}))
+        print(json.dumps({'error': f'Failed to write netplan file: {e}'}), file=sys.stdout, flush=True)
         sys.exit(1)
 
 
 def apply_netplan():
     try:
-        subprocess.run(['netplan', 'apply'], check=True)
-    except Exception as e:
-        # Ensure errors go to stdout as JSON
-        print(json.dumps({'error': f'Failed to apply netplan: {e}', 'trace': traceback.format_exc()}))
+        # Suppress stderr to avoid Open vSwitch warnings in JSON output
+        result = subprocess.run(['netplan', 'apply'], 
+                              stdout=subprocess.PIPE, 
+                              stderr=subprocess.PIPE, 
+                              text=True, 
+                              check=True)
+    except subprocess.CalledProcessError as e:
+        print(json.dumps({'error': f'Failed to apply netplan: {e.stderr}'}), file=sys.stdout, flush=True)
         sys.exit(1)
 
 
@@ -66,10 +74,20 @@ def add_empty_ethernets(network, ifaces):
 
 def main():
     try:
-        req = json.load(sys.stdin)
+        # Read JSON input
+        input_data = sys.stdin.read().strip()
+        if not input_data:
+            print(json.dumps({'error': 'No input provided'}), file=sys.stdout, flush=True)
+            sys.exit(1)
+            
+        req = json.loads(input_data)
         action = req.get('action')
         config = req.get('config')
         fname = req.get('filename', '99-cockpit.yaml')
+
+        if not action or not config:
+            print(json.dumps({'error': 'Missing action or config'}), file=sys.stdout, flush=True)
+            sys.exit(1)
 
         configs = load_netplan()
         netplan = configs.get(fname, {'network': {}})
@@ -79,6 +97,9 @@ def main():
         if action == 'add_bond':
             # Ensure slaves exist in ethernets
             slaves = list(config.get('interfaces') or [])
+            if len(slaves) < 2:
+                print(json.dumps({'error': 'Bond requires at least 2 interfaces'}), file=sys.stdout, flush=True)
+                sys.exit(1)
             add_empty_ethernets(network, slaves)
             # Create bonds section
             network.setdefault('bonds', {})
@@ -116,21 +137,26 @@ def main():
                 # Also delete the bond interface using ip link (best-effort)
                 if config.get('type') == 'bonds':
                     try:
-                        subprocess.run(['ip', 'link', 'delete', config.get('name')], check=True)
-                        print(f"Successfully deleted bond interface {config.get('name')}", file=sys.stderr)
-                    except Exception as e:
-                        print(f"Failed to delete bond interface {config.get('name')}: {e}", file=sys.stderr)
+                        subprocess.run(['ip', 'link', 'delete', config.get('name')], 
+                                     stdout=subprocess.PIPE, 
+                                     stderr=subprocess.PIPE, 
+                                     check=True)
+                    except:
+                        pass  # Ignore errors if interface doesn't exist
             else:
                 print(f"No matching {config.get('type')} named {config.get('name')} found for deletion.", file=sys.stderr)
         else:
-            print(json.dumps({'error': 'Unknown action'}))
+            print(json.dumps({'error': 'Unknown action'}), file=sys.stdout, flush=True)
             sys.exit(1)
 
         write_netplan(fname, netplan)
         apply_netplan()
-        print(json.dumps({'result': 'success'}))
+        
+        # Always output clean JSON to stdout
+        print(json.dumps({'result': 'success'}), file=sys.stdout, flush=True)
+        
     except Exception as e:
-        print(json.dumps({'error': str(e), 'trace': traceback.format_exc()}))
+        print(json.dumps({'error': str(e), 'trace': traceback.format_exc()}), file=sys.stdout, flush=True)
         sys.exit(1)
 
 

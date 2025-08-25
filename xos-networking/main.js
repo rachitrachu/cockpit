@@ -323,19 +323,6 @@
     }
   });
 
-  // Test function to verify cockpit.spawn works
-  window.testSpawn = async function() {
-    try {
-      console.log('Testing basic spawn...');
-      const result = await cockpit.spawn(['ls', '/usr/share/cockpit/xos-networking/'], {
-        superuser: 'require'
-      });
-      console.log('Basic spawn result:', result);
-    } catch (e) {
-      console.error('Basic spawn failed:', e);
-    }
-  };
-
   // -------- Constructs: VLAN / Bridge / Bond --------
   async function netplanAction(action, config) {
     console.log('netplanAction called with:', { action, config });
@@ -571,6 +558,21 @@
 
   // Header refresh
   $('#btn-refresh').addEventListener('click', refreshAll);
+
+  // Test function to verify cockpit.spawn works
+  window.testSpawn = async function() {
+    try {
+      console.log('Testing basic spawn...');
+      const result = await cockpit.spawn(['ls', '-la', '/usr/share/cockpit/xos-networking/'], {
+        superuser: 'require'
+      });
+      console.log('Basic spawn result:', result);
+      return result;
+    } catch (e) {
+      console.error('Basic spawn failed:', e);
+      return e;
+    }
+  };
 
   // Initial
   document.addEventListener('DOMContentLoaded', () => {
