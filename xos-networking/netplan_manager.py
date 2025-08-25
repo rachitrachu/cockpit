@@ -98,20 +98,53 @@ def main():
 
         # Always merge new constructs, never overwrite
         if action == 'add_bond':
-            # Ensure slaves exist in ethernets
-            slaves = list(config.get('interfaces') or [])
-            if len(slaves) < 2:
-                print(json.dumps({'error': 'Bond requires at least 2 interfaces'}), file=sys.stdout, flush=True)
+            # Add bonding interface
+            bond_name = config.get('name')
+            bond_mode = config.get('mode', 'active-backup')
+            bond_interfaces = config.get('interfaces', [])
+            miimon = config.get('miimon')
+            primary = config.get('primary')
+            
+            if not bond_name or not bond_interfaces:
+                print(json.dumps({'error': 'Bond name and interfaces are required'}), flush=True)
                 sys.exit(1)
-            add_empty_ethernets(network, slaves)
+            
+            if len(bond_interfaces) < 2:
+                print(json.dumps({'error': 'At least 2 interfaces required for bonding'}), flush=True)
+                sys.exit(1)
+            
+            # Ensure ethernets section exists for slave interfaces
+            add_empty_ethernets(network, bond_interfaces)
+            
             # Create bonds section
-            network.setdefault('bonds', {})
-            # Merge bond, preserve others
-            network['bonds'][config['name']] = {
-                'interfaces': slaves,
-                'parameters': {'mode': config['mode']},
-                'dhcp4': True
+            if 'bonds' not in network:
+                network['bonds'] = {}
+            
+            # Configure the bond
+            bond_config = {
+                'interfaces': bond_interfaces,
+                'parameters': {
+                    'mode': bond_mode
+                }
             }
+            
+            # Add MII monitoring if specified
+            if miimon and isinstance(miimon, int) and miimon > 0:
+                bond_config['parameters']['mii-monitor-interval'] = miimon
+            
+            # Add primary interface if specified and valid
+            if primary and primary in bond_interfaces:
+                bond_config['parameters']['primary'] = primary
+            
+            # Add additional parameters based on mode
+            if bond_mode == '802.3ad':
+                bond_config['parameters']['lacp-rate'] = 'fast'
+                bond_config['parameters']['transmit-hash-policy'] = 'layer3+4'
+            elif bond_mode in ['balance-tlb', 'balance-alb']:
+                if not miimon:
+                    bond_config['parameters']['mii-monitor-interval'] = 100
+            
+            network['bonds'][bond_name] = bond_config
         elif action == 'add_vlan':
             # Ensure parent link exists in ethernets
             link = config.get('link')
