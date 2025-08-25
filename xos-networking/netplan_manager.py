@@ -112,6 +112,12 @@ def main():
             if config and config.get('type') in network and config.get('name') in network[config['type']]:
                 del network[config['type']][config['name']]
                 print(f"Deleted {config.get('type')} named {config.get('name')}")
+                # Also delete the bond interface using ip link
+                if config.get('type') == 'bonds':
+                    try:
+                        subprocess.run(['ip', 'link', 'delete', config.get('name')], check=True)
+                    except Exception as e:
+                        print(f"Failed to delete bond interface {config.get('name')}: {e}")
             else:
                 print(f"No matching {config.get('type')} named {config.get('name')} found for deletion.")
         else:
