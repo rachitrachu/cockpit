@@ -148,6 +148,55 @@ def main():
                         pass  # Ignore errors if interface doesn't exist
             else:
                 print(f"No matching {config.get('type')} named {config.get('name')} found for deletion.", file=sys.stderr)
+        elif action == 'set_ip':
+            # Set IP address configuration for an interface
+            iface_name = config.get('name')
+            static_ip = config.get('static_ip')
+            gateway = config.get('gateway')
+            dns = config.get('dns')
+            
+            if not iface_name or not static_ip:
+                print(json.dumps({'error': 'Interface name and static IP are required'}), flush=True)
+                sys.exit(1)
+            
+            # Ensure interface exists in ethernets
+            add_empty_ethernets(network, [iface_name])
+            
+            # Configure the interface
+            eth_config = network['ethernets'][iface_name]
+            eth_config['dhcp4'] = False  # Disable DHCP for static IP
+            
+            # Set static IP
+            eth_config['addresses'] = [static_ip]
+            
+            # Set gateway if provided
+            if gateway:
+                eth_config['gateway4'] = gateway
+            
+            # Set DNS if provided  
+            if dns:
+                dns_list = [d.strip() for d in dns.split(',') if d.strip()]
+                if dns_list:
+                    eth_config['nameservers'] = {'addresses': dns_list}
+        
+        elif action == 'set_mtu':
+            # Set MTU for an interface
+            iface_name = config.get('name')
+            mtu_value = config.get('mtu')
+            
+            if not iface_name or not mtu_value:
+                print(json.dumps({'error': 'Interface name and MTU value are required'}), flush=True)
+                sys.exit(1)
+            
+            if not isinstance(mtu_value, int) or mtu_value < 68 or mtu_value > 9000:
+                print(json.dumps({'error': 'MTU must be an integer between 68 and 9000'}), flush=True)
+                sys.exit(1)
+            
+            # Ensure interface exists in ethernets
+            add_empty_ethernets(network, [iface_name])
+            
+            # Set MTU
+            network['ethernets'][iface_name]['mtu'] = mtu_value
         else:
             print(json.dumps({'error': 'Unknown action'}), file=sys.stdout, flush=True)
             sys.exit(1)

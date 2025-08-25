@@ -156,79 +156,240 @@
       const btnUp   = btn('Up',   async () => { await run('ip', ['link', 'set', iface.dev, 'up']); await refreshAll(); });
       const btnDown = btn('Down', async () => { await run('ip', ['link', 'set', iface.dev, 'down']); await refreshAll(); });
       const btnEditIP = btn('Set IP', async () => {
-        const cidr = prompt(`Enter IPv4 address/CIDR for ${iface.dev} (blank to skip):`, iface.ipv4 || '');
-        if (!cidr) return;
-        await run('ip', ['addr', 'add', cidr, 'dev', iface.dev]);
-        await refreshAll();
-      });
-      const btnDelIP = btn('Clear IP', async () => {
-        if (!iface.ipv4) return alert('No IP found to delete.');
-        await run('ip', ['addr', 'del', iface.ipv4, 'dev', iface.dev]);
-        await refreshAll();
-      });
-      acts.append(btnUp, btnDown, btnEditIP, btnDelIP);
-      
-      // Add specific action buttons based on interface type
-      if (iface.dev.startsWith('bond')) {
-        const btnEditBond = btn('Edit Bond', async () => {
-          // TODO: Implement bond editing
-          alert('Bond editing not yet implemented');
-        });
-        const btnDeleteBond = btn('Delete Bond', async () => {
-          if (!confirm(`Delete bond "${iface.dev}"? This will remove it now and update Netplan.`)) return;
-          try {
-            await run('ip', ['link', 'delete', iface.dev], { superuser: 'require' });
-          } catch (e) {
-            alert('Failed to delete bond interface: ' + e);
+        const modal = document.createElement('dialog');
+        modal.innerHTML = `
+          <div class="modal-content" style="min-width: 400px;">
+            <h2>🌐 Set IP Address for ${iface.dev}</h2>
+            <form id="set-ip-form">
+              <label>Current IPv4 Address
+                <input type="text" value="${iface.ipv4 || 'None'}" readonly style="background: #f5f5f5;">
+              </label>
+              <label>New IPv4 Address/CIDR
+                <input type="text" id="new-ip-addr" placeholder="192.168.1.10/24" required 
+                       pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([0-9]|[1-2][0-9]|3[0-2])$">
+              </label>
+              <label>Gateway (optional)
+                <input type="text" id="new-gateway" placeholder="192.168.1.1"
+                       pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$">
+              </label>
+              <label>DNS Servers (optional, comma separated)
+                <input type="text" id="new-dns" placeholder="8.8.8.8,1.1.1.1">
+              </label>
+              <div style="margin: 1rem 0; padding: 1rem; background: #e8f4fd; border-radius: var(--border-radius); border: 1px solid #bee5eb;">
+                <label style="display: flex; align-items: center; gap: 0.5rem; margin: 0;">
+                  <input type="checkbox" id="persist-ip" checked>
+                  💾 Persist configuration to netplan (recommended)
+                </label>
+              </div>
+              <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
+                <button type="button" class="btn" onclick="this.closest('dialog').close()">❌ Cancel</button>
+                <button type="button" class="btn primary" id="apply-ip-config">💾 Apply Configuration</button>
+              </div>
+            </form>
+          </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        $('#apply-ip-config', modal).addEventListener('click', async () => {
+          const newIp = $('#new-ip-addr', modal).value.trim();
+          const gateway = $('#new-gateway', modal).value.trim();
+          const dns = $('#new-dns', modal).value.trim();
+          const persist = $('#persist-ip', modal).checked;
+          
+          // Validation
+          if (!newIp) {
+            alert('❌ IP address is required!');
             return;
           }
-          const res = await netplanAction('delete', { type: 'bonds', name: iface.dev });
-          if (res.error) {
-            alert('Netplan cleanup failed: ' + res.error);
+          
+          const ipRegex = /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([0-9]|[1-2][0-9]|3[0-2])$/;
+          if (!ipRegex.test(newIp)) {
+            alert('❌ Invalid IP address format! Use CIDR notation (e.g., 192.168.1.10/24)');
+            return;
           }
+          
+          if (gateway && !/^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(gateway)) {
+            alert('❌ Invalid gateway address format!');
+            return;
+          }
+          
+          try {
+            setStatus('Configuring IP address...');
+            
+            // Remove existing IP addresses first
+            if (iface.ipv4) {
+              try {
+                await run('ip', ['addr', 'del', iface.ipv4, 'dev', iface.dev], { superuser: 'require' });
+              } catch (e) {
+                console.warn('Could not remove old IP:', e);
+              }
+            }
+            
+            // Add new IP address
+            await run('ip', ['addr', 'add', newIp, 'dev', iface.dev], { superuser: 'require' });
+            
+            // Add gateway if specified
+            if (gateway) {
+              try {
+                // Remove existing default route for this interface (best effort)
+                await run('ip', ['route', 'del', 'default', 'dev', iface.dev], { superuser: 'require' });
+              } catch (e) {
+                // Ignore if no existing route
+              }
+              await run('ip', ['route', 'add', 'default', 'via', gateway, 'dev', iface.dev], { superuser: 'require' });
+            }
+            
+            // Persist to netplan if requested
+            if (persist) {
+              try {
+                const netplanConfig = {
+                  name: iface.dev,
+                  static_ip: newIp,
+                  gateway: gateway || undefined,
+                  dns: dns || undefined
+                };
+                
+                const res = await netplanAction('set_ip', netplanConfig);
+                if (res.error) {
+                  console.warn('Netplan persistence failed:', res.error);
+                  alert('⚠️ IP set successfully but netplan persistence failed: ' + res.error);
+                } else {
+                  alert('✅ IP address configured and persisted successfully!');
+                }
+              } catch (error) {
+                console.warn('Netplan error:', error);
+                alert('⚠️ IP set successfully but netplan persistence failed: ' + error.message);
+              }
+            } else {
+              alert('✅ IP address configured successfully!\\n\\n⚠️ Note: Configuration is temporary and will be lost after reboot.');
+            }
+            
+            modal.close();
+            setStatus('✅ IP configuration applied');
+            setTimeout(() => setStatus(''), 3000);
+            await refreshAll();
+            
+          } catch (error) {
+            alert('❌ Failed to set IP address: ' + error.message);
+            console.error('IP configuration error:', error);
+          }
+        });
+        
+        modal.showModal();
+        modal.addEventListener('close', () => document.body.removeChild(modal));
+      });
+      const btnDelIP = btn('Remove IP', async () => {
+        if (!confirm(`Remove IP configuration from "${iface.dev}"?`)) return;
+        try {
+          // Remove IP address
+          if (iface.ipv4) {
+            await run('ip', ['addr', 'del', iface.ipv4, 'dev', iface.dev], { superuser: 'require' });
+          }
+          
+          // Remove from netplan
+          await netplanAction('delete_ip', { name: iface.dev });
+          
+          setStatus('IP configuration removed');
+          setTimeout(() => setStatus(''), 3000);
           await refreshAll();
-        });
-        acts.append(btnEditBond, btnDeleteBond);
-      } else if (iface.dev.includes('.') && !iface.dev.startsWith('br')) {
-        // VLAN interface (contains . but not bridge)
-        const btnEditVlan = btn('Edit VLAN', async () => {
-          alert('VLAN editing not yet implemented');
-        });
-        const btnDeleteVlan = btn('Delete VLAN', async () => {
-          if (!confirm(`Delete VLAN "${iface.dev}"?`)) return;
+        } catch (e) {
+          alert('Failed to remove IP configuration: ' + e);
+        }
+      });
+      const btnSetMTU = btn('Set MTU', async () => {
+        const modal = document.createElement('dialog');
+        modal.innerHTML = `
+          <div class="modal-content" style="min-width: 400px;">
+            <h2>📏 Set MTU for ${iface.dev}</h2>
+            <form id="set-mtu-form">
+              <label>Current MTU
+                <input type="text" value="${iface.mtu || 'Unknown'}" readonly style="background: #f5f5f5;">
+              </label>
+              <label>New MTU Value
+                <input type="number" id="new-mtu" min="68" max="9000" value="${iface.mtu || '1500'}" required>
+              </label>
+              <div style="margin: 1rem 0; padding: 1rem; background: #fff3cd; border-radius: var(--border-radius); border: 1px solid #ffeaa7;">
+                <h4 style="margin: 0 0 0.5rem 0;">📋 Common MTU Values:</h4>
+                <ul style="margin: 0; padding-left: 1.5rem;">
+                  <li><strong>1500:</strong> Standard Ethernet</li>
+                  <li><strong>9000:</strong> Jumbo frames (LAN)</li>
+                  <li><strong>1492:</strong> PPPoE connections</li>
+                  <li><strong>1280:</strong> IPv6 minimum</li>
+                </ul>
+              </div>
+              <div style="margin: 1rem 0; padding: 1rem; background: #e8f4fd; border-radius: var(--border-radius); border: 1px solid #bee5eb;">
+                <label style="display: flex; align-items: center; gap: 0.5rem; margin: 0;">
+                  <input type="checkbox" id="persist-mtu" checked>
+                  💾 Persist configuration to netplan (recommended)
+                </label>
+              </div>
+              <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
+                <button type="button" class="btn" onclick="this.closest('dialog').close()">❌ Cancel</button>
+                <button type="button" class="btn primary" id="apply-mtu-config">💾 Apply MTU</button>
+              </div>
+            </form>
+          </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        $('#apply-mtu-config', modal).addEventListener('click', async () => {
+          const newMtu = parseInt($('#new-mtu', modal).value);
+          const persist = $('#persist-mtu', modal).checked;
+          
+          // Validation
+          if (!newMtu || newMtu < 68 || newMtu > 9000) {
+            alert('❌ MTU must be between 68 and 9000!');
+            return;
+          }
+          
+          if (iface.mtu && parseInt(iface.mtu) === newMtu) {
+            alert('ℹ️ MTU is already set to ' + newMtu);
+            modal.close();
+            return;
+          }
+          
           try {
-            await run('ip', ['link', 'delete', iface.dev], { superuser: 'require' });
-            const res = await netplanAction('delete', { type: 'vlans', name: iface.dev });
-            if (res.error) {
-              alert('Netplan cleanup failed: ' + res.error);
+            setStatus('Setting MTU...');
+            
+            // Set MTU via ip command
+            await run('ip', ['link', 'set', 'dev', iface.dev, 'mtu', newMtu.toString()], { superuser: 'require' });
+            
+            // Persist to netplan if requested
+            if (persist) {
+              try {
+                const res = await netplanAction('set_mtu', { name: iface.dev, mtu: newMtu });
+                if (res.error) {
+                  console.warn('Netplan persistence failed:', res.error);
+                  alert('⚠️ MTU set successfully but netplan persistence failed: ' + res.error);
+                } else {
+                  alert('✅ MTU configured and persisted successfully!');
+                }
+              } catch (error) {
+                console.warn('Netplan error:', error);
+                alert('⚠️ MTU set successfully but netplan persistence failed: ' + error.message);
+              }
+            } else {
+              alert('✅ MTU configured successfully!\\n\\n⚠️ Note: Configuration is temporary and will be lost after reboot.');
             }
+            
+            modal.close();
+            setStatus('✅ MTU configuration applied');
+            setTimeout(() => setStatus(''), 3000);
             await refreshAll();
-          } catch (e) {
-            alert('Failed to delete VLAN: ' + e);
+            
+          } catch (error) {
+            alert('❌ Failed to set MTU: ' + error.message);
+            console.error('MTU configuration error:', error);
           }
         });
-        acts.append(btnEditVlan, btnDeleteVlan);
-      } else if (iface.dev.startsWith('br')) {
-        // Bridge interface
-        const btnEditBridge = btn('Edit Bridge', async () => {
-          alert('Bridge editing not yet implemented');
-        });
-        const btnDeleteBridge = btn('Delete Bridge', async () => {
-          if (!confirm(`Delete bridge "${iface.dev}"?`)) return;
-          try {
-            await run('ip', ['link', 'delete', iface.dev], { superuser: 'require' });
-            const res = await netplanAction('delete', { type: 'bridges', name: iface.dev });
-            if (res.error) {
-              alert('Netplan cleanup failed: ' + res.error);
-            }
-            await refreshAll();
-          } catch (e) {
-            alert('Failed to delete bridge: ' + e);
-          }
-        });
-        acts.append(btnEditBridge, btnDeleteBridge);
-      }
-
+        
+        modal.showModal();
+        modal.addEventListener('close', () => document.body.removeChild(modal));
+      });
+      
+      acts.append(btnUp, btnDown, btnEditIP, btnDelIP, btnSetMTU);
       tr.append(
         td(iface.dev),
         td(iface.type),
@@ -257,664 +418,4 @@
         cur = line.split(':')[1].trim();
         map.set(cur, {});
       }
-      if (cur) {
-        const d = map.get(cur);
-        if (line.includes('MTU:')) d.mtu = line.split('MTU:')[1].trim();
-        if (line.includes('MAC:')) d.mac = line.split('MAC:')[1].trim();
-        if (line.includes('IPv4:')) d.ipv4 = line.split('IPv4:')[1].trim();
-        if (line.includes('IPv6:')) d.ipv6 = line.split('IPv6:')[1].trim();
-      }
-    });
-    return map;
-  }
-
-  async function bestConnectionFor(dev) {
-    try {
-      // Use networkctl status to find associated .network file for the device
-      const out = await run('networkctl', ['status', dev]);
-      const nf = out.split('\n').map(l => l.trim()).find(l => l.startsWith('Network File:') || l.startsWith('Network:') );
-      if (!nf) return null;
-      const val = nf.split(':').slice(1).join(':').trim();
-      return val || null;
-    } catch { return null; }
-  }
-
-  // -------- Connections --------
-  async function listConnections() {
-    setStatus('Loading links…');
-    let out = '';
-    try {
-      out = await run('networkctl', ['list']);
-    } catch (e) {
-      const tbody = $('#table-connections tbody');
-      tbody.innerHTML = '';
-      const tr = document.createElement('tr');
-      tr.append(td('networkctl error: ' + e), td('—'), td('—'), td('—'), td('—'), td('—'), td('—'), td('—'));
-      tbody.appendChild(tr);
-      setStatus('');
-      return;
-    }
-    const lines = out.split('\n').slice(1).filter(Boolean);
-    const tbody = $('#table-connections tbody');
-    tbody.innerHTML = '';
-    for (const l of lines) {
-      const parts = l.trim().split(/\s+/);
-      const name = parts[1];
-      const type = parts[2];
-      const state = parts[3];
-      const tr = document.createElement('tr');
-      const acts = document.createElement('td'); acts.className = 'actions';
-
-      const up   = btn('Up',   async () => { await run('ip', ['link', 'set', name, 'up']);   await refreshAll(); });
-      const down = btn('Down', async () => { await run('ip', ['link', 'set', name, 'down']); await refreshAll(); });
-      const edit = btn('Edit', async () => openConnModal({name, type}));
-      const del  = btn('Delete', async () => {
-        if (confirm(`Delete link "${name}"?`)) { await run('ip', ['link', 'delete', name]); await refreshAll(); }
-      });
-
-      acts.append(up, down, edit, del);
-
-      tr.append(td(name||''), td('—'), td(type||''), td(state||''), td('—'), td('—'), td('—'), acts);
-      tbody.appendChild(tr);
-    }
-    setStatus('');
-  }
-
-  // Filter boxes
-  $('#search-iface').addEventListener('input', () => filterTable('#table-interfaces', $('#search-iface').value));
-  $('#search-conn').addEventListener('input',  () => filterTable('#table-connections', $('#search-conn').value));
-  function filterTable(sel, term) {
-    const t = (term || '').toLowerCase();
-    $$(sel + ' tbody tr').forEach(tr => { tr.style.display = tr.textContent.toLowerCase().includes(t) ? '' : 'none'; });
-  }
-
-  // Add/Edit connection modal
-  const connModal = $('#conn-modal');
-  const connForm  = $('#conn-form');
-  $('#btn-add-connection').addEventListener('click', () => openConnModal({}));
-
-  function openConnModal(data) {
-    $('#conn-modal-title').textContent = data.uuid ? 'Edit Connection' : 'Add Connection';
-    connForm.name.value   = data.name   || '';
-    connForm.device.value = data.device || '';
-    connForm.type.value   = data.type   || 'ethernet';
-    connForm.ip4addr.value= data.ip4addr|| '';
-    connForm.ip4gw.value  = data.ip4gw  || '';
-    connForm.ip4dns.value = data.ip4dns || '';
-    connForm.dataset.uuid = data.uuid || '';
-    connModal.showModal();
-  }
-  $('#conn-cancel').addEventListener('click', () => connModal.close());
-  $('#conn-save').addEventListener('click', async (e) => {
-    e.preventDefault();
-    const f = connForm;
-    const name = f.name.value.trim();
-    const dev  = f.device.value.trim();
-    const type = f.type.value;
-    const uuid = f.dataset.uuid || null;
-    const ip4  = f.ip4addr.value.trim();
-    const gw   = f.ip4gw.value.trim();
-    const dns  = f.ip4dns.value.trim();
-
-    try {
-      // Create a simple systemd-networkd .network file to represent this "connection".
-      if (!name) return alert('Name required for network file.');
-      const safe = name.replace(/[^a-zA-Z0-9_.-]/g, '-');
-      const path = `/etc/systemd/network/${safe}.network`;
-      const lines = [];
-      // Match section
-      if (dev) {
-        lines.push('[Match]', `Name=${dev}`);
-      } else {
-        lines.push('[Match]', `Name=*`);
-      }
-      // Network section
-      lines.push('', '[Network]');
-      if (!ip4) lines.push('DHCP=yes'); else lines.push('DHCP=no');
-      if (dns) lines.push(`DNS=${dns.replace(/,/g,' ')}`);
-      if (gw) {
-        // add route via [Route]
-        lines.push('', '[Route]', `Gateway=${gw}`);
-      }
-      if (ip4) {
-        lines.push('', '[Address]', `Address=${ip4}`);
-      }
-      const content = lines.join('\n') + '\n';
-      // Write file with elevated privilege
-      await run('bash', ['-lc', `cat > ${path} <<'EOF'\n${content}EOF`]);
-      // Restart systemd-networkd to apply
-      await run('systemctl', ['restart', 'systemd-networkd']);
-      connModal.close();
-      await refreshAll();
-    } catch (err) {
-      alert('Save failed:\n' + err);
-    }
-  });
-
-  // Test function for stdin handling
-  window.testStdin = async function() {
-    try {
-      console.log('Testing stdin handling...');
-      const result = await cockpit.spawn([
-        '/usr/bin/python3',
-        '/usr/share/cockpit/xos-networking/test_stdin.py'
-      ], {
-        input: JSON.stringify({"test": "data", "action": "test"}),
-        superuser: 'require',
-        err: 'out'
-      });
-      console.log('Stdin test result:', result);
-      return result;
-    } catch (e) {
-      console.error('Stdin test failed:', e);
-      return e;
-    }
-  };
-
-  // -------- Constructs: VLAN / Bridge / Bond --------
-  async function netplanAction(action, config) {
-    console.log('netplanAction called with:', { action, config });
-    const payload = JSON.stringify({ action, config });
-    console.log('JSON payload to send:', payload);
-    
-    try {
-      console.log('About to spawn netplan script...');
-      
-      // Use a simpler approach - write to temp file and execute
-      const tempScript = `
-#!/bin/bash
-cd /usr/share/cockpit/xos-networking
-echo '${payload.replace(/'/g, "'\\''")}' | python3 netplan_manager.py
-`;
-      
-      const result = await cockpit.spawn([
-        'bash', '-c', tempScript
-      ], {
-        superuser: 'require',
-        err: 'out'
-      });
-      
-      console.log('Netplan script raw output:', result);
-      const cleanResult = result.trim();
-      console.log('Cleaned result:', cleanResult);
-      
-      // Find JSON in the output (might have other text before it)
-      const jsonMatch = cleanResult.match(/\{.*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        console.log('Netplan script parsed output:', parsed);
-        return parsed;
-      } else {
-        return { error: 'No JSON response found in output: ' + cleanResult };
-      }
-    } catch (e) {
-      console.error('netplanAction exception:', e);
-      let errorMsg = 'Script execution failed';
-      if (e.exit_status !== undefined) {
-        errorMsg = `Script exited with code ${e.exit_status}`;
-      }
-      if (e.message && e.message.trim()) {
-        errorMsg += `: ${e.message}`;
-      }
-      console.error('Processed error message:', errorMsg);
-      return { error: errorMsg };
-    }
-  }
-
-  // Helper to get available interfaces using ip (more reliable than networkctl)
-  async function getInterfacesIP({ physicalOnly = false } = {}) {
-    const ifaces = [];
-    try {
-      const out = await run('bash', ['-lc', "ip -o link show | awk -F': ' '{print $2}'"], { superuser: 'try' });
-      out.split('\n').map(s => s.trim()).filter(Boolean).forEach(dev => {
-        // Skip loopback and virtuals when physicalOnly requested
-        if (physicalOnly) {
-          if (dev === 'lo') return;
-          if (dev.startsWith('bond')) return;
-          if (dev.startsWith('br')) return;
-          if (dev.includes('.')) return; // vlan like eth0.10
-          if (dev.startsWith('veth') || dev.startsWith('docker') || dev.startsWith('virbr') || dev.startsWith('tap')) return;
-        }
-        ifaces.push(dev);
-      });
-    } catch (e) {
-      console.error('Failed to get interfaces via ip:', e);
-    }
-    return ifaces;
-  }
-
-  // Populate VLAN parent dropdown
-  async function populateVlanParentDropdown() {
-    const select = document.getElementById('vlan-parent');
-    if (!select) return;
-    select.innerHTML = '';
-    const interfaces = await getInterfacesIP({ physicalOnly: true });
-    interfaces.forEach(dev => {
-      const option = document.createElement('option');
-      option.value = dev;
-      option.textContent = dev;
-      select.appendChild(option);
-    });
-  }
-
-  // Populate Bridge ports multi-select
-  async function populateBridgePortsDropdown() {
-    const select = document.getElementById('br-ports');
-    if (!select) return;
-    select.innerHTML = '';
-    const interfaces = await getInterfacesIP({ physicalOnly: true });
-    interfaces.forEach(dev => {
-      const option = document.createElement('option');
-      option.value = dev;
-      option.textContent = dev;
-      select.appendChild(option);
-    });
-  }
-
-  // Populate Bond slaves multi-select
-  async function populateBondSlavesDropdown() {
-    const select = document.getElementById('bond-slaves');
-    if (!select) return;
-    select.innerHTML = '';
-    const interfaces = await getInterfacesIP({ physicalOnly: true });
-    interfaces.forEach(dev => {
-      const option = document.createElement('option');
-      option.value = dev;
-      option.textContent = dev;
-      select.appendChild(option);
-    });
-  }
-
-  // Filter function for multi-selects
-  function filterDropdown(inputId, selectId) {
-    const input = document.getElementById(inputId);
-    const select = document.getElementById(selectId);
-    input.addEventListener('input', () => {
-      const term = input.value.toLowerCase();
-      Array.from(select.options).forEach(opt => {
-        opt.style.display = opt.textContent.toLowerCase().includes(term) ? '' : 'none';
-      });
-    });
-  }
-
-  // Setup dropdowns and filters on tab activation and page load
-  function setupDropdowns() {
-    $$('.tab').forEach(btn => {
-      if (btn.dataset.tab === 'constructs') {
-        btn.addEventListener('click', () => {
-          populateVlanParentDropdown();
-          populateBridgePortsDropdown();
-          populateBondSlavesDropdown();
-        });
-      }
-    });
-    document.addEventListener('DOMContentLoaded', () => {
-      populateVlanParentDropdown();
-      populateBridgePortsDropdown();
-      populateBondSlavesDropdown();
-      filterDropdown('br-ports-filter', 'br-ports');
-      filterDropdown('bond-slaves-filter', 'bond-slaves');
-    });
-  }
-  setupDropdowns();
-
-  $('#btn-create-bridge').addEventListener('click', async () => {
-    const br = $('#br-name').value.trim();
-    const select = document.getElementById('br-ports');
-    const ports = Array.from(select.selectedOptions).map(opt => opt.value);
-    // Validation
-    if (!br.match(/^[a-zA-Z0-9_.-]+$/)) return alert('Bridge name is invalid.');
-    if (ports.length < 1 || !ports.every(p => p.match(/^[a-zA-Z0-9_.-]+$/))) return alert('At least one valid port required.');
-    const res = await netplanAction('add_bridge', { name: br, interfaces: ports });
-    if (res.error) {
-      $('#br-out').textContent = res.error;
-    } else {
-      $('#br-out').textContent = `Bridge ${br} created with ports: ${ports.join(', ')}`;
-      await refreshAll();
-    }
-  });
-
-  $('#btn-create-bond').addEventListener('click', async () => {
-    console.log('Create Bond clicked');
-    const bond = $('#bond-name').value.trim();
-    const mode = $('#bond-mode').value;
-    const select = document.getElementById('bond-slaves');
-    const slaves = Array.from(select.selectedOptions).map(opt => opt.value);
-    console.log('Create Bond inputs:', { bond, mode, slaves });
-    
-    // Enhanced validation with better user feedback
-    if (!bond) {
-      $('#bond-name').focus();
-      $('#bond-name').style.borderColor = 'var(--danger-color)';
-      setTimeout(() => $('#bond-name').style.borderColor = '', 3000);
-      alert('❌ Bond name is required!');
-      return;
-    }
-    
-    if (!bond.match(/^[a-zA-Z0-9_.-]+$/)) { 
-      $('#bond-name').focus();
-      $('#bond-name').style.borderColor = 'var(--danger-color)';
-      setTimeout(() => $('#bond-name').style.borderColor = '', 3000);
-      alert('❌ Bond name contains invalid characters!\n\n✅ Allowed: letters, numbers, underscore, dash, dot'); 
-      return; 
-    }
-    
-    if (slaves.length < 2) { 
-      $('#bond-slaves').focus();
-      $('#bond-slaves').style.borderColor = 'var(--danger-color)';
-      setTimeout(() => $('#bond-slaves').style.borderColor = '', 3000);
-      alert('❌ At least two slave interfaces are required for bonding!'); 
-      return; 
-    }
-    
-    if (!mode) { 
-      $('#bond-mode').focus();
-      $('#bond-mode').style.borderColor = 'var(--danger-color)';
-      setTimeout(() => $('#bond-mode').style.borderColor = '', 3000);
-      alert('❌ Bond mode must be selected!'); 
-      return; 
-    }
-    
-    console.log('Validation passed, calling netplanAction...');
-    const btnEl = $('#btn-create-bond');
-    const originalText = btnEl.textContent;
-    btnEl.disabled = true;
-    btnEl.innerHTML = '<span class="icon">⏳</span> Creating Bond...';
-    setStatus('Creating network bond...');
-    
-    try {
-      const res = await netplanAction('add_bond', { name: bond, mode, interfaces: slaves });
-      console.log('netplanAction result:', res);
-      
-      if (res.error) {
-        $('#bond-out').innerHTML = `<div style="color: var(--danger-color); font-weight: 600;">❌ Error: ${res.error}</div>`;
-        console.error('Bond creation failed with error:', res.error);
-      } else {
-        // Success animation and message
-        const successMessage = `✅ Bond "${bond}" created successfully!\n\n🔗 Mode: ${mode}\n🔌 Slaves: ${slaves.join(', ')}\n⏰ Time: ${new Date().toLocaleTimeString()}`;
-        $('#bond-out').innerHTML = `<div style="color: var(--success-color); font-weight: 600; animation: fadeIn 0.5s ease-in;">${successMessage.replace(/\n/g, '<br>')}</div>`;
-        
-        console.log('Bond creation successful, refreshing interfaces...');
-        setStatus('✅ Bond created successfully - refreshing interface list...');
-        await refreshAll();
-        
-        // Clear form on success with animation
-        ['#bond-name', '#bond-slaves'].forEach(selector => {
-          const el = $(selector);
-          if (el) {
-            el.style.borderColor = 'var(--success-color)';
-            setTimeout(() => {
-              el.style.borderColor = '';
-              if (el.tagName === 'SELECT' && el.multiple) {
-                Array.from(el.options).forEach(opt => opt.selected = false);
-              } else {
-                el.value = '';
-              }
-            }, 1000);
-          }
-        });
-        $('#bond-mode').selectedIndex = 0;
-        
-        setStatus('✅ Ready for next operation');
-        setTimeout(() => setStatus(''), 3000);
-      }
-    } catch (error) {
-      console.error('Exception during bond creation:', error);
-      $('#bond-out').innerHTML = `<div style="color: var(--danger-color); font-weight: 600;">❌ Unexpected error: ${error.message}</div>`;
-    } finally {
-      btnEl.disabled = false;
-      btnEl.innerHTML = originalText;
-    }
-  });
-
-  // Update VLAN creation to use dropdown value
-  $('#btn-create-vlan').addEventListener('click', async () => {
-    const parent = $('#vlan-parent').value.trim();
-    const id = $('#vlan-id').value.trim();
-    const ifname = $('#vlan-name').value.trim() || `${parent}.${id}`;
-    // Validation
-    if (!parent.match(/^[a-zA-Z0-9_.-]+$/)) return alert('Parent interface name is invalid.');
-    if (!id.match(/^\d+$/) || parseInt(id) < 1 || parseInt(id) > 4094) return alert('VLAN ID must be between 1 and 4094.');
-    if (ifname && !ifname.match(/^[a-zA-Z0-9_.-]+$/)) return alert('Interface name is invalid.');
-    const res = await netplanAction('add_vlan', { name: ifname, id: parseInt(id), link: parent });
-    if (res.error) {
-      $('#vlan-out').textContent = res.error;
-    } else {
-      $('#vlan-out').textContent = `VLAN ${ifname} created.`;
-      await refreshAll();
-    }
-  });
-
-  // -------- Diagnostics --------
-  async function refreshDiagnostics() {
-    try { $('#routes-out').textContent = await run('ip', ['route']) || '(no routes)'; }
-    catch (e) { $('#routes-out').textContent = String(e); }
-    try {
-      const resolv = await run('bash', ['-lc', 'grep -E "^(nameserver|search)" -n /etc/resolv.conf || true']);
-      $('#dns-out').textContent = resolv || '(no resolv.conf)';
-    } catch (e) { $('#dns-out').textContent = String(e); }
-  }
-
-  $('#btn-ping').addEventListener('click', async () => {
-    const host = $('#diag-host').value.trim() || '8.8.8.8';
-    try { $('#ping-out').textContent = await run('ping', ['-c', '4', host]); }
-    catch (e) { $('#ping-out').textContent = String(e); }
-  });
-
-  $('#btn-traceroute').addEventListener('click', async () => {
-    const host = $('#diag-host').value.trim() || '8.8.8.8';
-    try {
-      const out = await run('bash', ['-lc', `command -v traceroute >/dev/null && traceroute -n '${host.replace(/'/g,"'\\''")}' || (command -v tracepath >/dev/null && tracepath -n '${host.replace(/'/g,"'\\''")}' || echo "traceroute/tracepath not installed")`]);
-      $('#ping-out').textContent = out;
-    } catch (e) { $('#ping-out').textContent = String(e); }
-  });
-
-  // -------- Refresh all --------
-  async function refreshAll() {
-    await Promise.all([listInterfaces(), listConnections(), refreshDiagnostics()]);
-  }
-
-  // Header refresh
-  $('#btn-refresh').addEventListener('click', refreshAll);
-
-  // Test function to verify cockpit.spawn works
-  window.testSpawn = async function() {
-    try {
-      console.log('Testing basic spawn...');
-      const result = await cockpit.spawn(['ls', '-la', '/usr/share/cockpit/xos-networking/'], {
-        superuser: 'require'
-      });
-      console.log('Basic spawn result:', result);
-      return result;
-    } catch (e) {
-      console.error('Basic spawn failed:', e);
-      return e;
-    }
-  };
-
-  // Initial
-  document.addEventListener('DOMContentLoaded', () => {
-    refreshAll().catch(e => setStatus(String(e)));
-  });
-
-  // -------- Enhanced Interface Management --------
-  $('#btn-refresh-interfaces')?.addEventListener('click', refreshAll);
-  
-  $('#btn-show-netplan')?.addEventListener('click', async () => {
-    try {
-      setStatus('Loading Netplan configuration...');
-      const result = await run('cat', ['/etc/netplan/*.yaml'], { superuser: 'try' });
-      const modal = document.createElement('dialog');
-      modal.innerHTML = `
-        <div class="modal-content">
-          <h2>📋 Current Netplan Configuration</h2>
-          <pre style="max-height: 60vh; overflow: auto; background: #f8f9fa; padding: 1.5rem; border-radius: var(--border-radius); border: 1px solid var(--border-color); font-family: 'Consolas', monospace;">${result}</pre>
-          <div style="text-align: right; margin-top: 1.5rem;">
-            <button class="btn" onclick="this.closest('dialog').close()">✅ Close</button>
-          </div>
-        </div>
-      `;
-      modal.style.maxWidth = '80vw';
-      document.body.appendChild(modal);
-      modal.showModal();
-      
-      // Auto-remove modal when closed
-      modal.addEventListener('close', () => {
-        document.body.removeChild(modal);
-      });
-    } catch (e) {
-      alert('❌ Failed to show Netplan config: ' + e);
-    } finally {
-      setStatus('');
-    }
-  });
-  
-  $('#btn-apply-netplan')?.addEventListener('click', async () => {
-    if (!confirm('⚡ Apply current Netplan configuration?\n\n⚠️ This may disrupt network connectivity temporarily.')) return;
-    try {
-      setStatus('Applying Netplan configuration...');
-      await run('netplan', ['apply'], { superuser: 'require' });
-      setStatus('✅ Netplan applied successfully');
-      setTimeout(() => setStatus(''), 3000);
-      await refreshAll();
-    } catch (e) {
-      alert('❌ Failed to apply Netplan: ' + e);
-    }
-  });
-  
-  $('#btn-backup-netplan')?.addEventListener('click', async () => {
-    try {
-      setStatus('Creating backup...');
-      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-      const backupPath = `/tmp/netplan-backup-${timestamp}`;
-      await run('cp', ['-r', '/etc/netplan', backupPath], { superuser: 'require' });
-      
-      // Show success message with better formatting
-      const successMsg = `💾 Configuration Backup Created\n\n📁 Location: ${backupPath}\n⏰ Time: ${new Date().toLocaleString()}`;
-      alert(successMsg);
-      setStatus('✅ Backup created successfully');
-      setTimeout(() => setStatus(''), 3000);
-    } catch (e) {
-      alert('❌ Failed to backup Netplan config: ' + e);
-    }
-  });
-
-  // -------- Advanced Construct Management --------
-  $('#btn-reset-forms')?.addEventListener('click', () => {
-    if (!confirm('🔄 Reset all form fields?\n\nThis will clear all your current inputs.')) return;
-    
-    // Reset all form fields with animation
-    const fields = [
-      '#vlan-parent', '#vlan-id', '#vlan-name', '#vlan-mtu', '#vlan-static-ip', '#vlan-gateway',
-      '#br-name', '#br-ports', '#br-stp', '#br-forward-delay', '#br-hello-time',
-      '#bond-name', '#bond-mode', '#bond-slaves', '#bond-miimon', '#bond-primary', '#bond-link-mon'
-    ];
-    
-    fields.forEach(selector => {
-      const element = $(selector);
-      if (element) {
-        if (element.tagName === 'SELECT') {
-          element.selectedIndex = element.multiple ? -1 : 0;
-        } else {
-          element.value = '';
-        }
-        // Add visual feedback
-        element.style.background = '#e8f5e8';
-        setTimeout(() => {
-          element.style.background = '';
-        }, 500);
-      }
-    });
-    
-    // Clear outputs with fade effect
-    ['#vlan-out', '#br-out', '#bond-out'].forEach(selector => {
-      const element = $(selector);
-      if (element) {
-        element.style.opacity = '0.5';
-        element.textContent = '';
-        setTimeout(() => {
-          element.style.opacity = '';
-        }, 300);
-      }
-    });
-    
-    setStatus('✅ Forms reset');
-    setTimeout(() => setStatus(''), 2000);
-  });
-
-  $('#btn-import-config')?.addEventListener('click', () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.yaml,.yml';
-    input.style.display = 'none';
-    
-    input.onchange = async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      
-      try {
-        setStatus('Reading configuration file...');
-        const content = await file.text();
-        
-        // Create preview modal
-        const modal = document.createElement('dialog');
-        modal.innerHTML = `
-          <div class="modal-content">
-            <h2>📤 Import Configuration Preview</h2>
-            <p><strong>📁 File:</strong> ${file.name}</p>
-            <p><strong>📏 Size:</strong> ${(file.size / 1024).toFixed(2)} KB</p>
-            <pre style="max-height: 40vh; overflow: auto; background: #f8f9fa; padding: 1rem; border-radius: var(--border-radius); border: 1px solid var(--border-color); font-family: 'Consolas', monospace; font-size: 0.875rem;">${content}</pre>
-            <div style="text-align: center; margin-top: 1.5rem; color: var(--warning-color);">
-              ⚠️ Configuration import functionality is not yet implemented
-            </div>
-            <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
-              <button class="btn" onclick="this.closest('dialog').close()">❌ Cancel</button>
-              <button class="btn btn-outline" onclick="alert('🚧 Import functionality coming soon!'); this.closest('dialog').close()">📋 Preview Only</button>
-            </div>
-          </div>
-        `;
-        document.body.appendChild(modal);
-        modal.showModal();
-        
-        modal.addEventListener('close', () => {
-          document.body.removeChild(modal);
-        });
-      } catch (e) {
-        alert('❌ Failed to read file: ' + e);
-      } finally {
-        setStatus('');
-      }
-    };
-    
-    document.body.appendChild(input);
-    input.click();
-    document.body.removeChild(input);
-  });
-
-  $('#btn-export-config')?.addEventListener('click', async () => {
-    try {
-      setStatus('Preparing configuration export...');
-      const result = await run('cat', ['/etc/netplan/99-cockpit.yaml'], { superuser: 'try' });
-      
-      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-      const filename = `xos-networking-config-${timestamp}.yaml`;
-      
-      const blob = new Blob([result], { type: 'application/x-yaml' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.style.display = 'none';
-      
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
-      setStatus('✅ Configuration exported');
-      setTimeout(() => setStatus(''), 3000);
-    } catch (e) {
-      alert('❌ Failed to export config: ' + e);
-    }
-  });
-})();
+      if cur?
