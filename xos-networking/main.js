@@ -63,7 +63,6 @@
     let lines = [];
     try {
       const terse = await run('networkctl', ['list']);
-      // networkctl list output: IDX  LINK  TYPE  OPERATIONAL  SETUP
       lines = terse.split('\n').slice(1).filter(Boolean); // skip header
     } catch (e) {
       const tbody = $('#table-interfaces tbody');
@@ -75,50 +74,63 @@
       return;
     }
 
+    // Parse interface details
     const devMap = await parseDevicesDetail().catch(() => new Map());
-    const tbody = $('#table-interfaces tbody');
-    tbody.innerHTML = '';
-
+    let ifaceList = [];
     for (const l of lines) {
       const parts = l.trim().split(/\s+/);
       const dev = parts[1];
       const type = parts[2];
       const state = parts[3];
       const d = devMap.get(dev) || {};
+      ifaceList.push({ dev, type, state, mac: d.mac || '', ipv4: d.ipv4 || '', ipv6: d.ipv6 || '', mtu: d.mtu || '' });
+    }
+
+    // Sort interfaces
+    const sortValue = document.getElementById('iface-sort')?.value || 'name';
+    ifaceList.sort((a, b) => {
+      if (sortValue === 'name') return a.dev.localeCompare(b.dev);
+      if (sortValue === 'type') return a.type.localeCompare(b.type);
+      if (sortValue === 'state') return a.state.localeCompare(b.state);
+      return 0;
+    });
+
+    const tbody = $('#table-interfaces tbody');
+    tbody.innerHTML = '';
+    for (const iface of ifaceList) {
       const tr = document.createElement('tr');
       const acts = document.createElement('td'); acts.className = 'actions';
-
-      // Up/Down via systemctl if possible
-      const btnUp   = btn('Up',   async () => { await run('ip', ['link', 'set', dev, 'up']); await refreshAll(); });
-      const btnDown = btn('Down', async () => { await run('ip', ['link', 'set', dev, 'down']); await refreshAll(); });
+      const btnUp   = btn('Up',   async () => { await run('ip', ['link', 'set', iface.dev, 'up']); await refreshAll(); });
+      const btnDown = btn('Down', async () => { await run('ip', ['link', 'set', iface.dev, 'down']); await refreshAll(); });
       const btnEditIP = btn('Set IP', async () => {
-        const cidr = prompt(`Enter IPv4 address/CIDR for ${dev} (blank to skip):`, d.ipv4 || '');
+        const cidr = prompt(`Enter IPv4 address/CIDR for ${iface.dev} (blank to skip):`, iface.ipv4 || '');
         if (!cidr) return;
-        await run('ip', ['addr', 'add', cidr, 'dev', dev]);
+        await run('ip', ['addr', 'add', cidr, 'dev', iface.dev]);
         await refreshAll();
       });
       const btnDelIP = btn('Clear IP', async () => {
-        if (!d.ipv4) return alert('No IP found to delete.');
-        await run('ip', ['addr', 'del', d.ipv4, 'dev', dev]);
+        if (!iface.ipv4) return alert('No IP found to delete.');
+        await run('ip', ['addr', 'del', iface.ipv4, 'dev', iface.dev]);
         await refreshAll();
       });
-
       acts.append(btnUp, btnDown, btnEditIP, btnDelIP);
-
       tr.append(
-        td(dev),
-        td(type),
-        tdEl(stateBadge(state || 'unknown')),
-        td(d.mac || ''),
-        td(d.ipv4 || ''),
-        td(d.ipv6 || ''),
-        td(d.mtu || ''),
+        td(iface.dev),
+        td(iface.type),
+        tdEl(stateBadge(iface.state || 'unknown')),
+        td(iface.mac),
+        td(iface.ipv4),
+        td(iface.ipv6),
+        td(iface.mtu),
         acts
       );
       tbody.appendChild(tr);
     }
     setStatus('');
   }
+
+  // Re-render interfaces when sort option changes
+  $('#iface-sort').addEventListener('change', listInterfaces);
 
   async function parseDevicesDetail() {
     // Use networkctl and ip to get device details
@@ -282,26 +294,97 @@
     }
   }
 
-  $('#btn-create-vlan').addEventListener('click', async () => {
-    const parent = $('#vlan-parent').value.trim();
-    const id = $('#vlan-id').value.trim();
-    const ifname = $('#vlan-name').value.trim() || `${parent}.${id}`;
-    // Validation
-    if (!parent.match(/^[a-zA-Z0-9_.-]+$/)) return alert('Parent interface name is invalid.');
-    if (!id.match(/^\d+$/) || parseInt(id) < 1 || parseInt(id) > 4094) return alert('VLAN ID must be between 1 and 4094.');
-    if (ifname && !ifname.match(/^[a-zA-Z0-9_.-]+$/)) return alert('Interface name is invalid.');
-    const res = await netplanAction('add_vlan', { name: ifname, id: parseInt(id), link: parent });
-    if (res.error) {
-      $('#vlan-out').textContent = res.error;
-    } else {
-      $('#vlan-out').textContent = `VLAN ${ifname} created.`;
-      await refreshAll();
-    }
-  });
+  // Helper to get available interfaces
+  async function getInterfaces() {
+    const interfaces = [];
+    try {
+      const terse = await run('networkctl', ['list']);
+      const lines = terse.split('\n').slice(1).filter(Boolean);
+      for (const l of lines) {
+        const parts = l.trim().split(/\s+/);
+        const dev = parts[1];
+        if (dev) interfaces.push(dev);
+      }
+    } catch (e) {}
+    return interfaces;
+  }
+
+  // Populate VLAN parent dropdown
+  async function populateVlanParentDropdown() {
+    const select = document.getElementById('vlan-parent');
+    select.innerHTML = '';
+    const interfaces = await getInterfaces();
+    interfaces.forEach(dev => {
+      const option = document.createElement('option');
+      option.value = dev;
+      option.textContent = dev;
+      select.appendChild(option);
+    });
+  }
+
+  // Populate Bridge ports multi-select
+  async function populateBridgePortsDropdown() {
+    const select = document.getElementById('br-ports');
+    select.innerHTML = '';
+    const interfaces = await getInterfaces();
+    interfaces.forEach(dev => {
+      const option = document.createElement('option');
+      option.value = dev;
+      option.textContent = dev;
+      select.appendChild(option);
+    });
+  }
+
+  // Populate Bond slaves multi-select
+  async function populateBondSlavesDropdown() {
+    const select = document.getElementById('bond-slaves');
+    select.innerHTML = '';
+    const interfaces = await getInterfaces();
+    interfaces.forEach(dev => {
+      const option = document.createElement('option');
+      option.value = dev;
+      option.textContent = dev;
+      select.appendChild(option);
+    });
+  }
+
+  // Filter function for multi-selects
+  function filterDropdown(inputId, selectId) {
+    const input = document.getElementById(inputId);
+    const select = document.getElementById(selectId);
+    input.addEventListener('input', () => {
+      const term = input.value.toLowerCase();
+      Array.from(select.options).forEach(opt => {
+        opt.style.display = opt.textContent.toLowerCase().includes(term) ? '' : 'none';
+      });
+    });
+  }
+
+  // Setup dropdowns and filters on tab activation and page load
+  function setupDropdowns() {
+    $$('.tab').forEach(btn => {
+      if (btn.dataset.tab === 'constructs') {
+        btn.addEventListener('click', () => {
+          populateVlanParentDropdown();
+          populateBridgePortsDropdown();
+          populateBondSlavesDropdown();
+        });
+      }
+    });
+    document.addEventListener('DOMContentLoaded', () => {
+      populateVlanParentDropdown();
+      populateBridgePortsDropdown();
+      populateBondSlavesDropdown();
+      filterDropdown('br-ports-filter', 'br-ports');
+      filterDropdown('bond-slaves-filter', 'bond-slaves');
+    });
+  }
+  setupDropdowns();
 
   $('#btn-create-bridge').addEventListener('click', async () => {
     const br = $('#br-name').value.trim();
-    const ports = $('#br-ports').value.trim().split(',').map(s => s.trim()).filter(Boolean);
+    const select = document.getElementById('br-ports');
+    const ports = Array.from(select.selectedOptions).map(opt => opt.value);
     // Validation
     if (!br.match(/^[a-zA-Z0-9_.-]+$/)) return alert('Bridge name is invalid.');
     if (ports.length < 1 || !ports.every(p => p.match(/^[a-zA-Z0-9_.-]+$/))) return alert('At least one valid port required.');
@@ -317,7 +400,8 @@
   $('#btn-create-bond').addEventListener('click', async () => {
     const bond = $('#bond-name').value.trim();
     const mode = $('#bond-mode').value;
-    const slaves = $('#bond-slaves').value.trim().split(',').map(s => s.trim()).filter(Boolean);
+    const select = document.getElementById('bond-slaves');
+    const slaves = Array.from(select.selectedOptions).map(opt => opt.value);
     // Validation
     if (!bond.match(/^[a-zA-Z0-9_.-]+$/)) return alert('Bond name is invalid.');
     if (slaves.length < 2 || !slaves.every(s => s.match(/^[a-zA-Z0-9_.-]+$/))) return alert('At least two valid slave interfaces required.');
@@ -327,6 +411,24 @@
       $('#bond-out').textContent = res.error;
     } else {
       $('#bond-out').textContent = `Bond ${bond} (${mode}) created with slaves: ${slaves.join(', ')}`;
+      await refreshAll();
+    }
+  });
+
+  // Update VLAN creation to use dropdown value
+  $('#btn-create-vlan').addEventListener('click', async () => {
+    const parent = $('#vlan-parent').value.trim();
+    const id = $('#vlan-id').value.trim();
+    const ifname = $('#vlan-name').value.trim() || `${parent}.${id}`;
+    // Validation
+    if (!parent.match(/^[a-zA-Z0-9_.-]+$/)) return alert('Parent interface name is invalid.');
+    if (!id.match(/^\d+$/) || parseInt(id) < 1 || parseInt(id) > 4094) return alert('VLAN ID must be between 1 and 4094.');
+    if (ifname && !ifname.match(/^[a-zA-Z0-9_.-]+$/)) return alert('Interface name is invalid.');
+    const res = await netplanAction('add_vlan', { name: ifname, id: parseInt(id), link: parent });
+    if (res.error) {
+      $('#vlan-out').textContent = res.error;
+    } else {
+      $('#vlan-out').textContent = `VLAN ${ifname} created.`;
       await refreshAll();
     }
   });

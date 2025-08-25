@@ -40,6 +40,14 @@
         <div class="search">
           <input id="search-iface" placeholder="Filter interfaces…" />
         </div>
+        <div style="margin-left:8px;">
+          <label for="iface-sort">Sort by:</label>
+          <select id="iface-sort">
+            <option value="name">Name</option>
+            <option value="type">Type</option>
+            <option value="state">State</option>
+          </select>
+        </div>
       </div>
       <table class="table" id="table-interfaces">
         <thead>
@@ -130,8 +138,9 @@
           <label>Bridge Name
             <input id="br-name" type="text" required pattern="[a-zA-Z0-9_.-]+" placeholder="br0">
           </label>
-          <label>Ports (comma separated)
-            <input id="br-ports" type="text" required pattern="([a-zA-Z0-9_.-]+,?)+" placeholder="eth0,eth1">
+          <label>Ports (select one or more)
+            <input id="br-ports-filter" type="text" placeholder="Filter interfaces...">
+            <select id="br-ports" multiple required style="height:100px;"></select>
           </label>
           <button id="btn-create-bridge" class="btn primary">Create Bridge</button>
           <pre id="br-out" class="out"></pre>
@@ -150,8 +159,9 @@
               <option value="802.3ad">802.3ad (LACP)</option>
             </select>
           </label>
-          <label>Slaves (comma separated)
-            <input id="bond-slaves" type="text" required pattern="([a-zA-Z0-9_.-]+,?)+" placeholder="eth0,eth1">
+          <label>Slaves (select two or more)
+            <input id="bond-slaves-filter" type="text" placeholder="Filter interfaces...">
+            <select id="bond-slaves" multiple required style="height:100px;"></select>
           </label>
           <button id="btn-create-bond" class="btn primary">Create Bond</button>
           <pre id="bond-out" class="out"></pre>
