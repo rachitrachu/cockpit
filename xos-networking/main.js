@@ -532,43 +532,6 @@
   // Header refresh
   $('#btn-refresh').addEventListener('click', refreshAll);
 
-  // Populate VLAN parent dropdown with available interfaces
-  async function populateVlanParentDropdown() {
-    const select = document.getElementById('vlan-parent');
-    select.innerHTML = '';
-    try {
-      const terse = await run('networkctl', ['list']);
-      const lines = terse.split('\n').slice(1).filter(Boolean);
-      for (const l of lines) {
-        const parts = l.trim().split(/\s+/);
-        const dev = parts[1];
-        if (dev) {
-          const option = document.createElement('option');
-          option.value = dev;
-          option.textContent = dev;
-          select.appendChild(option);
-        }
-      }
-    } catch (e) {
-      const option = document.createElement('option');
-      option.value = '';
-      option.textContent = 'No interfaces found';
-      select.appendChild(option);
-    }
-  }
-
-  // Populate dropdown when VLAN tab is activated hi
-  function setupVlanTabDropdown() {
-    $$('.tab').forEach(btn => {
-      if (btn.dataset.tab === 'constructs') {
-        btn.addEventListener('click', populateVlanParentDropdown);
-      }
-    });
-    // Also populate on page load
-    document.addEventListener('DOMContentLoaded', populateVlanParentDropdown);
-  }
-  setupVlanTabDropdown();
-
   // Initial
   document.addEventListener('DOMContentLoaded', () => {
     refreshAll().catch(e => setStatus(String(e)));
