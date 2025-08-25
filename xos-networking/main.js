@@ -1,8 +1,7 @@
 /* global cockpit */
 (() => {
   'use strict';
-
-  const NM = '/usr/bin/nmcli';        // absolute path to avoid PATH issues in cockpit hi hello hi
+  // Using systemd-networkd and networkctl only
   const $  = (q, root = document) => root.querySelector(q);
   const $$ = (q, root = document) => Array.from(root.querySelectorAll(q));
   const statusEl = $('#status');
@@ -63,14 +62,14 @@
     setStatus('Loading interfaces…');
     let lines = [];
     try {
-      const terse = await run(NM, ['-t', '-f', 'DEVICE,TYPE,STATE,CONNECTION', 'device']);
-      lines = terse.split('\n').filter(Boolean);
+      const terse = await run('networkctl', ['list']);
+      // networkctl list output: IDX  LINK  TYPE  OPERATIONAL  SETUP
+      lines = terse.split('\n').slice(1).filter(Boolean); // skip header
     } catch (e) {
-      // If nmcli is missing or blocked, show a single error row
       const tbody = $('#table-interfaces tbody');
       tbody.innerHTML = '';
       const tr = document.createElement('tr');
-      tr.append(td('—'), td('—'), tdEl(stateBadge('unknown')), td('—'), td('—'), td('—'), td('—'), td('nmcli error: ' + e));
+      tr.append(td('—'), td('—'), tdEl(stateBadge('unknown')), td('—'), td('—'), td('—'), td('—'), td('networkctl error: ' + e));
       tbody.appendChild(tr);
       setStatus('');
       return;
@@ -81,36 +80,28 @@
     tbody.innerHTML = '';
 
     for (const l of lines) {
-      const [dev, type, state, conn] = l.split(':');
+      const parts = l.trim().split(/\s+/);
+      const dev = parts[1];
+      const type = parts[2];
+      const state = parts[3];
       const d = devMap.get(dev) || {};
       const tr = document.createElement('tr');
       const acts = document.createElement('td'); acts.className = 'actions';
 
-      // When unmanaged, Up/Down via nmcli device connect/disconnect will fail.
-      // We still render buttons, but disable if state says unmanaged.
-      const unmanaged = (state || '').toLowerCase() === 'unmanaged';
-
-      const btnUp   = btn('Up',   async () => { await run(NM, ['device', 'connect', dev]); await refreshAll(); });
-      const btnDown = btn('Down', async () => { await run(NM, ['device', 'disconnect', dev]); await refreshAll(); });
+      // Up/Down via systemctl if possible
+      const btnUp   = btn('Up',   async () => { await run('ip', ['link', 'set', dev, 'up']); await refreshAll(); });
+      const btnDown = btn('Down', async () => { await run('ip', ['link', 'set', dev, 'down']); await refreshAll(); });
       const btnEditIP = btn('Set IP', async () => {
         const cidr = prompt(`Enter IPv4 address/CIDR for ${dev} (blank to skip):`, d.ipv4 || '');
         if (!cidr) return;
-        const conname = `xos-${dev}-manual`;
-        try { await run(NM, ['con','add','type','ethernet','ifname',dev,'con-name',conname]); } catch (_) { /* may already exist */ }
-        await run(NM, ['con','mod', conname, 'ipv4.addresses', cidr, 'ipv4.method', 'manual']);
-        if (d.ipv4gw) await run(NM, ['con','mod', conname, 'ipv4.gateway', d.ipv4gw]);
-        await run(NM, ['con','up', conname]);
+        await run('ip', ['addr', 'add', cidr, 'dev', dev]);
         await refreshAll();
       });
       const btnDelIP = btn('Clear IP', async () => {
-        const con = await bestConnectionFor(dev);
-        if (!con) return alert('No connection found to modify.');
-        await run(NM, ['con','mod', con, 'ipv4.method', 'auto', 'ipv4.addresses', '', 'ipv4.gateway', '']);
-        await run(NM, ['con','up', con]);
+        if (!d.ipv4) return alert('No IP found to delete.');
+        await run('ip', ['addr', 'del', d.ipv4, 'dev', dev]);
         await refreshAll();
       });
-
-      if (unmanaged) [btnUp, btnDown, btnEditIP, btnDelIP].forEach(b => b.disabled = true);
 
       acts.append(btnUp, btnDown, btnEditIP, btnDelIP);
 
@@ -130,21 +121,21 @@
   }
 
   async function parseDevicesDetail() {
-    // Use absolute nmcli path inside a login shell to get all fields reliably
-    const out = await run('bash', ['-lc', `${NM} -t -f GENERAL.DEVICE,GENERAL.MTU,GENERAL.HWADDR,IP4.ADDRESS,IP6.ADDRESS device show`]);
+    // Use networkctl and ip to get device details
+    const out = await run('networkctl', ['status']);
     const map = new Map();
     let cur = null;
     out.split('\n').forEach(line => {
-      if (!line.includes(':')) return;
-      const [k, vRaw] = line.split(':');
-      const v = (vRaw || '').trim();
-      if (k === 'GENERAL.DEVICE') { cur = v; map.set(cur, {}); }
-      else if (cur) {
+      if (line.startsWith('Link File:')) {
+        cur = line.split(':')[1].trim();
+        map.set(cur, {});
+      }
+      if (cur) {
         const d = map.get(cur);
-        if (k === 'GENERAL.MTU') d.mtu = v;
-        if (k === 'GENERAL.HWADDR') d.mac = v;
-        if (k.startsWith('IP4.ADDRESS')) d.ipv4 = (v.split(' ')[0] || '');
-        if (k.startsWith('IP6.ADDRESS')) d.ipv6 = (v.split(' ')[0] || '');
+        if (line.includes('MTU:')) d.mtu = line.split('MTU:')[1].trim();
+        if (line.includes('MAC:')) d.mac = line.split('MAC:')[1].trim();
+        if (line.includes('IPv4:')) d.ipv4 = line.split('IPv4:')[1].trim();
+        if (line.includes('IPv6:')) d.ipv6 = line.split('IPv6:')[1].trim();
       }
     });
     return map;
@@ -152,46 +143,51 @@
 
   async function bestConnectionFor(dev) {
     try {
-      const out = await run(NM, ['-t', '-f', 'NAME,DEVICE,UUID,TYPE', 'con', 'show', '--active']);
-      const match = out.split('\n').map(l => l.split(':')).find(a => a[1] === dev);
-      return match ? match[0] : null;
+      // Use networkctl status to find associated .network file for the device
+      const out = await run('networkctl', ['status', dev]);
+      const nf = out.split('\n').map(l => l.trim()).find(l => l.startsWith('Network File:') || l.startsWith('Network:') );
+      if (!nf) return null;
+      const val = nf.split(':').slice(1).join(':').trim();
+      return val || null;
     } catch { return null; }
   }
 
   // -------- Connections --------
   async function listConnections() {
-    setStatus('Loading connections…');
+    setStatus('Loading links…');
     let out = '';
     try {
-      out = await run(NM, ['-t', '-f', 'NAME,UUID,TYPE,DEVICE,AUTOCONNECT,IP4.ADDRESS,IP6.ADDRESS', 'connection', 'show']);
+      out = await run('networkctl', ['list']);
     } catch (e) {
       const tbody = $('#table-connections tbody');
       tbody.innerHTML = '';
       const tr = document.createElement('tr');
-      tr.append(td('nmcli error: ' + e), td('—'), td('—'), td('—'), td('—'), td('—'), td('—'), td('—'));
+      tr.append(td('networkctl error: ' + e), td('—'), td('—'), td('—'), td('—'), td('—'), td('—'), td('—'));
       tbody.appendChild(tr);
       setStatus('');
       return;
     }
-    const lines = out.split('\n').filter(Boolean);
+    const lines = out.split('\n').slice(1).filter(Boolean);
     const tbody = $('#table-connections tbody');
     tbody.innerHTML = '';
     for (const l of lines) {
-      const [name, uuid, type, dev, auto, ip4, ip6] = l.split(':');
+      const parts = l.trim().split(/\s+/);
+      const name = parts[1];
+      const type = parts[2];
+      const state = parts[3];
       const tr = document.createElement('tr');
       const acts = document.createElement('td'); acts.className = 'actions';
 
-      const up   = btn('Up',   async () => { await run(NM, ['con', 'up', uuid || name]);   await refreshAll(); });
-      const down = btn('Down', async () => { await run(NM, ['con', 'down', uuid || name]); await refreshAll(); });
-      const edit = btn('Edit', async () => openConnModal({name, device: dev, type, uuid}));
+      const up   = btn('Up',   async () => { await run('ip', ['link', 'set', name, 'up']);   await refreshAll(); });
+      const down = btn('Down', async () => { await run('ip', ['link', 'set', name, 'down']); await refreshAll(); });
+      const edit = btn('Edit', async () => openConnModal({name, type}));
       const del  = btn('Delete', async () => {
-        if (confirm(`Delete connection "${name}"?`)) { await run(NM, ['con', 'delete', uuid || name]); await refreshAll(); }
+        if (confirm(`Delete link "${name}"?`)) { await run('ip', ['link', 'delete', name]); await refreshAll(); }
       });
 
-      // If everything is unmanaged, these are likely no-ops; keep enabled for environments where NM manages some links.
       acts.append(up, down, edit, del);
 
-      tr.append(td(name||''), td(uuid||''), td(type||''), td(dev||''), td(auto||''), td(ip4||''), td(ip6||''), acts);
+      tr.append(td(name||''), td('—'), td(type||''), td(state||''), td('—'), td('—'), td('—'), acts);
       tbody.appendChild(tr);
     }
     setStatus('');
@@ -234,18 +230,33 @@
     const dns  = f.ip4dns.value.trim();
 
     try {
-      if (!uuid) {
-        const args = ['con','add','type',type];
-        if (dev) args.push('ifname', dev);
-        args.push('con-name', name || `${type}-${dev || '0'}`);
-        await run(NM, args);
+      // Create a simple systemd-networkd .network file to represent this "connection".
+      if (!name) return alert('Name required for network file.');
+      const safe = name.replace(/[^a-zA-Z0-9_.-]/g, '-');
+      const path = `/etc/systemd/network/${safe}.network`;
+      const lines = [];
+      // Match section
+      if (dev) {
+        lines.push('[Match]', `Name=${dev}`);
       } else {
-        if (name) await run(NM, ['con','mod', uuid, 'connection.id', name]);
+        lines.push('[Match]', `Name=*`);
       }
-      if (ip4) await run(NM, ['con','mod', name || uuid, 'ipv4.addresses', ip4, 'ipv4.method', 'manual']);
-      if (gw)  await run(NM, ['con','mod', name || uuid, 'ipv4.gateway', gw]);
-      if (dns) await run(NM, ['con','mod', name || uuid, 'ipv4.dns', dns.replace(/,/g,' ')]);
-      await run(NM, ['con','up', name || uuid]);
+      // Network section
+      lines.push('', '[Network]');
+      if (!ip4) lines.push('DHCP=yes'); else lines.push('DHCP=no');
+      if (dns) lines.push(`DNS=${dns.replace(/,/g,' ')}`);
+      if (gw) {
+        // add route via [Route]
+        lines.push('', '[Route]', `Gateway=${gw}`);
+      }
+      if (ip4) {
+        lines.push('', '[Address]', `Address=${ip4}`);
+      }
+      const content = lines.join('\n') + '\n';
+      // Write file with elevated privilege
+      await run('bash', ['-lc', `cat > ${path} <<'EOF'\n${content}EOF`]);
+      // Restart systemd-networkd to apply
+      await run('systemctl', ['restart', 'systemd-networkd']);
       connModal.close();
       await refreshAll();
     } catch (err) {
@@ -260,8 +271,14 @@
     const ifname = $('#vlan-name').value.trim() || `${parent}.${id}`;
     if (!parent || !id) return alert('Parent and VLAN ID required.');
     try {
-      await run(NM, ['con','add','type','vlan','ifname',ifname,'dev',parent,'id',id,'con-name',ifname]);
-      await run(NM, ['con','up', ifname]);
+      // Create a .netdev and .network for the VLAN
+      const netdevPath = `/etc/systemd/network/${ifname}.netdev`;
+      const netPath = `/etc/systemd/network/${ifname}.network`;
+      const netdev = `[NetDev]\nName=${ifname}\nKind=vlan\n[NetDev.VLAN]\nId=${id}\n`;
+      const net = `[Match]\nName=${ifname}\n\n[Network]\nDHCP=yes\n`;
+      await run('bash', ['-lc', `cat > ${netdevPath} <<'EOF'\n${netdev}EOF`]);
+      await run('bash', ['-lc', `cat > ${netPath} <<'EOF'\n${net}EOF`]);
+      await run('bash', ['-lc', `systemctl restart systemd-networkd`]);
       $('#vlan-out').textContent = `VLAN ${ifname} created.`;
       await refreshAll();
     } catch (e) { $('#vlan-out').textContent = String(e); }
@@ -272,9 +289,19 @@
     const ports = $('#br-ports').value.trim().split(',').map(s => s.trim()).filter(Boolean);
     if (!br) return alert('Bridge name required.');
     try {
-      await run(NM, ['con','add','type','bridge','ifname',br,'con-name',br]);
-      for (const p of ports) await run(NM, ['con','add','type','bridge-slave','ifname',p,'master',br]);
-      await run(NM, ['con','up', br]);
+      // Create bridge netdev and simple network file; attach ports via ip
+      const netdevPath = `/etc/systemd/network/${br}.netdev`;
+      const netPath = `/etc/systemd/network/${br}.network`;
+      const netdev = `[NetDev]\nName=${br}\nKind=bridge\n`;
+      const net = `[Match]\nName=${br}\n\n[Network]\nDHCP=yes\n`;
+      await run('bash', ['-lc', `cat > ${netdevPath} <<'EOF'\n${netdev}EOF`]);
+      await run('bash', ['-lc', `cat > ${netPath} <<'EOF'\n${net}EOF`]);
+      // Restart to create the bridge
+      await run('systemctl', ['restart', 'systemd-networkd']);
+      // Attach ports
+      for (const p of ports) {
+        await run('ip', ['link', 'set', p, 'master', br]);
+      }
       $('#br-out').textContent = `Bridge ${br} created with ports: ${ports.join(', ')}`;
       await refreshAll();
     } catch (e) { $('#br-out').textContent = String(e); }
@@ -286,10 +313,18 @@
     const slaves = $('#bond-slaves').value.trim().split(',').map(s => s.trim()).filter(Boolean);
     if (!bond || slaves.length < 2) return alert('Bond name and at least two slaves required.');
     try {
-      await run(NM, ['con','add','type','bond','ifname',bond,'con-name',bond]);
-      await run(NM, ['con','mod', bond, 'bond.options', `mode=${mode}`]);
-      for (const s of slaves) await run(NM, ['con','add','type','bond-slave','ifname',s,'master',bond]);
-      await run(NM, ['con','up', bond]);
+      // Create bond netdev and network file
+      const netdevPath = `/etc/systemd/network/${bond}.netdev`;
+      const netPath = `/etc/systemd/network/${bond}.network`;
+      const netdev = `[NetDev]\nName=${bond}\nKind=bond\n[NetDev.Bond]\nMode=${mode}\n`;
+      const net = `[Match]\nName=${bond}\n\n[Network]\nDHCP=yes\n`;
+      await run('bash', ['-lc', `cat > ${netdevPath} <<'EOF'\n${netdev}EOF`]);
+      await run('bash', ['-lc', `cat > ${netPath} <<'EOF'\n${net}EOF`]);
+      await run('systemctl', ['restart', 'systemd-networkd']);
+      // Attach slaves
+      for (const s of slaves) {
+        await run('ip', ['link', 'set', s, 'master', bond]);
+      }
       $('#bond-out').textContent = `Bond ${bond} (${mode}) created with slaves: ${slaves.join(', ')}`;
       await refreshAll();
     } catch (e) { $('#bond-out').textContent = String(e); }
