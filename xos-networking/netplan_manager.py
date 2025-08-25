@@ -37,6 +37,7 @@ def apply_netplan():
     try:
         subprocess.run(['netplan', 'apply'], check=True)
     except Exception as e:
+        # Ensure errors go to stdout as JSON
         print(json.dumps({'error': f'Failed to apply netplan: {e}', 'trace': traceback.format_exc()}))
         sys.exit(1)
 
@@ -108,18 +109,19 @@ def main():
             }
         elif action == 'delete':
             # config: {type, name}
-            print(f"Attempting to delete {config.get('type')} named {config.get('name')}")
+            print(f"Attempting to delete {config.get('type')} named {config.get('name')}", file=sys.stderr)
             if config and config.get('type') in network and config.get('name') in network[config['type']]:
                 del network[config['type']][config['name']]
-                print(f"Deleted {config.get('type')} named {config.get('name')}")
-                # Also delete the bond interface using ip link
+                print(f"Deleted {config.get('type')} named {config.get('name')}", file=sys.stderr)
+                # Also delete the bond interface using ip link (best-effort)
                 if config.get('type') == 'bonds':
                     try:
                         subprocess.run(['ip', 'link', 'delete', config.get('name')], check=True)
+                        print(f"Successfully deleted bond interface {config.get('name')}", file=sys.stderr)
                     except Exception as e:
-                        print(f"Failed to delete bond interface {config.get('name')}: {e}")
+                        print(f"Failed to delete bond interface {config.get('name')}: {e}", file=sys.stderr)
             else:
-                print(f"No matching {config.get('type')} named {config.get('name')} found for deletion.")
+                print(f"No matching {config.get('type')} named {config.get('name')} found for deletion.", file=sys.stderr)
         else:
             print(json.dumps({'error': 'Unknown action'}))
             sys.exit(1)
