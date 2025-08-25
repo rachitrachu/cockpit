@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --bg: var(--pf-global--BackgroundColor--100);
   --card: var(--pf-global--BackgroundColor--200);
   --muted: var(--pf-global--Color--200);
@@ -71,14 +71,11 @@ body {
   border-radius: 20px;
   cursor: pointer;
   font-size: 13px;
-  font-weight: 600;
 }
 .btn.primary {
   background: var(--accent);
   border-color: transparent;
-  color: #fff;
-  font-weight: 700;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.15);
+  color: white;
 }
 .btn[disabled] {
   opacity: .5;
@@ -122,14 +119,11 @@ body {
   border-radius: 20px;
   cursor: pointer;
   font-size: 13px;
-  font-weight: 600;
 }
 .tab.active {
-  color: #fff;
+  color: white;
   background: var(--accent);
   border-color: var(--accent);
-  font-weight: 700;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.15);
 }
 
 /* Panels */

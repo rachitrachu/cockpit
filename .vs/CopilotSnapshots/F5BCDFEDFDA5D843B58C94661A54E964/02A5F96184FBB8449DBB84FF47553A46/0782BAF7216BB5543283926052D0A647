@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --bg: var(--pf-global--BackgroundColor--100);
   --card: var(--pf-global--BackgroundColor--200);
   --muted: var(--pf-global--Color--200);

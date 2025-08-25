@@ -2,7 +2,7 @@
 (() => {
   'use strict';
 
-  const NM = '/usr/bin/nmcli';        // absolute path to avoid PATH issues in cockpit hi hello
+  const NM = '/usr/bin/nmcli';        // absolute path to avoid PATH issues in cockpit hi hello hi
   const $  = (q, root = document) => root.querySelector(q);
   const $$ = (q, root = document) => Array.from(root.querySelectorAll(q));
   const statusEl = $('#status');
