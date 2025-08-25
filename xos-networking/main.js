@@ -60,30 +60,57 @@
   // -------- Interfaces --------
   async function listInterfaces() {
     setStatus('Loading interfaces…');
-    let lines = [];
+    let ifaceList = [];
     try {
-      const terse = await run('networkctl', ['list']);
-      lines = terse.split('\n').slice(1).filter(Boolean); // skip header
+      const out = await run('ip', ['-details', 'link', 'show']);
+      // Parse output
+      const blocks = out.split(/\n(?=\d+: )/); // Each interface starts with 'N: '
+      for (const block of blocks) {
+        const lines = block.split('\n');
+        const first = lines[0];
+        const match = first.match(/^(\d+): ([^:]+):/);
+        if (!match) continue;
+        const dev = match[2];
+        let type = 'unknown';
+        let state = 'DOWN';
+        let mac = '';
+        let mtu = '';
+        let ipv4 = '';
+        let ipv6 = '';
+        for (const line of lines) {
+          if (line.includes('mtu')) {
+            const mtuMatch = line.match(/mtu (\d+)/);
+            if (mtuMatch) mtu = mtuMatch[1];
+          }
+          if (line.includes('link/')) {
+            const macMatch = line.match(/link\/\w+ ([0-9a-fA-F:]+)/);
+            if (macMatch) mac = macMatch[1];
+            const typeMatch = line.match(/link\/(\w+)/);
+            if (typeMatch) type = typeMatch[1];
+          }
+          if (line.includes('state')) {
+            const stateMatch = line.match(/state (\w+)/);
+            if (stateMatch) state = stateMatch[1];
+          }
+          if (line.includes('inet ')) {
+            const ipMatch = line.match(/inet ([^\s]+)/);
+            if (ipMatch) ipv4 = ipMatch[1];
+          }
+          if (line.includes('inet6 ')) {
+            const ip6Match = line.match(/inet6 ([^\s]+)/);
+            if (ip6Match) ipv6 = ip6Match[1];
+          }
+        }
+        ifaceList.push({ dev, type, state, mac, mtu, ipv4, ipv6 });
+      }
     } catch (e) {
       const tbody = $('#table-interfaces tbody');
       tbody.innerHTML = '';
       const tr = document.createElement('tr');
-      tr.append(td('—'), td('—'), tdEl(stateBadge('unknown')), td('—'), td('—'), td('—'), td('—'), td('networkctl error: ' + e));
+      tr.append(td('—'), td('—'), tdEl(stateBadge('unknown')), td('—'), td('—'), td('—'), td('—'), td('ip link error: ' + e));
       tbody.appendChild(tr);
       setStatus('');
       return;
-    }
-
-    // Parse interface details
-    const devMap = await parseDevicesDetail().catch(() => new Map());
-    let ifaceList = [];
-    for (const l of lines) {
-      const parts = l.trim().split(/\s+/);
-      const dev = parts[1];
-      const type = parts[2];
-      const state = parts[3];
-      const d = devMap.get(dev) || {};
-      ifaceList.push({ dev, type, state, mac: d.mac || '', ipv4: d.ipv4 || '', ipv6: d.ipv6 || '', mtu: d.mtu || '' });
     }
 
     // Sort interfaces
