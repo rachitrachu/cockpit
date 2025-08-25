@@ -308,15 +308,17 @@
     try {
       const result = await cockpit.spawn([
         'python3',
-        'netplan_manager.py'
+        '/usr/share/cockpit/xos-networking/netplan_manager.py'
       ], {
         input: JSON.stringify({ action, config }),
         superuser: 'require',
-        err: 'out',
-        cwd: 'xos-networking'
+        err: 'out'
       });
+      console.log('Netplan script output:', result);
       return JSON.parse(result);
     } catch (e) {
+      alert('Netplan error: ' + e);
+      console.error('Netplan error:', e);
       return { error: e.toString() };
     }
   }
