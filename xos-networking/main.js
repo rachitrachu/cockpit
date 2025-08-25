@@ -118,7 +118,7 @@
     ifaceList.sort((a, b) => {
       if (sortValue === 'name') return a.dev.localeCompare(b.dev);
       if (sortValue === 'type') return a.type.localeCompare(b.type);
-      if (sortValue === 'state') return a.state.localeCompare(b.state);
+      if (sortValue === 'state' ) return a.state.localeCompare(b.state);
       return 0;
     });
 
@@ -322,6 +322,19 @@
       alert('Save failed:\n' + err);
     }
   });
+
+  // Test function to verify cockpit.spawn works
+  window.testSpawn = async function() {
+    try {
+      console.log('Testing basic spawn...');
+      const result = await cockpit.spawn(['ls', '/usr/share/cockpit/xos-networking/'], {
+        superuser: 'require'
+      });
+      console.log('Basic spawn result:', result);
+    } catch (e) {
+      console.error('Basic spawn failed:', e);
+    }
+  };
 
   // -------- Constructs: VLAN / Bridge / Bond --------
   async function netplanAction(action, config) {
