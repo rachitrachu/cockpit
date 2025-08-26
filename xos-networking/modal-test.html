@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Modal Test - XOS Networking</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+            background: #f5f5f5; 
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            max-width: 600px;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .btn.primary { background: #28a745; }
+        .btn:hover { opacity: 0.9; }
+        
+        dialog {
+            border: none;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            padding: 0;
+        }
+        
+        dialog::backdrop {
+            background: rgba(0,0,0,0.5);
+        }
+        
+        .modal-content {
+            padding: 20px;
+            min-width: 400px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>?? Modal Close Button Test</h1>
+        
+        <p>Test the modal close functionality:</p>
+        
+        <div>
+            <button id="test-config-modal" class="btn">?? Test Show Config Modal</button>
+            <button id="test-backup-modal" class="btn">?? Test Backup Modal</button>
+            <button id="test-simple-modal" class="btn">?? Test Simple Modal</button>
+        </div>
+        
+        <div id="output" style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px; font-family: monospace; white-space: pre-wrap;"></div>
+    </div>
+
+    <script>
+        const output = document.getElementById('output');
+        
+        function log(message) {
+            output.textContent += new Date().toLocaleTimeString() + ' - ' + message + '\n';
+        }
+        
+        // Enhanced setupModal function
+        function setupModal(modal) {
+            if (!modal) {
+                console.warn('setupModal called with null/undefined modal');
+                return null;
+            }
+            
+            // Handle ESC key
+            const handleEscKey = (e) => {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    modal.close();
+                }
+            };
+            
+            // Handle backdrop clicks (click outside modal content)
+            const handleBackdropClick = (e) => {
+                if (e.target === modal) {
+                    modal.close();
+                }
+            };
+            
+            modal.addEventListener('keydown', handleEscKey);
+            modal.addEventListener('click', handleBackdropClick);
+            
+            // Cleanup when modal closes
+            modal.addEventListener('close', () => {
+                log('Modal closed');
+                // Remove event listeners to prevent memory leaks
+                modal.removeEventListener('keydown', handleEscKey);
+                modal.removeEventListener('click', handleBackdropClick);
+                
+                // Remove from DOM
+                if (modal.parentNode) {
+                    try {
+                        document.body.removeChild(modal);
+                        log('Modal removed from DOM');
+                    } catch (e) {
+                        console.warn('Failed to remove modal from DOM:', e);
+                    }
+                }
+            });
+            
+            // Also handle browser's built-in cancel event (ESC key or close button)
+            modal.addEventListener('cancel', (e) => {
+                log('Modal cancelled via ESC key');
+            });
+            
+            return modal;
+        }
+        
+        // Test Show Config Modal
+        document.getElementById('test-config-modal').addEventListener('click', () => {
+            log('Creating show config modal...');
+            
+            const modal = document.createElement('dialog');
+            modal.style.maxWidth = '80vw';
+            modal.style.maxHeight = '80vh';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <h2>?? Test Configuration</h2>
+                    <div style="margin: 1rem 0;">
+                        <label style="font-weight: 500;">Test Content:</label>
+                        <textarea readonly style="width: 100%; height: 200px; font-family: monospace; font-size: 0.875rem; padding: 1rem; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;">network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    eth0:
+      dhcp4: true</textarea>
+                    </div>
+                    <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1rem;">
+                        <button type="button" class="btn primary" id="close-config-modal">? Close</button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            setupModal(modal);
+            
+            // Add explicit close button handler
+            const closeBtn = modal.querySelector('#close-config-modal');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', () => {
+                    log('Close button clicked');
+                    modal.close();
+                });
+            }
+            
+            modal.showModal();
+            log('Show config modal opened');
+        });
+        
+        // Test Backup Modal
+        document.getElementById('test-backup-modal').addEventListener('click', () => {
+            log('Creating backup modal...');
+            
+            const modal = document.createElement('dialog');
+            modal.style.maxWidth = '600px';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <h2>? Backup Test Successful</h2>
+                    <div style="margin: 1rem 0;">
+                        <p><strong>?? Test Backup File:</strong><br><code>/etc/netplan/backups/test-backup.tar.gz</code></p>
+                        <p><strong>?? File Details:</strong><br><code>-rw-r--r-- 1 root root 1024 bytes</code></p>
+                        <p><strong>?? Tip:</strong> This is just a test modal</p>
+                    </div>
+                    <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1rem;">
+                        <button type="button" class="btn primary" id="close-backup-modal">? OK</button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            setupModal(modal);
+            
+            // Add explicit close button handler
+            const closeBtn = modal.querySelector('#close-backup-modal');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', () => {
+                    log('Backup modal close button clicked');
+                    modal.close();
+                });
+            }
+            
+            modal.showModal();
+            log('Backup modal opened');
+        });
+        
+        // Test Simple Modal
+        document.getElementById('test-simple-modal').addEventListener('click', () => {
+            log('Creating simple modal...');
+            
+            const modal = document.createElement('dialog');
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <h2>?? Simple Test Modal</h2>
+                    <p>This is a simple test modal to verify close functionality.</p>
+                    <p><strong>Ways to close:</strong></p>
+                    <ul>
+                        <li>Click the Close button below</li>
+                        <li>Press ESC key</li>
+                        <li>Click outside the modal (backdrop)</li>
+                    </ul>
+                    <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1rem;">
+                        <button type="button" class="btn" onclick="this.closest('dialog').close()">? Cancel</button>
+                        <button type="button" class="btn primary" id="close-simple-modal">? Close</button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            setupModal(modal);
+            
+            // Add explicit close button handler
+            const closeBtn = modal.querySelector('#close-simple-modal');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', () => {
+                    log('Simple modal close button clicked');
+                    modal.close();
+                });
+            }
+            
+            modal.showModal();
+            log('Simple modal opened');
+        });
+        
+        log('Modal test page loaded - ready to test!');
+    </script>
+</body>
+</html>

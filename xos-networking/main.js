@@ -96,28 +96,45 @@
       return null;
     }
     
-    // Handle ESC key and backdrop clicks
-    modal.addEventListener('click', (e) => {
+    // Handle ESC key
+    const handleEscKey = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        modal.close();
+      }
+    };
+    
+    // Handle backdrop clicks (click outside modal content)
+    const handleBackdropClick = (e) => {
       if (e.target === modal) {
         modal.close();
       }
-    });
+    };
     
-    modal.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        modal.close();
-      }
-    });
+    modal.addEventListener('keydown', handleEscKey);
+    modal.addEventListener('click', handleBackdropClick);
     
     // Cleanup when modal closes
     modal.addEventListener('close', () => {
+      // Remove event listeners to prevent memory leaks
+      modal.removeEventListener('keydown', handleEscKey);
+      modal.removeEventListener('click', handleBackdropClick);
+      
+      // Remove from DOM
       if (modal.parentNode) {
         try {
           document.body.removeChild(modal);
+          console.log('Modal cleaned up successfully');
         } catch (e) {
           console.warn('Failed to remove modal from DOM:', e);
         }
       }
+    });
+    
+    // Also handle browser's built-in cancel event (ESC key or close button)
+    modal.addEventListener('cancel', (e) => {
+      // Allow the default behavior (closing the modal)
+      console.log('Modal cancelled via ESC key or browser close button');
     });
     
     return modal;
@@ -1534,13 +1551,22 @@
                 <textarea readonly style="width: 100%; height: 400px; font-family: monospace; font-size: 0.875rem; padding: 1rem; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;">${config}</textarea>
               </div>
               <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1rem;">
-                <button type="button" class="btn primary" onclick="this.closest('dialog').close()">✅ Close</button>
+                <button type="button" class="btn primary" id="close-config-modal">✅ Close</button>
               </div>
             </div>
           `;
           
           document.body.appendChild(modal);
           setupModal(modal);
+          
+          // Add explicit close button handler
+          const closeBtn = modal.querySelector('#close-config-modal');
+          if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+              modal.close();
+            });
+          }
+          
           modal.showModal();
           
         } catch (error) {
@@ -1602,13 +1628,22 @@
                 <p><strong>💡 Tip:</strong> To restore from backup, extract the tar.gz file to /etc/</p>
               </div>
               <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1rem;">
-                <button type="button" class="btn primary" onclick="this.closest('dialog').close()">✅ OK</button>
+                <button type="button" class="btn primary" id="close-backup-modal">✅ OK</button>
               </div>
             </div>
           `;
           
           document.body.appendChild(modal);
           setupModal(modal);
+          
+          // Add explicit close button handler
+          const closeBtn = modal.querySelector('#close-backup-modal');
+          if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+              modal.close();
+            });
+          }
+          
           modal.showModal();
           
         } catch (error) {
@@ -1951,37 +1986,6 @@
       });
     }
 
-    // Setup other networking buttons
-    const btnShowNetplan = $('#btn-show-netplan');
-    if (btnShowNetplan) {
-      btnShowNetplan.addEventListener('click', async () => {
-        try {
-          const config = await run('cat', ['/etc/netplan/99-cockpit.yaml'], { superuser: 'try' });
-          alert(`Current Netplan Configuration:\n\n${config}`);
-        } catch (e) {
-          alert(`Failed to show Netplan config: ${e}`);
-        }
-      });
-    }
-
-    const btnApplyNetplan = $('#btn-apply-netplan');
-    if (btnApplyNetplan) {
-      btnApplyNetplan.addEventListener('click', async () => {
-        if (!confirm('Apply Netplan configuration? This may disrupt network connectivity.')) return;
-        
-        try {
-          setStatus('Applying Netplan...');
-          await run('netplan', ['apply'], { superuser: 'require' });
-          alert('✅ Netplan configuration applied successfully!');
-          await loadInterfaces();
-        } catch (e) {
-          alert(`❌ Failed to apply Netplan: ${e}`);
-        } finally {
-          setStatus('Ready');
-        }
-      });
-    }
-    
     // Debug button to test netplan writing
     const btnTestNetplan = $('#btn-test-netplan');
     if (btnTestNetplan) {
