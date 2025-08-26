@@ -1,4 +1,3 @@
-/* XOS Networking - Clean CSS */
 :root {
   --primary-color: #0066cc;
   --primary-hover: #0056b3;
@@ -72,6 +71,17 @@ body {
   color: var(--primary-color);
 }
 
+.xos-actions .btn.primary {
+  background: var(--primary-color);
+  border: 1px solid var(--primary-color);
+  color: white;
+}
+
+.xos-actions .btn.primary:hover {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+}
+
 /* Navigation Tabs */
 .xos-tabs {
   background: var(--light-color);
@@ -92,6 +102,7 @@ body {
   border-bottom: 3px solid transparent;
   transition: var(--transition);
   white-space: nowrap;
+  position: relative;
 }
 
 .tab:hover {
@@ -103,7 +114,16 @@ body {
   color: var(--primary-color);
   border-bottom-color: var(--primary-color);
   background: rgba(0, 102, 204, 0.1);
-  font-weight: 600;
+}
+
+.tab.active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--primary-color);
 }
 
 /* Main Content */
@@ -134,7 +154,6 @@ main {
   margin-bottom: 1.5rem;
   border-radius: var(--border-radius);
   box-shadow: var(--shadow);
-  border: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   gap: 1rem;
@@ -149,17 +168,26 @@ main {
 .search input {
   width: 100%;
   padding: 0.75rem 1rem;
+  padding-left: 2.5rem;
   border: 2px solid var(--border-color);
   border-radius: var(--border-radius);
   font-size: 0.875rem;
   transition: var(--transition);
-  background: white;
 }
 
 .search input:focus {
   outline: none;
   border-color: var(--primary-color);
   box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
+}
+
+.search::before {
+  content: '??';
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted-color);
 }
 
 .spacer {
@@ -176,11 +204,11 @@ main {
 .btn {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
   gap: 0.5rem;
   padding: 0.75rem 1.25rem;
   font-size: 0.875rem;
   font-weight: 500;
+  text-align: center;
   text-decoration: none;
   border: 2px solid var(--border-color);
   border-radius: var(--border-radius);
@@ -189,12 +217,15 @@ main {
   background: white;
   color: var(--text-color);
   min-width: fit-content;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
-.btn:hover:not([disabled]) {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+.btn:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+}
+
+.btn:active {
+  transform: translateY(0);
 }
 
 .btn[disabled] {
@@ -209,7 +240,7 @@ main {
   color: white;
 }
 
-.btn.primary:hover:not([disabled]) {
+.btn.primary:hover {
   background: var(--primary-hover);
   border-color: var(--primary-hover);
 }
@@ -220,7 +251,7 @@ main {
   border-color: var(--primary-color);
 }
 
-.btn.btn-outline:hover:not([disabled]) {
+.btn.btn-outline:hover {
   background: var(--primary-color);
   color: white;
 }
@@ -231,23 +262,31 @@ main {
   color: white;
 }
 
-/* Tables */
-.table-responsive {
-  overflow-x: auto;
-  border-radius: var(--border-radius);
-  box-shadow: var(--shadow);
-  margin-bottom: 1.5rem;
+.btn.btn-danger:hover {
+  background: #c82333;
+  border-color: #bd2130;
 }
 
+.btn.btn-success {
+  background: var(--success-color);
+  border-color: var(--success-color);
+  color: white;
+}
+
+/* Tables */
 .table {
   width: 100%;
   background: white;
-  border-collapse: collapse;
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  margin-bottom: 1.5rem;
 }
 
 .table thead {
-  background: var(--light-color);
+  background: #f8f9fa;
   color: var(--text-color);
+  border-bottom: 2px solid var(--primary-color);
 }
 
 .table th,
@@ -255,7 +294,6 @@ main {
   padding: 1rem;
   text-align: left;
   border-bottom: 1px solid var(--border-color);
-  vertical-align: middle;
 }
 
 .table th {
@@ -263,18 +301,24 @@ main {
   font-size: 0.875rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  white-space: nowrap;
+}
+
+.table tbody tr {
+  transition: var(--transition);
 }
 
 .table tbody tr:hover {
   background: rgba(0, 102, 204, 0.02);
 }
 
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
 .actions {
   display: flex;
   gap: 0.25rem;
   flex-wrap: wrap;
-  justify-content: center;
 }
 
 .actions .btn {
@@ -296,7 +340,6 @@ main {
   padding: 2rem;
   border-radius: var(--border-radius);
   box-shadow: var(--shadow);
-  border: 1px solid var(--border-color);
   transition: var(--transition);
 }
 
@@ -315,29 +358,25 @@ main {
 }
 
 .card label {
-  display: flex;
-  flex-direction: column;
+  display: block;
   margin-bottom: 1rem;
   font-weight: 500;
   color: var(--dark-color);
-  gap: 0.5rem;
 }
 
 .card input,
-.card select,
-.card textarea {
+.card select {
   width: 100%;
   padding: 0.75rem;
+  margin-top: 0.5rem;
   border: 2px solid var(--border-color);
   border-radius: var(--border-radius);
   font-size: 0.875rem;
   transition: var(--transition);
-  background: white;
 }
 
 .card input:focus,
-.card select:focus,
-.card textarea:focus {
+.card select:focus {
   outline: none;
   border-color: var(--primary-color);
   box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
@@ -356,24 +395,24 @@ main {
 /* Advanced Options */
 .advanced-options details {
   margin: 1rem 0;
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
 }
 
 .advanced-options summary {
   cursor: pointer;
   font-weight: 500;
   color: var(--primary-color);
-  padding: 0.75rem 1rem;
-  background: var(--light-color);
+  padding: 0.5rem;
+  border-radius: var(--border-radius);
+  transition: var(--transition);
 }
 
-.advanced-options details[open] summary {
+.advanced-options summary:hover {
+  background: rgba(0, 102, 204, 0.05);
+}
+
+.advanced-options[open] summary {
+  margin-bottom: 1rem;
   border-bottom: 1px solid var(--border-color);
-}
-
-.advanced-options details > div {
-  padding: 1rem;
 }
 
 /* Badges */
@@ -410,7 +449,7 @@ main {
 
 /* Output sections */
 .out {
-  background: var(--light-color);
+  background: #f8f9fa;
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   padding: 1rem;
@@ -423,43 +462,6 @@ main {
   overflow-y: auto;
 }
 
-/* Modal Styles */
-dialog {
-  border: none;
-  border-radius: var(--border-radius-lg);
-  box-shadow: var(--shadow-lg);
-  min-width: 400px;
-  max-width: min(90vw, 600px);
-  max-height: 90vh;
-  padding: 0;
-  background: white;
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-}
-
-dialog::backdrop {
-  background: rgba(0, 0, 0, 0.5);
-}
-
-.modal-content {
-  padding: 2rem;
-}
-
-.modal-content h2 {
-  margin-top: 0;
-  margin-bottom: 1.5rem;
-  color: var(--primary-color);
-}
-
-.modal-content .modal-buttons {
-  display: flex;
-  gap: 1rem;
-  justify-content: flex-end;
-  margin-top: 1.5rem;
-}
-
 /* Footer */
 .xos-footer {
   background: var(--light-color);
@@ -469,19 +471,6 @@ dialog::backdrop {
   font-size: 0.875rem;
   text-align: center;
 }
-
-/* Status indicators with text */
-.status-ok { color: var(--success-color); font-weight: bold; }
-.status-ok::before { content: "[OK] "; }
-
-.status-error { color: var(--danger-color); font-weight: bold; }
-.status-error::before { content: "[ERROR] "; }
-
-.status-warning { color: var(--warning-color); font-weight: bold; }
-.status-warning::before { content: "[WARNING] "; }
-
-.status-info { color: var(--info-color); font-weight: bold; }
-.status-info::before { content: "[INFO] "; }
 
 /* Responsive Design */
 @media (max-width: 768px) {
@@ -509,16 +498,90 @@ dialog::backdrop {
     align-items: stretch;
   }
   
-  .search {
-    min-width: auto;
+  .quick-actions {
+    justify-content: center;
+  }
+  
+  .table-responsive {
+    overflow-x: auto;
   }
   
   .actions {
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-  
-  .actions .btn {
-    width: 100%;
+    justify-content: center;
   }
 }
+
+/* Modal Styles */
+dialog {
+  border: none;
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-lg);
+  max-width: 90vw;
+  max-height: 90vh;
+  padding: 0;
+  background: white;
+}
+
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+/* For browsers that don't support ::backdrop */
+dialog + .modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  z-index: -1;
+}
+
+.modal-content {
+  padding: 2rem;
+}
+
+.modal-content h2 {
+  margin-top: 0;
+  color: var(--primary-color);
+}
+
+/* Loading States */
+.btn:disabled {
+  position: relative;
+  color: transparent;
+}
+
+.btn:disabled::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  top: 50%;
+  left: 50%;
+  margin-left: -8px;
+  margin-top: -8px;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Utility Classes */
+.text-center { text-align: center; }
+.text-muted { color: var(--muted-color); }
+.mb-0 { margin-bottom: 0; }
+.mb-1 { margin-bottom: 0.5rem; }
+.mb-2 { margin-bottom: 1rem; }
+.mb-3 { margin-bottom: 1.5rem; }
+.mt-0 { margin-top: 0; }
+.mt-1 { margin-top: 0.5rem; }
+.mt-2 { margin-top: 1rem; }
+.mt-3 { margin-top: 1.5rem; }

@@ -1,80 +1,88 @@
-/* XOS Networking - Main Application */
-/* global cockpit */
-
-// Initialize the application
+﻿/* global cockpit, waitForReady, setStatus, setupTabs, setupEventHandlers, setupNetworkingForms, setupSearchAndFilters, loadInterfaces, loadConnections, loadDiagnostics */
 (() => {
   'use strict';
-  
-  console.log('XOS Networking main.js starting...');
 
-  // Initialize when everything is ready
-  async function init() {
+  async function initialize() {
+    console.log('Initializing XOS Networking...');
+
     try {
-      console.log('Waiting for DOM and Cockpit...');
-      
-      // Wait for DOM
-      if (document.readyState === 'loading') {
-        await new Promise(resolve => {
-          document.addEventListener('DOMContentLoaded', resolve);
-        });
+      console.log('Waiting for ready state...');
+      await waitForReady();
+      console.log('Ready state achieved');
+
+      setStatus('Initializing...');
+
+      console.log('Checking DOM elements...');
+      const tableBody = document.querySelector('#table-interfaces tbody');
+      if (!tableBody) {
+        console.warn('Interface table body not found, waiting...');
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
 
-      // Wait for Cockpit API
-      if (typeof cockpit === 'undefined') {
-        console.log('Waiting for Cockpit API...');
-        await new Promise(resolve => {
-          const check = () => {
-            if (typeof cockpit !== 'undefined') {
-              console.log('Cockpit API ready');
-              resolve();
-            } else {
-              setTimeout(check, 100);
-            }
-          };
-          check();
-        });
+      console.log('Setting up tabs...');
+      setupTabs();
+
+      console.log('Setting up event handlers...');
+      setupEventHandlers();
+
+      console.log('Setting up search and filters...');
+      if (typeof setupSearchAndFilters === 'function') {
+        setupSearchAndFilters();
       }
 
-      // Check if core module is available
-      if (typeof window.XOSNetworking === 'undefined' || !window.XOSNetworking.core) {
-        console.log('XOS core module not available, using fallback initialization');
-        
-        // Fallback initialization without modules
-        const { setupTabs, loadInterfaces, setupEventHandlers } = await import('./js/simple-init.js');
-        setupTabs();
-        setupEventHandlers();
+      console.log('Setting up networking forms...');
+      await setupNetworkingForms();
+
+      console.log('Loading initial data...');
+      setStatus('Loading data...');
+
+      try {
+        console.log('Loading interfaces...');
         await loadInterfaces();
-        
-      } else {
-        console.log('Using XOS core modules');
-        
-        // Use the core module system
-        const { waitForReady, setupTabs, setStatus } = window.XOSNetworking.core;
-        const { refreshInterfaces } = window.XOSNetworking.networkInterface;
-        
-        await waitForReady();
-        setupTabs();
-        
-        // Load initial data
-        await refreshInterfaces();
-        
-        setStatus('Ready');
+        console.log('Interfaces loaded successfully');
+      } catch (error) {
+        console.error('Failed to load interfaces:', error);
+        setStatus('Failed to load interfaces: ' + error);
+        setTimeout(async () => {
+          console.log('Retrying interface load...');
+          try {
+            await loadInterfaces();
+          } catch (retryError) {
+            console.error('Retry failed:', retryError);
+          }
+        }, 2000);
       }
-      
+
+      try {
+        console.log('Loading connections...');
+        await loadConnections();
+        console.log('Connections loaded successfully');
+      } catch (error) {
+        console.warn('Failed to load connections:', error);
+      }
+
+      try {
+        console.log('Loading diagnostics...');
+        await loadDiagnostics();
+        console.log('Diagnostics loaded successfully');
+      } catch (error) {
+        console.warn('Failed to load diagnostics:', error);
+      }
+
+      setStatus('Ready');
       console.log('XOS Networking initialized successfully');
-      
+      window.xosNetworkingReady = true;
+
     } catch (e) {
-      console.error('XOS Networking initialization failed:', e);
-      
-      // Try to show error to user
-      const statusEl = document.querySelector('#status');
-      if (statusEl) {
-        statusEl.textContent = 'Initialization failed';
-        statusEl.style.color = 'red';
-      }
+      console.error('Initialization failed:', e);
+      setStatus('Initialization failed: ' + e);
+      setTimeout(() => {
+        console.log('Retrying initialization...');
+        initialize();
+      }, 3000);
     }
   }
 
-  // Start initialization
-  init();
+  initialize();
+
 })();
