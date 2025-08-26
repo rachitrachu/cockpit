@@ -50,6 +50,66 @@ def apply_netplan():
         sys.exit(1)
 
 
+def set_interface_mtu_immediately(interface_name, mtu_value):
+    """Apply MTU change immediately using ip link command"""
+    try:
+        print(f"DEBUG: Applying MTU {mtu_value} immediately to {interface_name}", file=sys.stderr, flush=True)
+        
+        # First check if interface exists
+        result = subprocess.run(['ip', 'link', 'show', interface_name], 
+                              stdout=subprocess.PIPE, 
+                              stderr=subprocess.PIPE, 
+                              text=True)
+        
+        if result.returncode != 0:
+            print(f"DEBUG: Interface {interface_name} does not exist yet, will be created by netplan", file=sys.stderr, flush=True)
+            return False
+        
+        # Interface exists, apply MTU
+        result = subprocess.run(['ip', 'link', 'set', 'dev', interface_name, 'mtu', str(mtu_value)], 
+                              stdout=subprocess.PIPE, 
+                              stderr=subprocess.PIPE, 
+                              text=True, 
+                              check=True)
+        print(f"DEBUG: Successfully applied MTU {mtu_value} to {interface_name}", file=sys.stderr, flush=True)
+        return True
+        
+    except subprocess.CalledProcessError as e:
+        print(f"DEBUG: Failed to set MTU immediately: {e.stderr}", file=sys.stderr, flush=True)
+        return False
+
+
+def ensure_vlan_exists(interface_name, link_interface, vlan_id):
+    """Ensure VLAN interface exists before applying MTU"""
+    try:
+        # Check if VLAN interface exists
+        result = subprocess.run(['ip', 'link', 'show', interface_name], 
+                              stdout=subprocess.PIPE, 
+                              stderr=subprocess.PIPE, 
+                              text=True)
+        
+        if result.returncode == 0:
+            print(f"DEBUG: VLAN interface {interface_name} already exists", file=sys.stderr, flush=True)
+            return True
+        
+        # Create VLAN interface if it doesn't exist
+        print(f"DEBUG: Creating VLAN interface {interface_name} on {link_interface} with VLAN ID {vlan_id}", file=sys.stderr, flush=True)
+        
+        # Create VLAN using ip link
+        result = subprocess.run(['ip', 'link', 'add', 'link', link_interface, 'name', interface_name, 'type', 'vlan', 'id', str(vlan_id)], 
+                              stdout=subprocess.PIPE, 
+                              stderr=subprocess.PIPE, 
+                              text=True, 
+                              check=True)
+        
+        print(f"DEBUG: Successfully created VLAN interface {interface_name}", file=sys.stderr, flush=True)
+        return True
+        
+    except subprocess.CalledProcessError as e:
+        print(f"DEBUG: Failed to ensure VLAN exists: {e.stderr}", file=sys.stderr, flush=True)
+        return False
+
+
 def ensure_network_root(netplan):
     if 'network' not in netplan or not isinstance(netplan['network'], dict):
         netplan['network'] = {}
@@ -164,14 +224,26 @@ def main():
         elif action == 'add_vlan':
             # Ensure parent link exists in ethernets
             link = config.get('link')
+            vlan_name = config.get('name')
+            vlan_id = config.get('id')
+            mtu = config.get('mtu')
+            
             if link:
                 add_empty_ethernets(network, [link])
             network.setdefault('vlans', {})
-            network['vlans'][config['name']] = {
-                'id': config['id'],
+            
+            vlan_config = {
+                'id': vlan_id,
                 'link': link,
                 'dhcp4': True
             }
+            
+            # Add MTU to VLAN configuration if specified
+            if mtu and isinstance(mtu, int) and 68 <= mtu <= 9000:
+                vlan_config['mtu'] = mtu
+                
+            network['vlans'][vlan_name] = vlan_config
+            
         elif action == 'add_bridge':
             members = list(config.get('interfaces') or [])
             add_empty_ethernets(network, members)
@@ -291,6 +363,8 @@ def main():
                 print(json.dumps({'error': 'MTU must be an integer between 68 and 9000'}), flush=True)
                 sys.exit(1)
             
+            print(f"DEBUG: Setting MTU {mtu_value} for interface {iface_name}", file=sys.stderr, flush=True)
+            
             # Determine the correct section based on interface type
             target_section = None
             target_config = None
@@ -319,29 +393,57 @@ def main():
                     target_config = network['bridges'][iface_name]
             elif '.' in iface_name and not iface_name.startswith('br'):
                 # VLAN interface - configure in vlans section
+                print(f"DEBUG: Detected VLAN interface: {iface_name}", file=sys.stderr, flush=True)
+                
                 if 'vlans' in network and iface_name in network['vlans']:
                     target_section = 'vlans'
                     target_config = network['vlans'][iface_name]
+                    print(f"DEBUG: Found existing VLAN config: {target_config}", file=sys.stderr, flush=True)
                 else:
                     # Create basic VLAN config if it doesn't exist
+                    print(f"DEBUG: Creating new VLAN config for {iface_name}", file=sys.stderr, flush=True)
                     network.setdefault('vlans', {})
                     parts = iface_name.split('.')
+                    link_interface = parts[0] if len(parts) > 0 else 'eth0'
+                    vlan_id = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 1
+                    
                     network['vlans'][iface_name] = {
-                        'id': int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 1,
-                        'link': parts[0] if len(parts) > 0 else 'eth0'
+                        'id': vlan_id,
+                        'link': link_interface
                     }
                     target_section = 'vlans'
                     target_config = network['vlans'][iface_name]
+                    
+                    # Ensure parent interface exists in ethernets
+                    add_empty_ethernets(network, [link_interface])
+                    print(f"DEBUG: Created VLAN config: {target_config}", file=sys.stderr, flush=True)
+                
+                # For VLAN interfaces, try to ensure the VLAN exists before setting MTU
+                if target_config and 'link' in target_config and 'id' in target_config:
+                    link_interface = target_config['link']
+                    vlan_id = target_config['id']
+                    print(f"DEBUG: Ensuring VLAN {iface_name} exists (link={link_interface}, id={vlan_id})", file=sys.stderr, flush=True)
+                    ensure_vlan_exists(iface_name, link_interface, vlan_id)
+                    
             else:
                 # Regular interface - configure in ethernets section
                 add_empty_ethernets(network, [iface_name])
                 target_section = 'ethernets'
                 target_config = network['ethernets'][iface_name]
             
-            # Set MTU
+            # Set MTU in netplan configuration
             if target_config is not None:
                 target_config['mtu'] = mtu_value
-                print(f"Set MTU {mtu_value} for {iface_name} in {target_section} section", file=sys.stderr, flush=True)
+                print(f"DEBUG: Set MTU {mtu_value} for {iface_name} in {target_section} section", file=sys.stderr, flush=True)
+                print(f"DEBUG: Updated config: {target_config}", file=sys.stderr, flush=True)
+                
+                # Try to apply MTU immediately (before netplan apply)
+                mtu_applied_immediately = set_interface_mtu_immediately(iface_name, mtu_value)
+                if mtu_applied_immediately:
+                    print(f"DEBUG: MTU applied immediately to {iface_name}", file=sys.stderr, flush=True)
+                else:
+                    print(f"DEBUG: MTU will be applied by netplan for {iface_name}", file=sys.stderr, flush=True)
+                
             else:
                 raise Exception(f"Could not determine configuration section for interface {iface_name}")
         else:
@@ -353,6 +455,14 @@ def main():
         
         apply_netplan()
         print(f"DEBUG: Successfully applied netplan", file=sys.stderr, flush=True)
+        
+        # For set_mtu action on VLAN interfaces, try to apply MTU again after netplan apply
+        # This handles cases where the VLAN interface was created by netplan
+        if action == 'set_mtu' and '.' in iface_name and not iface_name.startswith('br'):
+            print(f"DEBUG: Post-netplan MTU application for VLAN {iface_name}", file=sys.stderr, flush=True)
+            mtu_applied_post = set_interface_mtu_immediately(iface_name, mtu_value)
+            if mtu_applied_post:
+                print(f"DEBUG: MTU successfully applied post-netplan to {iface_name}", file=sys.stderr, flush=True)
         
         # Always output clean JSON to stdout
         print(json.dumps({'result': 'success'}), file=sys.stdout, flush=True)
