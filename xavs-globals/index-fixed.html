@@ -13,15 +13,41 @@
       <div class="col-md-12">
         
         <!-- Header -->
-
+        <div class="page-header mb-4">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <h1>XAVS Globals Configuration</h1>
+              <p class="lead mb-0">Comprehensive OpenStack-Ansible deployment configuration management</p>
+            </div>
+            <div class="text-end">
+              <small class="text-muted">Version 1.0</small>
+            </div>
+          </div>
+        </div>
 
         <!-- Status Panel -->
         <div id="status_panel" class="alert alert-info">Loading application...</div>
 
         <!-- Main Configuration Panel -->
-          
-
-          
+        <div class="card">
+          <div class="card-header">
+            <div class="d-flex justify-content-between align-items-center">
+              <h3 class="card-title mb-0">
+                OpenStack Configuration Settings
+              </h3>
+              <div class="btn-group btn-group-sm">
+                <button type="button" id="load_config_btn" class="btn btn-outline-secondary" title="Load Saved Configuration">
+                  Load
+                </button>
+                <button type="button" id="preview_config_btn" class="btn btn-outline-info" title="Preview Configuration">
+                  Preview
+                </button>
+                <button type="button" id="download_config_btn" class="btn btn-outline-success" title="Download Configuration">
+                  Export
+                </button>
+              </div>
+            </div>
+          </div>
           <div class="card-body">
             
             <!-- Dynamic Form Container -->
@@ -35,22 +61,7 @@
             </div>
             
           </div>
-          <!-- Configuration Toolbar -->
-          <div class="card-header border-top config-toolbar">
-            <div class="d-flex justify-content-between align-items-center">
-              <div class="btn-group" role="group">
-                <button type="button" id="load_config_btn" class="btn btn-outline-primary btn-load" title="Load previously saved configuration">
-                  <span class="icon-placeholder"></span>Load Configuration
-                </button>
-                <button type="button" id="preview_config_btn" class="btn btn-outline-info btn-preview" title="Preview current configuration as YAML">
-                  <span class="icon-placeholder"></span>Preview YAML
-                </button>
-                <button type="button" id="download_config_btn" class="btn btn-outline-success btn-export" title="Download current configuration as YAML file">
-                  <span class="icon-placeholder"></span>Export YAML
-                </button>
-              </div>
-            </div>
-          </div>          
+          
           <!-- Action Buttons Footer -->
           <div class="card-footer bg-light">
             <div class="d-flex justify-content-between align-items-center">

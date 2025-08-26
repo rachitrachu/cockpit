@@ -1,18 +1,18 @@
 // XAVS Globals Configuration - Complete Production Version
-// This version includes the full OpenStack-Ansible configuration schema
+// This version includes the full XAVS configuration schema
 
 console.log('XAVS Globals Production app starting...');
 
-// Complete CONFIG_SCHEMA for OpenStack-Ansible
+// Complete CONFIG_SCHEMA for XAVS
 const CONFIG_SCHEMA = {
     network: {
         title: 'Network Configuration',
-        description: 'Core networking settings for OpenStack deployment',
+        description: 'Core networking settings for XAVS deployment',
         fields: {
             network_interface: {
                 type: 'text',
                 label: 'Management Network Interface',
-                description: 'Primary network interface for OpenStack management traffic',
+                description: 'Primary network interface for XAVS management traffic',
                 default: 'eth0',
                 required: true,
                 validation: /^[a-zA-Z0-9-_.]+$/
@@ -279,6 +279,59 @@ const CONFIG_SCHEMA = {
                 default: 'yes'
             }
         }
+    },
+    custom: {
+        title: 'Custom Configuration',
+        description: 'Add your own custom YAML configuration that will be appended to the generated file',
+        fields: {
+            custom_yaml: {
+                type: 'textarea',
+                label: 'Custom YAML Configuration',
+                description: `<div class="custom-config-help">
+                    <h6>🔧 Custom YAML Guidelines:</h6>
+                    <ul>
+                        <li>Use proper YAML syntax with <code>key: value</code> format</li>
+                        <li>Use 2 spaces for indentation (no tabs)</li>
+                        <li>For lists, use <code>- item</code> format</li>
+                        <li>Avoid duplicating keys from other sections</li>
+                        <li>Test your YAML syntax before saving</li>
+                    </ul>
+                </div>`,
+                placeholder: `# Add your custom configuration here
+# Example - Custom service settings:
+custom_service_enabled: yes
+custom_database_settings:
+  max_connections: 500
+  timeout: 30
+
+# Example - Additional variables:
+custom_variables:
+  - name: "custom_var1"
+    value: "custom_value1"
+  - name: "custom_var2"
+    value: "custom_value2"
+
+# Example - Environment overrides:
+environment_overrides:
+  CUSTOM_ENV_VAR: "production"
+  DEBUG_MODE: "false"`,
+                rows: 15,
+                required: false,
+                validation: null
+            },
+            custom_comments: {
+                type: 'textarea',
+                label: 'Documentation & Comments',
+                description: 'Add documentation explaining what your custom configuration does. This will be added as comments in the YAML file.',
+                placeholder: `Document your custom configuration here:
+- What does this configuration do?
+- Why was it added?
+- Any special requirements or dependencies?
+- Contact information for questions`,
+                rows: 6,
+                required: false
+            }
+        }
     }
 };
 
@@ -305,8 +358,8 @@ class FormGenerator {
                 <div class="row">
                     <div class="col-12 mb-4">
                         <div class="alert alert-info">
-                            <h5 class="alert-heading">OpenStack-Ansible Configuration</h5>
-                            <p class="mb-0">Configure your XAVS OpenStack deployment settings. Required fields are marked with <span class="text-danger">*</span></p>
+                            <h5 class="alert-heading">XAVS Configuration</h5>
+                            <p class="mb-0">Configure your XAVS deployment settings. Required fields are marked with <span class="text-danger">*</span></p>
                         </div>
                     </div>
                 </div>
@@ -351,41 +404,74 @@ class FormGenerator {
                 for (const [fieldKey, field] of Object.entries(section.fields)) {
                     const fieldId = `${sectionKey}_${fieldKey}`;
                     const requiredMark = field.required ? '<span class="text-danger">*</span>' : '';
-                    const colClass = field.type === 'textarea' ? 'col-12' : 'col-md-6';
                     
-                    formHtml += `
-                        <div class="${colClass} mb-3">
-                            <label for="${fieldId}" class="form-label">${field.label} ${requiredMark}</label>
-                    `;
-                    
-                    // Generate appropriate input based on field type
-                    if (field.type === 'select') {
-                        formHtml += `<select class="form-control" id="${fieldId}" name="${fieldId}" ${field.required ? 'required' : ''}>`;
-                        for (const option of field.options) {
-                            const selected = option === field.default ? 'selected' : '';
-                            formHtml += `<option value="${option}" ${selected}>${option}</option>`;
+                    // Special handling for custom configuration section
+                    if (sectionKey === 'custom') {
+                        formHtml += `
+                            <div class="col-12 mb-4">
+                                <label for="${fieldId}" class="form-label fw-bold">${field.label} ${requiredMark}</label>
+                        `;
+                        
+                        if (field.type === 'textarea') {
+                            const rows = field.rows || 4;
+                            const placeholder = field.placeholder ? `placeholder="${field.placeholder.replace(/"/g, '&quot;')}"` : '';
+                            formHtml += `<textarea class="form-control font-monospace" id="${fieldId}" name="${fieldId}" 
+                                                   rows="${rows}" ${placeholder}
+                                                   ${field.required ? 'required' : ''}>${field.default || ''}</textarea>`;
+                        } else {
+                            formHtml += `<input type="text" class="form-control" id="${fieldId}" name="${fieldId}" 
+                                               value="${field.default || ''}" ${field.required ? 'required' : ''}>`;
                         }
-                        formHtml += `</select>`;
-                    } else if (field.type === 'number') {
-                        const minAttr = field.min !== undefined ? `min="${field.min}"` : '';
-                        const maxAttr = field.max !== undefined ? `max="${field.max}"` : '';
-                        formHtml += `<input type="number" class="form-control" id="${fieldId}" name="${fieldId}" 
-                                           value="${field.default || ''}" ${minAttr} ${maxAttr} 
-                                           ${field.required ? 'required' : ''}>`;
-                    } else if (field.type === 'textarea') {
-                        formHtml += `<textarea class="form-control" id="${fieldId}" name="${fieldId}" rows="4" 
-                                               ${field.required ? 'required' : ''}>${field.default || ''}</textarea>`;
+                        
+                        // Add help text for custom section after the input
+                        if (field.description && field.description.includes('<div class="custom-config-help">')) {
+                            formHtml += `<div class="mt-3">${field.description}</div>`;
+                        } else if (field.description) {
+                            formHtml += `<div class="form-text">${field.description}</div>`;
+                        }
+                        
+                        formHtml += `</div>`;
                     } else {
-                        // Default to text input
-                        formHtml += `<input type="text" class="form-control" id="${fieldId}" name="${fieldId}" 
-                                           value="${field.default || ''}" ${field.required ? 'required' : ''}>`;
+                        // Standard field handling for other sections
+                        const colClass = field.type === 'textarea' ? 'col-12' : 'col-md-6';
+                        
+                        formHtml += `
+                            <div class="${colClass} mb-3">
+                                <label for="${fieldId}" class="form-label">${field.label} ${requiredMark}</label>
+                        `;
+                        
+                        // Generate appropriate input based on field type
+                        if (field.type === 'select') {
+                            formHtml += `<select class="form-control" id="${fieldId}" name="${fieldId}" ${field.required ? 'required' : ''}>`;
+                            for (const option of field.options) {
+                                const selected = option === field.default ? 'selected' : '';
+                                formHtml += `<option value="${option}" ${selected}>${option}</option>`;
+                            }
+                            formHtml += `</select>`;
+                        } else if (field.type === 'number') {
+                            const minAttr = field.min !== undefined ? `min="${field.min}"` : '';
+                            const maxAttr = field.max !== undefined ? `max="${field.max}"` : '';
+                            formHtml += `<input type="number" class="form-control" id="${fieldId}" name="${fieldId}" 
+                                               value="${field.default || ''}" ${minAttr} ${maxAttr} 
+                                               ${field.required ? 'required' : ''}>`;
+                        } else if (field.type === 'textarea') {
+                            const rows = field.rows || 4;
+                            const placeholder = field.placeholder ? `placeholder="${field.placeholder.replace(/"/g, '&quot;')}"` : '';
+                            formHtml += `<textarea class="form-control font-monospace" id="${fieldId}" name="${fieldId}" 
+                                                   rows="${rows}" ${placeholder}
+                                                   ${field.required ? 'required' : ''}>${field.default || ''}</textarea>`;
+                        } else {
+                            // Default to text input
+                            formHtml += `<input type="text" class="form-control" id="${fieldId}" name="${fieldId}" 
+                                               value="${field.default || ''}" ${field.required ? 'required' : ''}>`;
+                        }
+                        
+                        if (field.description && !field.description.includes('<div class="custom-config-help">')) {
+                            formHtml += `<div class="form-text">${field.description}</div>`;
+                        }
+                        
+                        formHtml += `</div>`;
                     }
-                    
-                    if (field.description) {
-                        formHtml += `<div class="form-text">${field.description}</div>`;
-                    }
-                    
-                    formHtml += `</div>`;
                 }
                 
                 formHtml += `
@@ -500,48 +586,10 @@ function showStatus(message, type = 'info') {
     }
 }
 
-// Test file write functionality
-async function testFileWrite() {
-    console.log('Starting test file write...');
-    showStatus('Testing file write capability...', 'info');
-    
-    try {
-        const testContent = `# Test configuration file
-# Generated on: ${new Date().toISOString()}
-
-test:
-  timestamp: "${new Date().toISOString()}"
-  message: "File write test successful"
-`;
-        
-        const testPath = '/tmp/xavs-globals-test.yml';
-        
-        console.log('Writing test file to:', testPath);
-        
-        // Use the proven xos-networking pattern
-        const escapedContent = testContent.replace(/'/g, "'\\''");
-        const command = `echo '${escapedContent}' > "${testPath}"`;
-        
-        await cockpit.spawn(['bash', '-c', command], {
-            superuser: 'try',
-            err: 'out'
-        });
-        
-        console.log('Test file write completed');
-        showStatus('Test file write successful!', 'success');
-        return true;
-        
-    } catch (error) {
-        console.error('Test file write failed:', error);
-        showStatus('Test file write failed: ' + error.message, 'danger');
-        throw error;
-    }
-}
-
 // Enhanced YAML generation for OpenStack-Ansible
 function generateYamlContent(config) {
     let yamlContent = '---\n';
-    yamlContent += '# OpenStack-Ansible User Variables\n';
+    yamlContent += '# XAVS Global Configuration Variables\n';
     yamlContent += '# Generated by XAVS Globals Configuration Manager\n';
     yamlContent += `# Generated on: ${new Date().toISOString()}\n`;
     yamlContent += `# Configuration version: 1.0\n\n`;
@@ -555,7 +603,8 @@ function generateYamlContent(config) {
         messaging: 'Message queue configuration',
         monitoring: 'Monitoring and logging configuration',
         security: 'Security and authentication configuration',
-        advanced: 'Advanced deployment configuration'
+        advanced: 'Advanced deployment configuration',
+        custom: 'User-defined custom configuration'
     };
     
     // Process each section
@@ -586,6 +635,18 @@ function generateYamlContent(config) {
             }
         }
         yamlContent += '\n';
+    }
+    
+    // Add custom configuration if provided
+    if (config.custom && config.custom.custom_yaml && config.custom.custom_yaml.trim()) {
+        yamlContent += '# Custom Configuration Section\n';
+        if (config.custom.custom_comments && config.custom.custom_comments.trim()) {
+            const comments = config.custom.custom_comments.trim().split('\n');
+            for (const comment of comments) {
+                yamlContent += `# ${comment}\n`;
+            }
+        }
+        yamlContent += config.custom.custom_yaml.trim() + '\n\n';
     }
     
     // Add footer comment
@@ -623,8 +684,8 @@ async function saveConfiguration() {
         console.log('YAML content length:', yamlContent.length);
         
         // Create backup of existing file if it exists
-        const filePath = '/etc/openstack_deploy/user_variables.yml';
-        const backupPath = `/etc/openstack_deploy/user_variables.yml.backup.${Date.now()}`;
+        const filePath = '/etc/xavs/globals.d/_99_xavs.yml';
+        const backupPath = `/etc/xavs/globals.d/_99_xavs.yml.backup.${Date.now()}`;
         
         showStatus('Creating backup and saving configuration...', 'info');
         
@@ -641,7 +702,7 @@ async function saveConfiguration() {
         
         // Save the new configuration
         const escapedContent = yamlContent.replace(/'/g, "'\\''");
-        const command = `mkdir -p "/etc/openstack_deploy" && echo '${escapedContent}' > "${filePath}"`;
+        const command = `mkdir -p "/etc/xavs/globals.d" && echo '${escapedContent}' > "${filePath}"`;
         
         await cockpit.spawn(['bash', '-c', command], {
             superuser: 'require',
@@ -659,7 +720,7 @@ async function saveConfiguration() {
             console.log('File size:', readContent.length, 'characters');
             console.log('Configuration sections saved:', Object.keys(config).length);
             
-            showStatus(`✅ Configuration saved successfully to ${filePath}`, 'success');
+            showStatus(`Configuration saved successfully to ${filePath}`, 'success');
             
             // Show summary of what was saved
             const summary = Object.entries(config)
@@ -674,7 +735,7 @@ async function saveConfiguration() {
         
     } catch (error) {
         console.error('Save configuration failed:', error);
-        showStatus('❌ Failed to save configuration: ' + error.message, 'danger');
+        showStatus('Failed to save configuration: ' + error.message, 'danger');
         throw error;
     }
 }
@@ -723,15 +784,7 @@ function setupEventListeners() {
     console.log('Setting up event listeners...');
     
     // Primary action buttons
-    const testBtn = document.getElementById('test_write');
     const saveBtn = document.getElementById('save');
-    
-    if (testBtn) {
-        testBtn.addEventListener('click', () => {
-            testFileWrite().catch(console.error);
-        });
-        console.log('Test Write button listener added');
-    }
     
     if (saveBtn) {
         saveBtn.addEventListener('click', () => {
@@ -761,10 +814,15 @@ function setupEventListeners() {
     }
     
     if (downloadBtn) {
-        downloadBtn.addEventListener('click', () => {
+        downloadBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            console.log('Download button clicked directly');
             downloadConfiguration();
         });
         console.log('Download Configuration button listener added');
+    } else {
+        console.warn('Download button not found!');
     }
     
     if (resetBtn) {
@@ -851,26 +909,50 @@ function previewConfiguration() {
 
 // Download configuration as YAML file
 function downloadConfiguration() {
+    console.log('Download configuration started...');
+    showStatus('Preparing configuration download...', 'info');
+    
     try {
         if (!formGenerator) {
             throw new Error('Form generator not initialized');
         }
         
+        console.log('Getting form data...');
         const config = formGenerator.getFormData();
-        const yamlContent = generateYamlContent(config);
+        console.log('Form data retrieved:', Object.keys(config));
         
-        // Create download
-        const blob = new Blob([yamlContent], { type: 'text/yaml' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `user_variables_${new Date().toISOString().split('T')[0]}.yml`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        console.log('Generating YAML content...');
+        const yamlContent = generateYamlContent(config);
+        console.log('YAML content generated, length:', yamlContent.length);
+        
+        // Create download with better browser compatibility
+        console.log('Creating blob...');
+        const blob = new Blob([yamlContent], { type: 'application/x-yaml' });
+        const url = window.URL.createObjectURL(blob);
+        console.log('Blob URL created:', url);
+        
+        // Create temporary download link
+        const downloadLink = document.createElement('a');
+        downloadLink.href = url;
+        downloadLink.download = `xavs_globals_${new Date().toISOString().split('T')[0]}.yml`;
+        downloadLink.style.display = 'none';
+        
+        console.log('Download link created:', downloadLink.download);
+        
+        // Add to document, click, and remove
+        document.body.appendChild(downloadLink);
+        console.log('Link added to document, triggering click...');
+        downloadLink.click();
+        
+        // Clean up
+        setTimeout(() => {
+            document.body.removeChild(downloadLink);
+            window.URL.revokeObjectURL(url);
+            console.log('Download cleanup completed');
+        }, 100);
         
         showStatus('Configuration downloaded successfully', 'success');
+        console.log('Download process completed successfully');
         
     } catch (error) {
         console.error('Download failed:', error);
@@ -884,7 +966,7 @@ async function loadSavedConfiguration() {
     showStatus('Loading saved configuration...', 'info');
     
     try {
-        const filePath = '/etc/openstack_deploy/user_variables.yml';
+        const filePath = '/etc/xavs/globals.d/_99_xavs.yml';
         const yamlFile = cockpit.file(filePath);
         const content = await yamlFile.read();
         
@@ -919,12 +1001,39 @@ function parseYamlToConfig(yamlContent) {
     console.log('Parsing YAML content...');
     const config = {};
     const lines = yamlContent.split('\n');
+    let customYaml = [];
+    let customComments = [];
+    let inCustomSection = false;
     
     try {
-        for (let line of lines) {
-            line = line.trim();
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i].trim();
             
-            // Skip comments, empty lines, and YAML document markers
+            // Check for custom configuration section
+            if (line.includes('# Custom Configuration Section')) {
+                inCustomSection = true;
+                continue;
+            }
+            
+            // Check for end of configuration
+            if (line.includes('# End of XAVS Globals Configuration')) {
+                inCustomSection = false;
+                break;
+            }
+            
+            // Handle custom section
+            if (inCustomSection) {
+                if (line.startsWith('#') && !line.includes('Custom Configuration Section')) {
+                    // Collect custom comments
+                    customComments.push(line.substring(1).trim());
+                } else if (line !== '') {
+                    // Collect custom YAML
+                    customYaml.push(lines[i]); // Keep original indentation
+                }
+                continue;
+            }
+            
+            // Skip comments, empty lines, and YAML document markers for standard config
             if (line.startsWith('#') || line === '' || line === '---') {
                 continue;
             }
@@ -955,6 +1064,14 @@ function parseYamlToConfig(yamlContent) {
                     config[section][key] = value;
                 }
             }
+        }
+        
+        // Add custom configuration if found
+        if (customYaml.length > 0 || customComments.length > 0) {
+            config.custom = {
+                custom_yaml: customYaml.join('\n'),
+                custom_comments: customComments.join('\n')
+            };
         }
         
         console.log('YAML parsing completed, found sections:', Object.keys(config));
@@ -1091,7 +1208,6 @@ function resetToDefaults() {
 
 // Export functions for global access
 window.saveConfiguration = saveConfiguration;
-window.testFileWrite = testFileWrite;
 window.previewConfiguration = previewConfiguration;
 window.downloadConfiguration = downloadConfiguration;
 window.loadSavedConfiguration = loadSavedConfiguration;

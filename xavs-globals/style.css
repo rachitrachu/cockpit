@@ -577,3 +577,225 @@ body {
         color: black;
     }
 }
+
+/* Configuration Toolbar Enhancements */
+.config-toolbar {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-bottom: 1px solid #dee2e6;
+    padding: 15px 20px;
+    position: relative;
+}
+
+.config-toolbar::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 20px;
+    right: 20px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, #007bff 50%, transparent 100%);
+}
+
+.config-toolbar .btn {
+    min-width: 150px;
+    font-weight: 500;
+    transition: all 0.3s ease-in-out;
+    border-width: 2px;
+    padding: 8px 16px;
+}
+
+.config-toolbar .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+}
+
+.config-toolbar .btn:active {
+    transform: translateY(0);
+}
+
+.card.shadow-sm {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+    border: none;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.card-header.bg-white {
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%) !important;
+    border-bottom: 2px solid #e9ecef !important;
+}
+
+.badge.bg-primary {
+    background: linear-gradient(45deg, #007bff, #0056b3) !important;
+    font-size: 0.75rem;
+    padding: 4px 8px;
+}
+
+.config-toolbar .btn-outline-primary:hover {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+    color: white;
+}
+
+.config-toolbar .btn-outline-info:hover {
+    background-color: #0dcaf0;
+    border-color: #0dcaf0;
+    color: white;
+}
+
+.config-toolbar .btn-outline-success:hover {
+    background-color: #198754;
+    border-color: #198754;
+    color: white;
+}
+
+/* Icon spacing for buttons without Font Awesome */
+.btn .icon-placeholder {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    margin-right: 8px;
+    background-size: contain;
+    vertical-align: middle;
+}
+
+.btn-load .icon-placeholder {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='%23666' d='M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z'/%3E%3Cpath fill='%23666' d='M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z'/%3E%3C/svg%3E");
+}
+
+.btn-preview .icon-placeholder {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='%23666' d='M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z'/%3E%3Cpath fill='%23666' d='M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z'/%3E%3C/svg%3E");
+}
+
+.btn-export .icon-placeholder {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='%23666' d='M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z'/%3E%3Cpath fill='%23666' d='M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z'/%3E%3C/svg%3E");
+}
+
+/* Custom Configuration Styling */
+.font-monospace {
+    font-family: 'Courier New', Courier, monospace !important;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+#custom_custom_yaml {
+    background-color: #f8f9fa;
+    border: 2px dashed #dee2e6;
+    min-height: 300px;
+    resize: vertical;
+    width: 100%;
+    max-width: 100%;
+}
+
+#custom_custom_yaml:focus {
+    background-color: #ffffff;
+    border-color: #007bff;
+    border-style: solid;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+#custom_custom_comments {
+    background-color: #fff3cd;
+    border-color: #ffeaa7;
+    width: 100%;
+    max-width: 100%;
+}
+
+.custom-config-help {
+    background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+    border: 1px solid #bbdefb;
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 10px;
+    margin-bottom: 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.custom-config-help h6 {
+    color: #1976d2;
+    margin-bottom: 10px;
+    font-size: 1rem;
+}
+
+.custom-config-help ul {
+    margin-bottom: 0;
+    padding-left: 20px;
+}
+
+.custom-config-help li {
+    margin-bottom: 5px;
+}
+
+.custom-config-help code {
+    background-color: rgba(255, 255, 255, 0.8);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    color: #d63384;
+}
+
+/* Ensure proper container width for custom section */
+#custom-pane .row {
+    margin-left: 0;
+    margin-right: 0;
+    width: 100%;
+}
+
+#custom-pane .col-12 {
+    padding-left: 15px;
+    padding-right: 15px;
+    width: 100%;
+    max-width: 100%;
+}
+
+/* Responsive adjustments for custom configuration */
+@media (max-width: 768px) {
+    .custom-config-help {
+        margin-left: -15px;
+        margin-right: -15px;
+        border-radius: 0;
+    }
+    
+    #custom_custom_yaml,
+    #custom_custom_comments {
+        margin-left: 0;
+        margin-right: 0;
+    }
+}
+
+/* General tab content improvements */
+.tab-content {
+    overflow-x: hidden;
+    width: 100%;
+}
+
+.tab-pane {
+    width: 100%;
+    max-width: 100%;
+}
+
+.tab-pane .card {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+}
+
+.tab-pane .card-body {
+    padding: 20px;
+    overflow-x: hidden;
+}
+
+/* Fix form control widths */
+.form-control {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+/* Label improvements */
+.form-label.fw-bold {
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 8px;
+}
