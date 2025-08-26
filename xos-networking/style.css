@@ -836,22 +836,40 @@ dialog::backdrop {
 }
 
 /* Icon system for reliable cross-browser compatibility */
-.icon-check::before { content: "?"; color: var(--success-color); }
-.icon-cross::before { content: "?"; color: var(--danger-color); }
-.icon-tick::before { content: "?"; color: var(--success-color); }
-.icon-cancel::before { content: "?"; color: var(--danger-color); }
-.icon-success::before { content: "?"; color: var(--success-color); }
-.icon-error::before { content: "?"; color: var(--danger-color); }
-.icon-warning::before { content: "?"; color: var(--warning-color); }
-.icon-info::before { content: "?"; color: var(--info-color); }
+.icon-check::before { content: "\2713"; color: var(--success-color); font-weight: bold; }
+.icon-cross::before { content: "\2717"; color: var(--danger-color); font-weight: bold; }
+.icon-tick::before { content: "\2713"; color: var(--success-color); font-weight: bold; }
+.icon-cancel::before { content: "\2717"; color: var(--danger-color); font-weight: bold; }
+.icon-success::before { content: "\2713"; color: var(--success-color); font-weight: bold; }
+.icon-error::before { content: "\2717"; color: var(--danger-color); font-weight: bold; }
+.icon-warning::before { content: "\26A0"; color: var(--warning-color); }
+.icon-info::before { content: "\2139"; color: var(--info-color); }
+
+/* Alternative using HTML entities */
+.symbol-check::after { content: "?"; }
+.symbol-cross::after { content: "?"; }
+.symbol-ok::after { content: "?"; }
+.symbol-error::after { content: "?"; }
+
+/* Text-based fallback for maximum compatibility */
+.fallback-check::before { content: "[OK]"; color: var(--success-color); font-weight: bold; }
+.fallback-cross::before { content: "[X]"; color: var(--danger-color); font-weight: bold; }
+.fallback-success::before { content: "[SUCCESS]"; color: var(--success-color); font-weight: bold; }
+.fallback-error::before { content: "[ERROR]"; color: var(--danger-color); font-weight: bold; }
+
+/* Force font fallbacks for better Unicode support */
+.unicode-symbol {
+  font-family: "Segoe UI Symbol", "Symbola", "DejaVu Sans", "Apple Color Emoji", "Noto Color Emoji", serif;
+  font-feature-settings: normal;
+}
 
 /* Fallback for systems that don't support Unicode symbols */
-@media screen and (-webkit-min-device-pixel-ratio:0) {
+@supports not (content: "\2713") {
   .icon-check::before { content: "[OK]"; }
   .icon-cross::before { content: "[X]"; }
   .icon-tick::before { content: "[OK]"; }
   .icon-cancel::before { content: "[X]"; }
-  .icon-success::before { content: "[OK]"; }
+  .icon-success::before { content: "[SUCCESS]"; }
   .icon-error::before { content: "[ERROR]"; }
   .icon-warning::before { content: "[WARN]"; }
   .icon-info::before { content: "[INFO]"; }
@@ -864,6 +882,9 @@ dialog::backdrop {
   height: 1em;
   vertical-align: middle;
   margin-right: 0.25em;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
 }
 
 .icon-svg.check {
@@ -873,6 +894,16 @@ dialog::backdrop {
 .icon-svg.cross {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='%23dc3545' viewBox='0 0 16 16'%3E%3Cpath d='M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
 }
+
+.icon-svg.warning {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='%23ffc107' viewBox='0 0 16 16'%3E%3Cpath d='M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z'/%3E%3C/svg%3E");
+}
+
+/* Utility classes for easy symbol usage */
+.text-success { color: var(--success-color) !important; }
+.text-error { color: var(--danger-color) !important; }
+.text-warning { color: var(--warning-color) !important; }
+.text-info { color: var(--info-color) !important; }
 
 /* Fix Unicode rendering issues */
 body {
@@ -889,4 +920,5 @@ body {
 *::before,
 *::after {
   font-feature-settings: normal;
+  font-family: inherit;
 }

@@ -4,7 +4,7 @@
 (() => {
   'use strict';
 
-  const { $, setStatus, run, getSymbol, createSymbolMessage } = XOSNetworking.core;
+  const { $, setStatus, run, getSymbol, createSymbolMessage, createSymbolElement, createSVGSymbol } = XOSNetworking.core;
   const { setupModal } = XOSNetworking.modals;
   const { 
     applyNetplan, 
@@ -74,7 +74,7 @@
         const modal = document.createElement('dialog');
         modal.innerHTML = `
           <div class="modal-content">
-            <h2>?? ${result.filename}</h2>
+            <h2><span class="simple-info"></span>${result.filename}</h2>
             <div style="margin: 1rem 0;">
               <label>
                 <span style="font-weight: 500;">Configuration Content:</span>
@@ -82,7 +82,9 @@
               </label>
             </div>
             <div class="modal-buttons">
-              <button type="button" class="btn primary" id="close-config-modal">${getSymbol('success')} Close</button>
+              <button type="button" class="btn primary" id="close-config-modal">
+                <span class="simple-check"></span>Close
+              </button>
             </div>
           </div>
         `;
@@ -106,14 +108,14 @@
     const btnApplyNetplan = $('#btn-apply-netplan');
     if (btnApplyNetplan) {
       btnApplyNetplan.addEventListener('click', async () => {
-        if (!confirm(createSymbolMessage('warning', 'Apply Netplan configuration?\n\nThis may temporarily disrupt network connectivity while the configuration is applied.'))) return;
+        if (!confirm('[!] Apply Netplan configuration?\n\nThis may temporarily disrupt network connectivity while the configuration is applied.')) return;
         
         const result = await applyNetplan();
         
         if (result.error) {
-          alert(createSymbolMessage('error', `Failed to apply Netplan configuration:\n${result.error}`));
+          alert(`[ERROR] Failed to apply Netplan configuration:\n${result.error}`);
         } else {
-          alert(createSymbolMessage('success', 'Netplan configuration applied successfully!\n\nNetwork interfaces have been reconfigured.'));
+          alert('[SUCCESS] Netplan configuration applied successfully!\n\nNetwork interfaces have been reconfigured.');
         }
       });
     }
@@ -125,9 +127,9 @@
         const result = await testNetplan();
         
         if (result.error) {
-          alert(createSymbolMessage('error', `Netplan test failed:\n${result.error}\n\nCheck console for details.`));
+          alert(`[ERROR] Netplan test failed:\n${result.error}\n\nCheck console for details.`);
         } else {
-          alert(createSymbolMessage('success', 'Netplan test successful!\n\nCheck /etc/netplan/99-cockpit.yaml for changes.'));
+          alert('[SUCCESS] Netplan test successful!\n\nCheck /etc/netplan/99-cockpit.yaml for changes.');
         }
       });
     }
@@ -168,20 +170,26 @@
         
         // Show success message with details
         const modal = document.createElement('dialog');
+        modal.className = 'backup-modal';
         modal.innerHTML = `
           <div class="modal-content">
-            <h2>? Backup Created Successfully</h2>
-            <div style="margin: 1rem 0;">
-              <p><strong>?? Backup File:</strong><br><code>${result.backupFile}</code></p>
-              <p><strong>?? File Details:</strong><br><code>${result.backupInfo}</code></p>
+            <h2><span class="simple-check"></span>Backup Created Successfully</h2>
+            <div class="file-info">
+              <p><strong>Backup File:</strong><br><code>${result.backupFile}</code></p>
+              <p><strong>File Details:</strong><br><code>${result.backupInfo}</code></p>
               <details>
-                <summary><strong>?? Recent Backups</strong></summary>
+                <summary><strong>Recent Backups</strong></summary>
                 <pre style="background: #f8f9fa; padding: 1rem; border-radius: 4px; font-size: 0.875rem; max-height: 200px; overflow-y: auto;">${result.backupList}</pre>
               </details>
-              <p><strong>?? Next Steps:</strong><br>To restore from this backup, use the command:<br><code>sudo tar -xzf ${result.backupFile} -C /etc/netplan/</code></p>
+              <div class="command-example">
+                <strong>To restore from this backup:</strong><br>
+                sudo tar -xzf ${result.backupFile} -C /etc/netplan/
+              </div>
             </div>
             <div class="modal-buttons">
-              <button type="button" class="btn primary" id="close-backup-modal">? Close</button>
+              <button type="button" class="btn primary btn-with-text-icon" id="close-backup-modal">
+                <span class="simple-check"></span>Close
+              </button>
             </div>
           </div>
         `;
@@ -276,207 +284,4 @@
           return;
         }
         
-        // Write the configuration
-        if (typeof config === 'string') {
-          // Direct YAML content
-          await cockpit.spawn([
-            'bash', '-c', `echo '${config.replace(/'/g, "'\\''")}' > /etc/netplan/99-cockpit.yaml`
-          ], {
-            superuser: 'require',
-            err: 'out'
-          });
-        } else {
-          // JSON config - convert to netplan action
-          // This is a simplified approach - you might want to enhance this
-          alert('?? JSON import not fully implemented yet. Please use YAML format.');
-          setStatus('Ready');
-          return;
-        }
-        
-        // Apply the configuration
-        await run('netplan', ['apply'], { superuser: 'require' });
-        
-        alert('? Configuration imported and applied successfully!\n\nReloading interfaces...');
-        
-        // Refresh interfaces and forms
-        if (window.XOSNetworking.networkInterface?.loadInterfaces) {
-          await window.XOSNetworking.networkInterface.loadInterfaces();
-        }
-        if (window.XOSNetworking.forms?.setupNetworkingForms) {
-          await window.XOSNetworking.forms.setupNetworkingForms();
-        }
-        
-      } catch (error) {
-        console.error('Import failed:', error);
-        alert(`? Failed to import configuration:\n${error.message || error}`);
-      } finally {
-        setStatus('Ready');
-        document.body.removeChild(input);
-      }
-    });
-    
-    document.body.appendChild(input);
-    input.click();
-  }
-
-  // Export configuration functionality
-  async function exportConfiguration() {
-    try {
-      setStatus('Exporting configuration...');
-      
-      // Show export options
-      const exportType = await new Promise((resolve) => {
-        const modal = document.createElement('dialog');
-        modal.innerHTML = `
-          <div class="modal-content">
-            <h2>?? Export Network Configuration</h2>
-            <p>Choose what to export:</p>
-            
-            <div style="margin: 1rem 0;">
-              <label style="display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: var(--border-radius); cursor: pointer;">
-                <input type="radio" name="export-type" value="cockpit" checked>
-                <div>
-                  <strong>?? XOS Networking Config</strong> (99-cockpit.yaml only)
-                  <br><small style="color: var(--muted-color);">Export only the XOS Networking configuration file</small>
-                </div>
-              </label>
-              <label style="display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: var(--border-radius); cursor: pointer;">
-                <input type="radio" name="export-type" value="all">
-                <div>
-                  <strong>?? All Netplan Files</strong> (entire /etc/netplan/ directory)
-                  <br><small style="color: var(--muted-color);">Export all netplan configuration files</small>
-                </div>
-              </label>
-              <label style="display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: var(--border-radius); cursor: pointer;">
-                <input type="radio" name="export-type" value="current">
-                <div>
-                  <strong>?? Current Network State</strong> (live interface configuration)
-                  <br><small style="color: var(--muted-color);">Export current runtime network configuration</small>
-                </div>
-              </label>
-            </div>
-            
-            <div class="modal-buttons">
-              <button type="button" class="btn" id="export-cancel">? Cancel</button>
-              <button type="button" class="btn primary" id="export-confirm">?? Export</button>
-            </div>
-          </div>
-        `;
-        
-        document.body.appendChild(modal);
-        setupModal(modal);
-        
-        // Handle cancel button
-        modal.querySelector('#export-cancel').addEventListener('click', () => {
-          resolve(null);
-          modal.close();
-        });
-        
-        modal.querySelector('#export-confirm').addEventListener('click', () => {
-          const selected = modal.querySelector('input[name="export-type"]:checked');
-          resolve(selected ? selected.value : 'cockpit');
-          modal.close();
-        });
-        
-        modal.showModal();
-      });
-      
-      if (!exportType) {
-        setStatus('Ready');
-        return;
-      }
-      
-      let config = '';
-      let filename = 'netplan-export.yaml';
-      
-      if (exportType === 'cockpit') {
-        // Export only XOS Networking config
-        try {
-          config = await run('cat', ['/etc/netplan/99-cockpit.yaml'], { superuser: 'try' });
-          filename = '99-cockpit.yaml';
-        } catch (e) {
-          config = '# No XOS Networking configuration found\n# Generated by XOS Networking\nnetwork:\n  version: 2\n  renderer: networkd\n\n';
-          filename = '99-cockpit-empty.yaml';
-        }
-      } else if (exportType === 'all') {
-        // Export all netplan files
-        try {
-          const allConfigs = await run('bash', ['-c', 'for f in /etc/netplan/*.yaml; do echo "# --- $f ---"; cat "$f" 2>/dev/null; echo; done'], { superuser: 'try' });
-          config = allConfigs;
-          filename = 'netplan-all-configs.yaml';
-        } catch (e) {
-          config = '# No netplan configuration found\n';
-          filename = 'netplan-all-empty.yaml';
-        }
-      } else if (exportType === 'current') {
-        // Export current network state
-        try {
-          const interfaces = await run('ip', ['-details', 'addr', 'show']);
-          const routes = await run('ip', ['route']);
-          const dns = await run('cat', ['/etc/resolv.conf']).catch(() => '# DNS info not available');
-          
-          config = `# Current Network State Export
-# Generated by XOS Networking on ${new Date().toISOString()}
-# This is NOT a netplan configuration file - it's a snapshot of current network state
-
-# === INTERFACE INFORMATION ===
-${interfaces}
-
-# === ROUTING TABLE ===
-${routes}
-
-# === DNS CONFIGURATION ===
-${dns}`;
-          filename = 'network-state-snapshot.txt';
-        } catch (e) {
-          throw new Error('Failed to gather current network state: ' + e);
-        }
-      }
-      
-      // Add timestamp and metadata (except for current state which has its own header)
-      if (exportType !== 'current') {
-        const timestamp = new Date().toISOString();
-        const header = `# Netplan Configuration Export
-# Generated by XOS Networking on ${timestamp}
-# Hostname: ${window.location.hostname}
-# Export Type: ${exportType}
-
-`;
-        config = header + config;
-      }
-      
-      // Create download
-      const mimeType = filename.endsWith('.txt') ? 'text/plain' : 'text/yaml';
-      const blob = new Blob([config], { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
-      alert(`? Configuration exported successfully!\n\n?? File: ${filename}\n?? Size: ${config.length} bytes\n?? Type: ${exportType}`);
-      
-    } catch (error) {
-      console.error('Export failed:', error);
-      alert(`? Failed to export configuration:\n${error.message || error}`);
-    } finally {
-      setStatus('Ready');
-    }
-  }
-
-  // Export event handler functions
-  window.XOSNetworking.eventHandlers = {
-    setupEventHandlers,
-    setupMainButtons,
-    setupNetplanButtons,
-    setupImportExportButtons,
-    importConfiguration,
-    exportConfiguration
-  };
-
-})();
+        // Writer

@@ -11,6 +11,7 @@
 
   <!-- Styles -->
   <link href="style.css" rel="stylesheet">
+  <link href="fallback-icons.css" rel="stylesheet">
   
   <!-- Icons (using Unicode emojis for now, can be replaced with icon font) -->
   <style>
@@ -19,12 +20,18 @@
     /* Force UTF-8 encoding */
     @charset "UTF-8";
     
-    /* Ensure proper symbol rendering */
-    .symbol-check::after { content: "✓"; color: #28a745; }
-    .symbol-cross::after { content: "✗"; color: #dc3545; }
-    .symbol-ok::after { content: "✅"; }
-    .symbol-error::after { content: "❌"; }
-    .symbol-warning::after { content: "⚠️"; }
+    /* Simple text-based symbols that always work */
+    .simple-check { color: #28a745; font-weight: bold; }
+    .simple-check::before { content: "[OK] "; }
+    
+    .simple-cross { color: #dc3545; font-weight: bold; }
+    .simple-cross::before { content: "[X] "; }
+    
+    .simple-warning { color: #ffc107; font-weight: bold; }
+    .simple-warning::before { content: "[!] "; }
+    
+    .simple-info { color: #17a2b8; font-weight: bold; }
+    .simple-info::before { content: "[i] "; }
   </style>
 </head>
 <body>
@@ -279,6 +286,7 @@
     </footer>
   </div>
   <!-- JavaScript Modules (loaded in order) -->
+  <script src="unicode-fix.js"></script>
   <script src="js/core.js"></script>
   <script src="js/modals.js"></script>
   <script src="js/netplan.js"></script>

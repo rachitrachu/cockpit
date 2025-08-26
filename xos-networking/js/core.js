@@ -161,16 +161,16 @@ window.XOSNetworking = window.XOSNetworking || {};
   // Symbol helper functions for cross-browser compatibility
   function getSymbol(type) {
     const symbols = {
-      check: '?',
-      cross: '?', 
-      tick: '?',
-      cancel: '?',
-      success: '?',
-      error: '?',
-      warning: '??',
-      info: '??',
-      ok: 'OK',
-      fail: 'FAIL'
+      check: '\u2713',      // ?
+      cross: '\u2717',      // ?
+      tick: '\u2713',       // ?
+      cancel: '\u2717',     // ?
+      success: '\u2713',    // ? (using check mark instead of emoji)
+      error: '\u2717',      // ? (using X instead of emoji)
+      warning: '\u26A0',    // ?
+      info: '\u2139',       // ?
+      ok: '\u2713',         // ?
+      fail: '\u2717'        // ?
     };
     
     // Fallback for systems with poor Unicode support
@@ -187,30 +187,98 @@ window.XOSNetworking = window.XOSNetworking || {};
       fail: '[FAIL]'
     };
     
-    // Test if Unicode symbols are supported
-    const testElement = document.createElement('span');
-    testElement.style.visibility = 'hidden';
-    testElement.style.position = 'absolute';
-    testElement.textContent = symbols.check || '?';
-    document.body.appendChild(testElement);
+    // Test if Unicode symbols are supported by creating a test element
+    function testUnicodeSupport() {
+      const testElement = document.createElement('span');
+      testElement.style.cssText = 'position:absolute;left:-9999px;visibility:hidden;font-family:"Segoe UI Symbol","Symbola","DejaVu Sans",serif;';
+      testElement.innerHTML = '&check;'; // HTML entity for check mark
+      document.body.appendChild(testElement);
+      
+      const rect = testElement.getBoundingClientRect();
+      const hasWidth = rect.width > 0;
+      document.body.removeChild(testElement);
+      
+      return hasWidth;
+    }
     
-    const supportsUnicode = testElement.offsetWidth > 0;
-    document.body.removeChild(testElement);
+    const supportsUnicode = testUnicodeSupport();
+    console.log('Unicode support detected:', supportsUnicode);
     
     return supportsUnicode ? (symbols[type] || type) : (fallbacks[type] || `[${type.toUpperCase()}]`);
   }
   
-  // Create element with reliable symbol
+  // Create element with reliable symbol using HTML entities
   function createSymbolElement(type, className = '') {
     const element = document.createElement('span');
-    element.className = `symbol symbol-${type} ${className}`.trim();
-    element.textContent = getSymbol(type);
+    element.className = `symbol symbol-${type} unicode-symbol ${className}`.trim();
+    
+    // Use HTML entities for better compatibility
+    const htmlEntities = {
+      check: '&#10003;',    // ?
+      cross: '&#10007;',    // ?
+      tick: '&#10003;',     // ?
+      cancel: '&#10007;',   // ?
+      success: '&#10003;',  // ?
+      error: '&#10007;',    // ?
+      warning: '&#9888;',   // ?
+      info: '&#8505;',      // ?
+      ok: '&#10003;',       // ?
+      fail: '&#10007;'      // ?
+    };
+    
+    if (htmlEntities[type]) {
+      element.innerHTML = htmlEntities[type];
+    } else {
+      element.textContent = getSymbol(type);
+    }
+    
     return element;
   }
 
-  // Create message with symbol
+  // Create message with symbol - using HTML entities when possible
   function createSymbolMessage(type, message) {
+    const htmlEntities = {
+      check: '&#10003;',
+      cross: '&#10007;',
+      success: '&#10003;',
+      error: '&#10007;',
+      warning: '&#9888;',
+      info: '&#8505;'
+    };
+    
+    // Create a temporary element to convert HTML entity to text
+    if (htmlEntities[type]) {
+      const temp = document.createElement('div');
+      temp.innerHTML = htmlEntities[type];
+      const symbol = temp.textContent || temp.innerText || getSymbol(type);
+      return `${symbol} ${message}`;
+    }
+    
     return `${getSymbol(type)} ${message}`;
+  }
+  
+  // Alternative function that creates SVG icons as fallback
+  function createSVGSymbol(type, size = '1em') {
+    const svg = document.createElement('span');
+    svg.className = `icon-svg ${type}`;
+    svg.style.width = size;
+    svg.style.height = size;
+    svg.style.display = 'inline-block';
+    svg.style.verticalAlign = 'middle';
+    
+    const svgContent = {
+      check: `<svg width="${size}" height="${size}" viewBox="0 0 16 16" fill="#28a745"><path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/></svg>`,
+      cross: `<svg width="${size}" height="${size}" viewBox="0 0 16 16" fill="#dc3545"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>`,
+      warning: `<svg width="${size}" height="${size}" viewBox="0 0 16 16" fill="#ffc107"><path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/></svg>`
+    };
+    
+    if (svgContent[type]) {
+      svg.innerHTML = svgContent[type];
+    } else {
+      svg.textContent = getSymbol(type);
+    }
+    
+    return svg;
   }
 
   // Get physical interfaces for dropdowns (filters out virtual interfaces)
@@ -296,7 +364,8 @@ window.XOSNetworking = window.XOSNetworking || {};
     setupErrorHandlers,
     getSymbol,
     createSymbolElement,
-    createSymbolMessage
+    createSymbolMessage,
+    createSVGSymbol
   };
 
 })();
