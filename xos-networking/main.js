@@ -329,7 +329,7 @@
         const btnSetIP = createButton('Set IP', async () => {
           // Create a professional modal for IP configuration
           const modal = document.createElement('dialog');
-          modal.style.maxWidth = '500px';
+          modal.style.maxWidth = '650px';
           modal.innerHTML = `
             <div class="modal-content">
               <h2>🌐 Set IP Address for ${iface.dev}</h2>
