@@ -1,7 +1,6 @@
 'use strict';
-/* global cockpit */
+/* global cockpit, setStatus */
 
-// Robust spawn wrapper
 async function run(cmd, args = [], opts = {}) {
   try {
     console.log('Running command:', cmd, args);
@@ -89,7 +88,6 @@ async function netplanAction(action, config) {
             console.log('Netplan script error output:', parsed);
             return parsed;
           } catch (parseError) {
-            // Continue looking
           }
         }
       }
@@ -108,3 +106,7 @@ async function netplanAction(action, config) {
     return { error: errorMsg, debug_info: e.toString() };
   }
 }
+
+// expose
+window.run = run;
+window.netplanAction = netplanAction;

@@ -22,7 +22,6 @@ function waitForReady() {
     console.log('Wait check - DOM ready:', domReady, 'Cockpit ready:', cockpitReady);
 
     if (domReady && cockpitReady) {
-      // Double check that key DOM elements exist
       const hasTableBody = !!document.querySelector('#table-interfaces tbody');
       const hasStatusEl = !!document.querySelector('#status');
 
@@ -31,14 +30,12 @@ function waitForReady() {
       if (hasTableBody && hasStatusEl) {
         resolve();
       } else {
-        // Wait a bit more for DOM elements to be available
         setTimeout(() => {
           console.log('DOM elements retry check...');
           resolve();
         }, 1000);
       }
     } else {
-      // Wait for DOM
       if (!domReady) {
         console.log('Waiting for DOM ready event...');
         document.addEventListener('DOMContentLoaded', () => {
@@ -49,7 +46,6 @@ function waitForReady() {
         });
       }
 
-      // Wait for Cockpit
       if (!cockpitReady) {
         console.log('Waiting for Cockpit API...');
         const checkCockpit = () => {
@@ -62,7 +58,6 @@ function waitForReady() {
         setTimeout(checkCockpit, 100);
       }
 
-      // Fallback timeout
       setTimeout(() => {
         console.log('Fallback timeout reached, proceeding...');
         resolve();
@@ -97,7 +92,6 @@ function setupModal(modal) {
     return null;
   }
 
-  // Handle ESC key
   const handleEscKey = (e) => {
     if (e.key === 'Escape') {
       e.preventDefault();
@@ -105,7 +99,6 @@ function setupModal(modal) {
     }
   };
 
-  // Handle backdrop clicks
   const handleBackdropClick = (e) => {
     if (e.target === modal) {
       modal.close();
@@ -115,7 +108,6 @@ function setupModal(modal) {
   modal.addEventListener('keydown', handleEscKey);
   modal.addEventListener('click', handleBackdropClick);
 
-  // Cleanup when modal closes
   modal.addEventListener('close', () => {
     modal.removeEventListener('keydown', handleEscKey);
     modal.removeEventListener('click', handleBackdropClick);
@@ -130,7 +122,6 @@ function setupModal(modal) {
     }
   });
 
-  // Also handle browser's built-in cancel event
   modal.addEventListener('cancel', () => {
     console.log('Modal cancelled via ESC key or browser close button');
   });
@@ -178,3 +169,12 @@ function createStatusBadge(state) {
   span.textContent = s;
   return span;
 }
+
+// Expose helpers globally
+window.waitForReady = waitForReady;
+window.$ = $;
+window.$$ = $$;
+window.setupModal = setupModal;
+window.setStatus = setStatus;
+window.createButton = createButton;
+window.createStatusBadge = createStatusBadge;

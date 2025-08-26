@@ -258,3 +258,6 @@ async function setupNetworkingForms() {
     });
   }
 }
+
+// expose
+window.setupNetworkingForms = setupNetworkingForms;

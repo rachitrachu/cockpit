@@ -440,3 +440,7 @@ async function loadInterfaces() {
     setStatus('Error loading interfaces');
   }
 }
+
+// expose
+window.getPhysicalInterfaces = getPhysicalInterfaces;
+window.loadInterfaces = loadInterfaces;

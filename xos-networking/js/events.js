@@ -580,3 +580,9 @@ ${dns}`;
     });
   }
 }
+
+// expose
+window.loadConnections = loadConnections;
+window.loadDiagnostics = loadDiagnostics;
+window.setupTabs = setupTabs;
+window.setupEventHandlers = setupEventHandlers;
