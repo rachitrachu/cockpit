@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>XOS Networking - Working Version</title>
+    <style>
+        * { box-sizing: border-box; }
+        
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 20px auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: #0066cc;
+            color: white;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .tabs {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .tab {
+            padding: 1rem 1.5rem;
+            border: none;
+            background: none;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            font-weight: 500;
+            color: #6c757d;
+        }
+        
+        .tab.active {
+            color: #0066cc;
+            border-bottom-color: #0066cc;
+            background: rgba(0,102,204,0.1);
+        }
+        
+        .tab:hover {
+            background: rgba(0,102,204,0.05);
+            color: #0066cc;
+        }
+        
+        .content {
+            padding: 2rem;
+        }
+        
+        .tab-panel {
+            display: none;
+        }
+        
+        .tab-panel.active {
+            display: block;
+        }
+        
+        .toolbar {
+            background: #f8f9fa;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .btn {
+            padding: 0.5rem 1rem;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+            margin-right: 0.5rem;
+            font-size: 0.875rem;
+        }
+        
+        .btn:hover {
+            background: #f8f9fa;
+        }
+        
+        .btn.primary {
+            background: #0066cc;
+            color: white;
+            border-color: #0066cc;
+        }
+        
+        .btn.primary:hover {
+            background: #0056b3;
+        }
+        
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+        
+        .table th,
+        .table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            font-size: 0.875rem;
+        }
+        
+        .table tbody tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .status {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #333;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            font-size: 0.875rem;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            border-radius: 12px;
+        }
+        
+        .state-up { background: #28a745; color: white; }
+        .state-down { background: #dc3545; color: white; }
+        .state-unknown { background: #ffc107; color: #333; }
+        
+        .error {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        
+        .success {
+            color: #28a745;
+            font-weight: bold;
+        }
+        
+        input, select {
+            padding: 0.5rem;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            width: 100%;
+            margin-bottom: 0.5rem;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+        
+        .card {
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 1rem;
+        }
+        
+        pre {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            white-space: pre-wrap;
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: 0.875rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>XOS Networking</h1>
+            <button id="refresh-all" class="btn primary">Refresh All</button>
+        </div>
+        
+        <div class="tabs">
+            <button class="tab active" data-target="interfaces">Interfaces</button>
+            <button class="tab" data-target="config">Configuration</button>
+            <button class="tab" data-target="diagnostics">Diagnostics</button>
+        </div>
+        
+        <div class="content">
+            <!-- Interfaces Tab -->
+            <div id="interfaces" class="tab-panel active">
+                <div class="toolbar">
+                    <button id="refresh-interfaces" class="btn">Refresh Interfaces</button>
+                    <button id="show-config" class="btn">Show Config</button>
+                    <button id="apply-config" class="btn">Apply Config</button>
+                </div>
+                
+                <table class="table" id="interfaces-table">
+                    <thead>
+                        <tr>
+                            <th>Interface</th>
+                            <th>Type</th>
+                            <th>State</th>
+                            <th>IP Address</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="5" style="text-align: center; padding: 2rem;">
+                                <div class="loading">Loading interfaces...</div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Configuration Tab -->
+            <div id="config" class="tab-panel">
+                <div class="grid">
+                    <div class="card">
+                        <h3>Network Configuration</h3>
+                        <p>Basic network configuration tools.</p>
+                        <button id="backup-config" class="btn primary">Create Backup</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Diagnostics Tab -->
+            <div id="diagnostics" class="tab-panel">
+                <div class="grid">
+                    <div class="card">
+                        <h3>Network Test</h3>
+                        <label>Host to ping:</label>
+                        <input type="text" id="ping-host" value="8.8.8.8" placeholder="Enter IP or hostname">
+                        <button id="run-ping" class="btn primary">Run Ping Test</button>
+                        <pre id="ping-output">Click "Run Ping Test" to start...</pre>
+                    </div>
+                    <div class="card">
+                        <h3>System Info</h3>
+                        <pre id="system-output">Loading system information...</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="status" id="status">Initializing...</div>
+
+    <script src="../base1/cockpit.js"></script>
+    <script>
+        console.log('XOS Networking Test Version Starting...');
+        
+        let isInitialized = false;
+        
+        // Status management
+        function setStatus(msg) {
+            document.getElementById('status').textContent = msg;
+            console.log('Status:', msg);
+        }
+        
+        // Command execution helper
+        async function runCommand(cmd, args = [], options = {}) {
+            console.log('Running:', cmd, args);
+            setStatus(`Running ${cmd}...`);
+            
+            try {
+                if (typeof cockpit === 'undefined') {
+                    throw new Error('Cockpit API not available');
+                }
+                
+                const proc = cockpit.spawn([cmd, ...args], {
+                    superuser: 'try',
+                    err: 'out',
+                    ...options
+                });
+                
+                let output = '';
+                proc.stream(data => output += data);
+                await proc;
+                
+                console.log(`Command ${cmd} completed successfully`);
+                setStatus('Ready');
+                return output.trim();
+                
+            } catch (error) {
+                console.error(`Command ${cmd} failed:`, error);
+                setStatus('Ready');
+                throw error.toString();
+            }
+        }
+        
+        // Tab switching
+        function setupTabs() {
+            const tabs = document.querySelectorAll('.tab');
+            const panels = document.querySelectorAll('.tab-panel');
+            
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const target = tab.dataset.target;
+                    
+                    // Update tab states
+                    tabs.forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    
+                    // Update panel states
+                    panels.forEach(p => p.classList.remove('active'));
+                    document.getElementById(target)?.classList.add('active');
+                });
+            });
+        }
+        
+        // Load network interfaces
+        async function loadInterfaces() {
+            const tbody = document.querySelector('#interfaces-table tbody');
+            
+            try {
+                setStatus('Loading interfaces...');
+                
+                // Get interface information
+                const output = await runCommand('ip', ['-brief', 'addr', 'show']);
+                const lines = output.split('\n').filter(line => line.trim());
+                
+                if (lines.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="error">No interfaces found</td></tr>';
+                    return;
+                }
+                
+                // Parse and display interfaces
+                tbody.innerHTML = '';
+                
+                lines.forEach(line => {
+                    const parts = line.trim().split(/\s+/);
+                    if (parts.length >= 3) {
+                        const name = parts[0];
+                        const state = parts[1];
+                        const ip = parts[2] || 'No IP';
+                        
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${name}</td>
+                            <td>ethernet</td>
+                            <td><span class="badge state-${state.toLowerCase()}">${state}</span></td>
+                            <td>${ip}</td>
+                            <td>
+                                <button class="btn" onclick="toggleInterface('${name}', 'up')">Up</button>
+                                <button class="btn" onclick="toggleInterface('${name}', 'down')">Down</button>
+                            </td>
+                        `;
+                        tbody.appendChild(row);
+                    }
+                });
+                
+                setStatus(`Loaded ${lines.length} interfaces`);
+                
+            } catch (error) {
+                tbody.innerHTML = `<tr><td colspan="5" class="error">Error loading interfaces: ${error}</td></tr>`;
+            }
+        }
+        
+        // Toggle interface state
+        window.toggleInterface = async function(name, action) {
+            try {
+                await runCommand('ip', ['link', 'set', name, action], { superuser: 'require' });
+                await loadInterfaces(); // Refresh the list
+                setStatus(`Interface ${name} ${action} successful`);
+            } catch (error) {
+                alert(`Failed to ${action} interface ${name}: ${error}`);
+            }
+        };
+        
+        // Run ping test
+        async function runPing() {
+            const host = document.getElementById('ping-host').value || '8.8.8.8';
+            const output = document.getElementById('ping-output');
+            
+            try {
+                output.textContent = 'Running ping test...';
+                const result = await runCommand('ping', ['-c', '4', host]);
+                output.textContent = result;
+            } catch (error) {
+                output.textContent = `Ping failed: ${error}`;
+            }
+        }
+        
+        // Load system information
+        async function loadSystemInfo() {
+            const output = document.getElementById('system-output');
+            
+            try {
+                const info = await runCommand('uname', ['-a']);
+                const uptime = await runCommand('uptime');
+                const interfaces = await runCommand('ip', ['route', 'show']);
+                
+                output.textContent = `System: ${info}\n\nUptime: ${uptime}\n\nRoutes:\n${interfaces}`;
+            } catch (error) {
+                output.textContent = `Error loading system info: ${error}`;
+            }
+        }
+        
+        // Show configuration
+        async function showConfig() {
+            try {
+                const config = await runCommand('find', ['/etc/netplan', '-name', '*.yaml', '-exec', 'cat', '{}', ';'], { superuser: 'try' });
+                if (config) {
+                    alert(`Netplan Configuration:\n\n${config}`);
+                } else {
+                    alert('No netplan configuration found.');
+                }
+            } catch (error) {
+                alert(`Error reading configuration: ${error}`);
+            }
+        }
+        
+        // Apply configuration
+        async function applyConfig() {
+            if (!confirm('Apply network configuration? This may temporarily disrupt connectivity.')) {
+                return;
+            }
+            
+            try {
+                await runCommand('netplan', ['apply'], { superuser: 'require' });
+                alert('Configuration applied successfully!');
+                await loadInterfaces();
+            } catch (error) {
+                alert(`Failed to apply configuration: ${error}`);
+            }
+        }
+        
+        // Create backup
+        async function createBackup() {
+            try {
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+                const backupFile = `/tmp/network-backup-${timestamp}.tar.gz`;
+                
+                await runCommand('tar', ['-czf', backupFile, '/etc/netplan', '/etc/systemd/network'], { superuser: 'require' });
+                alert(`Backup created successfully!\n\nLocation: ${backupFile}`);
+            } catch (error) {
+                alert(`Backup failed: ${error}`);
+            }
+        }
+        
+        // Setup event handlers
+        function setupEventHandlers() {
+            document.getElementById('refresh-all')?.addEventListener('click', async () => {
+                await loadInterfaces();
+                await loadSystemInfo();
+            });
+            
+            document.getElementById('refresh-interfaces')?.addEventListener('click', loadInterfaces);
+            document.getElementById('show-config')?.addEventListener('click', showConfig);
+            document.getElementById('apply-config')?.addEventListener('click', applyConfig);
+            document.getElementById('backup-config')?.addEventListener('click', createBackup);
+            document.getElementById('run-ping')?.addEventListener('click', runPing);
+        }
+        
+        // Initialize everything
+        async function initialize() {
+            try {
+                setStatus('Initializing...');
+                
+                // Wait for DOM
+                if (document.readyState === 'loading') {
+                    await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve));
+                }
+                
+                // Wait for Cockpit
+                if (typeof cockpit === 'undefined') {
+                    await new Promise(resolve => {
+                        const check = () => {
+                            if (typeof cockpit !== 'undefined') {
+                                resolve();
+                            } else {
+                                setTimeout(check, 100);
+                            }
+                        };
+                        check();
+                    });
+                }
+                
+                console.log('DOM and Cockpit ready');
+                
+                // Setup UI
+                setupTabs();
+                setupEventHandlers();
+                
+                // Load initial data
+                await loadInterfaces();
+                await loadSystemInfo();
+                
+                isInitialized = true;
+                setStatus('Ready');
+                console.log('XOS Networking initialized successfully!');
+                
+            } catch (error) {
+                console.error('Initialization failed:', error);
+                setStatus('Initialization failed');
+                
+                // Show error in interface
+                const tbody = document.querySelector('#interfaces-table tbody');
+                if (tbody) {
+                    tbody.innerHTML = `<tr><td colspan="5" class="error">Initialization failed: ${error}</td></tr>`;
+                }
+            }
+        }
+        
+        // Start initialization
+        initialize();
+    </script>
+</body>
+</html>
