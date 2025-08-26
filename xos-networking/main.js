@@ -335,35 +335,39 @@
               <h2>🌐 Set IP Address for ${iface.dev}</h2>
               <form id="set-ip-form">
                 <label>📍 Current IPv4 Address
-                  <input type="text" value="${iface.ipv4 || 'None assigned'}" readonly style="background: #f5f5f5; color: #666;">
+                  <input type="text" value="${iface.ipv4 || 'None assigned'}" readonly style="background: #f5f5f5; color: #666; width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
                 </label>
                 
                 <label>🌐 New IPv4 Address/CIDR
                   <input type="text" id="new-ip-addr" placeholder="192.168.1.100/24" required 
                          pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([0-9]|[1-2][0-9]|3[0-2])$"
-                         value="${iface.ipv4 || ''}">
-                  <small style="color: var(--muted-color); font-size: 0.875rem;">Use CIDR notation (e.g., 192.168.1.100/24)</small>
+                         value="${iface.ipv4 || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
+                  <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">Use CIDR notation (e.g., 192.168.1.100/24)</small>
                 </label>
                 
                 <label>🚪 Gateway (optional)
                   <input type="text" id="new-gateway" placeholder="192.168.1.1"
-                         pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$">
-                  <small style="color: var(--muted-color); font-size: 0.875rem;">Default gateway for this interface</small>
+                         pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$" 
+                         style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
+                  <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">Default gateway for this interface</small>
                 </label>
                 
                 <label>🌐 DNS Servers (optional, comma separated)
-                  <input type="text" id="new-dns" placeholder="8.8.8.8,1.1.1.1">
-                  <small style="color: var(--muted-color); font-size: 0.875rem;">Comma separated list of DNS servers</small>
+                  <input type="text" id="new-dns" placeholder="8.8.8.8,1.1.1.1" 
+                         style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
+                  <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">Comma separated list of DNS servers</small>
                 </label>
                 
                 <div style="margin: 1rem 0; padding: 1rem; background: #e8f4fd; border-radius: var(--border-radius); border: 1px solid #bee5eb;">
-                  <label style="display: flex; align-items: center; gap: 0.5rem; margin: 0;">
-                    <input type="checkbox" id="persist-ip-config" checked>
-                    💾 <strong>Persist configuration to netplan (recommended)</strong>
+                  <label style="display: flex; align-items: flex-start; gap: 0.5rem; margin: 0;">
+                    <input type="checkbox" id="persist-ip-config" checked style="margin-top: 0.25rem;">
+                    <div>
+                      <strong>💾 Persist configuration to netplan (recommended)</strong>
+                      <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">
+                        When enabled, configuration survives reboots. When disabled, changes are temporary.
+                      </small>
+                    </div>
                   </label>
-                  <small style="color: var(--muted-color); font-size: 0.875rem; margin-left: 1.5rem;">
-                    When enabled, configuration survives reboots. When disabled, changes are temporary.
-                  </small>
                 </div>
                 
                 <div style="margin: 1rem 0; padding: 1rem; background: #fff3cd; border-radius: var(--border-radius); border: 1px solid #ffeaa7;">
@@ -371,8 +375,8 @@
                 </div>
                 
                 <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
-                  <button type="button" class="btn" id="cancel-ip-config">❌ Cancel</button>
-                  <button type="button" class="btn primary" id="apply-ip-config">💾 Apply Configuration</button>
+                  <button type="button" class="btn" id="cancel-ip-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">❌ Cancel</button>
+                  <button type="button" class="btn primary" id="apply-ip-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">💾 Apply Configuration</button>
                 </div>
               </form>
             </div>
@@ -501,18 +505,19 @@
         const btnSetMTU = createButton('Set MTU', async () => {
           // Create a professional modal for MTU configuration
           const modal = document.createElement('dialog');
-          modal.style.maxWidth = '450px';
+          modal.style.maxWidth = '550px';
           modal.innerHTML = `
             <div class="modal-content">
               <h2>📏 Set MTU for ${iface.dev}</h2>
               <form id="set-mtu-form">
                 <label>📏 Current MTU
-                  <input type="text" value="${iface.mtu || 'Unknown'}" readonly style="background: #f5f5f5; color: #666;">
+                  <input type="text" value="${iface.mtu || 'Unknown'}" readonly style="background: #f5f5f5; color: #666; width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
                 </label>
                 
                 <label>🔧 New MTU Value
-                  <input type="number" id="new-mtu-value" min="68" max="9000" value="${iface.mtu || '1500'}" required>
-                  <small style="color: var(--muted-color); font-size: 0.875rem;">Valid range: 68 - 9000 bytes</small>
+                  <input type="number" id="new-mtu-value" min="68" max="9000" value="${iface.mtu || '1500'}" required 
+                         style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
+                  <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">Valid range: 68 - 9000 bytes</small>
                 </label>
                 
                 <div style="margin: 1rem 0;">
@@ -526,9 +531,9 @@
                 </div>
                 
                 <div style="margin: 1rem 0; padding: 1rem; background: #e8f4fd; border-radius: var(--border-radius); border: 1px solid #bee5eb;">
-                  <label style="display: flex; align-items: center; gap: 0.5rem; margin: 0;">
+                  <label style="display: flex; align-items: flex-start; gap: 0.5rem; margin: 0;">
                     <input type="checkbox" id="persist-mtu-config" checked>
-                    💾 <strong>Persist configuration to netplan (recommended)</strong>
+                    💾 <strong>Persist configuration to netplan (recommended)
                   </label>
                   <small style="color: var(--muted-color); font-size: 0.875rem; margin-left: 1.5rem;">
                     When enabled, configuration survives reboots. When disabled, changes are temporary.
@@ -540,8 +545,8 @@
                 </div>
                 
                 <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
-                  <button type="button" class="btn" id="cancel-mtu-config">❌ Cancel</button>
-                  <button type="button" class="btn primary" id="apply-mtu-config">💾 Apply MTU</button>
+                  <button type="button" class="btn" id="cancel-mtu-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">❌ Cancel</button>
+                  <button type="button" class="btn primary" id="apply-mtu-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">💾 Apply MTU</button>
                 </div>
               </form>
             </div>
@@ -695,11 +700,11 @@
                   <h2>✏️ Edit Bond: ${iface.dev}</h2>
                   <form id="edit-bond-form">
                     <label>📛 Bond Name
-                      <input type="text" id="edit-bond-name" value="${iface.dev}" readonly style="background: #f5f5f5; color: #666;">
+                      <input type="text" id="edit-bond-name" value="${iface.dev}" readonly style="background: #f5f5f5; color: #666; width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
                     </label>
                     
                     <label>⚙️ Bonding Mode
-                      <select id="edit-bond-mode">
+                      <select id="edit-bond-mode" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
                         <option value="active-backup">🔄 Active-Backup (Failover)</option>
                         <option value="balance-rr">⚖️ Balance Round-Robin</option>
                         <option value="balance-xor">🔀 Balance XOR</option>
@@ -720,7 +725,7 @@
                     <div style="margin: 1rem 0;">
                       <h4 style="margin: 0.5rem 0; color: var(--primary-color);">➕ Add/Remove Slave Interfaces:</h4>
                       <p style="font-size: 0.875rem; color: var(--muted-color); margin: 0.5rem 0;">Select interfaces to include in the bond. Current slaves will be replaced.</p>
-                      <select id="edit-bond-slaves" multiple style="height: 120px;">
+                      <select id="edit-bond-slaves" multiple style="height: 120px; width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
                         ${availableInterfaces.concat(slaves).filter((v, i, a) => a.indexOf(v) === i).map(iface => 
                           `<option value="${iface}" ${slaves.includes(iface) ? 'selected' : ''}>${iface}${slaves.includes(iface) ? ' (current)' : ''}</option>`
                         ).join('')}
@@ -733,10 +738,10 @@
                         <summary style="cursor: pointer; font-weight: 500; color: var(--primary-color); padding: 0.5rem;">⚙️ Advanced Bond Options</summary>
                         <div style="margin: 1rem 0; padding: 1rem; background: #f8f9fa; border-radius: var(--border-radius);">
                           <label>⏱️ MII Monitoring Interval (ms)
-                            <input type="number" id="edit-bond-miimon" min="0" max="2000" placeholder="100" style="margin-top: 0.5rem;">
+                            <input type="number" id="edit-bond-miimon" min="0" max="2000" placeholder="100" style="margin-top: 0.5rem; width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
                           </label>
                           <label>👑 Primary Interface (for active-backup mode)
-                            <select id="edit-bond-primary" style="margin-top: 0.5rem;">
+                            <select id="edit-bond-primary" style="margin-top: 0.5rem; width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
                               <option value="">-- Auto select --</option>
                             </select>
                           </label>
@@ -962,11 +967,11 @@
                   <h2>✏️ Edit VLAN: ${iface.dev}</h2>
                   <form id="edit-vlan-form">
                     <label>📛 VLAN Interface Name
-                      <input type="text" id="edit-vlan-name" value="${iface.dev}" readonly style="background: #f5f5f5; color: #666;">
+                      <input type="text" id="edit-vlan-name" value="${iface.dev}" readonly style="background: #f5f5f5; color: #666; width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
                     </label>
                     
                     <label>🔌 Parent Interface
-                      <select id="edit-vlan-parent">
+                      <select id="edit-vlan-parent" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
                         ${availableInterfaces.map(iface => 
                           `<option value="${iface}" ${iface === vlanConfig.link ? 'selected' : ''}>${iface}</option>`
                         ).join('')}
@@ -974,11 +979,11 @@
                     </label>
                     
                     <label>🔢 VLAN ID
-                      <input type="number" id="edit-vlan-id" value="${vlanConfig.id || ''}" min="1" max="4094" required>
+                      <input type="number" id="edit-vlan-id" value="${vlanConfig.id || ''}" min="1" max="4094" required style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
                     </label>
                     
                     <label>📏 MTU (optional)
-                      <input type="number" id="edit-vlan-mtu" value="${iface.mtu !== '1500' ? iface.mtu : ''}" min="68" max="9000" placeholder="1500">
+                      <input type="number" id="edit-vlan-mtu" value="${iface.mtu !== '1500' ? iface.mtu : ''}" min="68" max="9000" placeholder="1500" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
                     </label>
                     
                     <div style="margin: 1.5rem 0; padding: 1rem; background: #fff3cd; border-radius: var(--border-radius); border: 1px solid #ffeaa7;">
@@ -1065,16 +1070,50 @@
                     throw new Error('Failed to create updated VLAN: ' + result.error);
                   }
                   
-                  modal.close();
-                  alert(`✅ VLAN updated successfully!\\n\\n` +
-                    `New Interface: ${newName}\\n` +
-                    `Parent: ${newParent}\\n` +
-                    `VLAN ID: ${newId}`);
-                
-                  setStatus('✅ VLAN updated successfully');
-                  setTimeout(() => setStatus('Ready'), 3000);
-                  await loadInterfaces();
+                  // Step 4: Configure IP if provided
+                  if (staticIp) {
+                    console.log('Configuring IP for VLAN interface...');
+                    
+                    // Apply IP immediately
+                    try {
+                      await run('ip', ['addr', 'add', staticIp, 'dev', newName], { superuser: 'require' });
+                      console.log(`Added IP ${staticIp} to VLAN ${newName}`);
+                      
+                      // Add gateway if specified
+                      if (gateway) {
+                        await run('ip', ['route', 'add', 'default', 'via', gateway, 'dev', newName], { superuser: 'require' });
+                        console.log(`Added gateway ${gateway} for VLAN ${newName}`);
+                      }
+                    } catch (ipError) {
+                      console.warn('Failed to apply IP immediately:', ipError);
+                    }
+                    
+                    // Persist IP to netplan
+                    try {
+                      const ipConfig = {
+                        name: newName,
+                        static_ip: staticIp
+                      };
+                      
+                      if (gateway) {
+                        ipConfig.gateway = gateway;
+                      }
+                      
+                      const ipResult = await netplanAction('set_ip', ipConfig);
+                      
+                      if (ipResult.error) {
+                        console.warn('Failed to persist IP to netplan:', ipResult.error);
+                      } else {
+                        console.log('Successfully persisted VLAN IP to netplan');
+                      }
+                    } catch (ipError) {
+                      console.warn('Failed to persist IP configuration:', ipError);
+                    }
+                  }
                   
+                  modal.close();
+                  alert(`✅ VLAN updated successfully!`);
+                  await loadInterfaces();
                 } catch (error) {
                   console.error('VLAN update failed:', error);
                   alert(`❌ Failed to update VLAN: ${error.message || error}`);
@@ -1168,7 +1207,7 @@
                   <h2>✏️ Edit Bridge: ${iface.dev}</h2>
                   <form id="edit-bridge-form">
                     <label>📛 Bridge Name
-                      <input type="text" id="edit-bridge-name" value="${iface.dev}" readonly style="background: #f5f5f5; color: #666;">
+                      <input type="text" id="edit-bridge-name" value="${iface.dev}" readonly style="background: #f5f5f5; color: #666; width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
                     </label>
                     
                     <div style="margin: 1rem 0;">
@@ -1182,7 +1221,7 @@
                       <h4 style="margin: 0.5rem 0; color: var(--primary-color);">➕ Select Bridge Ports:</h4>
                       <p style="font-size: 0.875rem; color: var(--muted-color); margin: 0.5rem 0;">Select interfaces to include in the bridge. Current ports will be replaced.</p>
                       <input type="text" id="bridge-ports-filter" placeholder="Filter interfaces..." style="width: 100%; margin-bottom: 0.5rem; padding: 0.5rem;">
-                      <select id="edit-bridge-ports" multiple style="height: 120px; width: 100%;" onchange="this.size= this.options.length > 5 ? 5 : 1">
+                      <select id="edit-bridge-ports" multiple style="height: 120px; width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;" onchange="this.size= this.options.length > 5 ? 5 : 1">
                         ${availableInterfaces.concat(currentPorts).filter((v, i, a) => a.indexOf(v) === i).map(iface => 
                           `<option value="${iface}" ${currentPorts.includes(iface) ? 'selected' : ''}>${iface}${currentPorts.includes(iface) ? ' (current)' : ''}</option>`
                         ).join('')}
@@ -1195,16 +1234,16 @@
                         <summary style="cursor: pointer; font-weight: 500; color: var(--primary-color); padding: 0.5rem;">⚙️ Advanced Bridge Options</summary>
                         <div style="margin: 1rem 0; padding: 1rem; background: #f8f9fa; border-radius: var(--border-radius);">
                           <label>🌲 STP (Spanning Tree Protocol)
-                            <select id="edit-bridge-stp" style="margin-top: 0.5rem;">
+                            <select id="edit-bridge-stp" style="margin-top: 0.5rem; width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
                               <option value="false" ${!bridgeConfig.parameters?.stp ? 'selected' : ''}>❌ Disable</option>
                               <option value="true" ${bridgeConfig.parameters?.stp ? 'selected' : ''}>✅ Enable</option>
                             </select>
                           </label>
                           <label>⏱️ Forward Delay (seconds)
-                            <input type="number" id="edit-bridge-forward-delay" value="${bridgeConfig.parameters?.['forward-delay'] || ''}" min="2" max="30" placeholder="15" style="margin-top: 0.5rem;">
+                            <input type="number" id="edit-bridge-forward-delay" value="${bridgeConfig.parameters?.['forward-delay'] || ''}" min="2" max="30" placeholder="15" style="margin-top: 0.5rem; width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
                           </label>
                           <label>👋 Hello Time (seconds)
-                            <input type="number" id="edit-bridge-hello-time" value="${bridgeConfig.parameters?.['hello-time'] || ''}" min="1" max="10" placeholder="2" style="margin-top: 0.5rem;">
+                            <input type="number" id="edit-bridge-hello-time" value="${bridgeConfig.parameters?.['hello-time'] || ''}" min="1" max="10" placeholder="2" style="margin-top: 0.5rem; width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
                           </label>
                         </div>
                       </details>
@@ -1314,8 +1353,8 @@
                   }
                   
                   modal.close();
-                  alert(`✅ Bridge ${iface.dev} updated successfully!\\n\\n` +
-                    `New Ports: ${newPorts.join(', ')}\\n` +
+                  alert(`✅ Bridge ${iface.dev} updated successfully!\n\n` +
+                    `New Ports: ${newPorts.join(', ')}\n` +
                     `STP: ${newStp ? 'Enabled' : 'Disabled'}`);
                   
                   setStatus('✅ Bridge updated successfully');
@@ -2112,6 +2151,9 @@ ${dns}`;
         const parent = $('#vlan-parent')?.value?.trim();
         const id = $('#vlan-id')?.value?.trim();
         const name = $('#vlan-name')?.value?.trim() || `${parent}.${id}`;
+        const staticIp = $('#vlan-static-ip')?.value?.trim();
+        const gateway = $('#vlan-gateway')?.value?.trim();
+        const mtu = $('#vlan-mtu')?.value?.trim();
         
         if (!parent || !id) {
           alert('❌ Parent interface and VLAN ID are required!');
@@ -2123,25 +2165,107 @@ ${dns}`;
           return;
         }
         
+        // Validate IP format if provided
+        if (staticIp) {
+          const ipRegex = /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([0-9]|[1-2][0-9]|3[0-2])$/;
+          if (!ipRegex.test(staticIp)) {
+            alert('❌ Invalid IP address format! Use CIDR notation (e.g., 192.168.1.100/24)');
+            return;
+          }
+        }
+        
+        // Validate gateway format if provided
+        if (gateway) {
+          const gatewayRegex = /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+          if (!gatewayRegex.test(gateway)) {
+            alert('❌ Invalid gateway address format!');
+            return;
+          }
+        }
+        
         try {
           setStatus('Creating VLAN...');
-          const result = await netplanAction('add_vlan', {
+          
+          // Step 1: Create VLAN interface
+          const vlanConfig = {
             name: name,
             id: parseInt(id),
             link: parent
-          });
+          };
+          
+          if (mtu && parseInt(mtu) !== 1500) {
+            vlanConfig.mtu = parseInt(mtu);
+          }
+          
+          const result = await netplanAction('add_vlan', vlanConfig);
+          
+          if (result.error) {
+            throw new Error(result.error);
+          }
+          
+          // Step 2: Configure IP if provided
+          if (staticIp) {
+            console.log('Configuring IP for VLAN interface...');
+            
+            // Apply IP immediately
+            try {
+              await run('ip', ['addr', 'add', staticIp, 'dev', name], { superuser: 'require' });
+              console.log(`Added IP ${staticIp} to VLAN ${name}`);
+              
+              // Add gateway if specified
+              if (gateway) {
+                await run('ip', ['route', 'add', 'default', 'via', gateway, 'dev', name], { superuser: 'require' });
+                console.log(`Added gateway ${gateway} for VLAN ${name}`);
+              }
+            } catch (ipError) {
+              console.warn('Failed to apply IP immediately:', ipError);
+            }
+            
+            // Persist IP to netplan
+            try {
+              const ipConfig = {
+                name: name,
+                static_ip: staticIp
+              };
+              
+              if (gateway) {
+                ipConfig.gateway = gateway;
+              }
+              
+              const ipResult = await netplanAction('set_ip', ipConfig);
+              
+              if (ipResult.error) {
+                console.warn('Failed to persist IP to netplan:', ipResult.error);
+              } else {
+                console.log('Successfully persisted VLAN IP to netplan');
+              }
+            } catch (ipError) {
+              console.warn('Failed to persist IP configuration:', ipError);
+            }
+          }
           
           const output = $('#vlan-out');
-          if (result.error) {
-            if (output) output.textContent = `❌ Error: ${result.error}`;
-          } else {
-            if (output) output.textContent = `✅ VLAN ${name} created successfully!`;
-            // Clear form
-            $('#vlan-parent').selectedIndex = 0;
-            $('#vlan-id').value = '';
-            $('#vlan-name').value = '';
-            await loadInterfaces();
+          if (output) {
+            let successMsg = `✅ VLAN ${name} created successfully!`;
+            if (staticIp) {
+              successMsg += `\n📍 IP: ${staticIp}`;
+            }
+            if (gateway) {
+              successMsg += `\n🚪 Gateway: ${gateway}`;
+            }
+            output.textContent = successMsg;
           }
+          
+          // Clear form
+          $('#vlan-parent').selectedIndex = 0;
+          $('#vlan-id').value = '';
+          $('#vlan-name').value = '';
+          if ($('#vlan-static-ip')) $('#vlan-static-ip').value = '';
+          if ($('#vlan-gateway')) $('#vlan-gateway').value = '';
+          if ($('#vlan-mtu')) $('#vlan-mtu').value = '';
+          
+          await loadInterfaces();
+          
         } catch (e) {
           const output = $('#vlan-out');
           if (output) output.textContent = `❌ Failed to create VLAN: ${e}`;
