@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>XAVS Globals Configuration</title>
+  <meta name="description" content="Configure XAVS global settings">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="style.css" rel="stylesheet">
+</head>
+<body>
+  <div class="container-fluid">
+    <div class="row">
+      <div class="col-md-12">
+        
+        <!-- Header -->
+        <div class="page-header mb-4">
+          <h1><span class="icon">⚙</span> XAVS Global Configuration</h1>
+          <p class="lead">Comprehensive OpenStack configuration management for your XAVS deployment.</p>
+        </div>
+
+        <!-- Status Panel -->
+        <div id="status_panel" class="alert alert-info hidden"></div>
+
+        <!-- Main Configuration Panel -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title mb-0">
+              <span class="icon">⚙</span> Configuration Settings
+            </h3>
+          </div>
+          <div class="card-body">
+            
+            <!-- Dynamic Form Container -->
+            <div id="dynamic_form_container">
+              <!-- Form will be generated here by FormGenerator -->
+              <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                  <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-3">Loading configuration interface...</p>
+              </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="mt-4 mb-3">
+              <div class="d-flex flex-wrap gap-2">
+                <button id="save" class="btn btn-primary">
+                  <span class="icon">💾</span> Save Configuration
+                </button>
+                <button id="preview" class="btn btn-secondary">
+                  <span class="icon">👁</span> Preview YAML
+                </button>
+                <button id="view_saved" class="btn btn-info">
+                  <span class="icon">📄</span> View Saved File
+                </button>
+                <button id="check_permissions" class="btn btn-warning">
+                  <span class="icon">🔍</span> Check File System
+                </button>
+                <button id="test_write" class="btn btn-primary">
+                  <span class="icon">🧪</span> Test Write
+                </button>
+                <button id="reset" class="btn btn-secondary">
+                  <span class="icon">🔄</span> Reset to Defaults
+                </button>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+
+        <!-- YAML Preview Panel -->
+        <div id="yaml_preview_panel" class="card mt-4 hidden yaml-preview-panel">
+          <div class="card-header">
+            <h5 class="card-title mb-0">
+              <span class="icon">📋</span> YAML Configuration Preview
+            </h5>
+          </div>
+          <div class="card-body">
+            <pre id="yaml_preview" class="yaml-preview"></pre>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScript Libraries -->
+  
+  <!-- Configuration Files -->
+  <script src="config-schema.js?v=1"></script>
+  <script src="form-generator.js?v=1"></script>
+  <script src="app.js?v=1"></script>
+</body>
+</html>

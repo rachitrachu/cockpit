@@ -5,8 +5,19 @@
     "xavs-globals": {
       "label": "XAVS Globals",
       "path": "index.html",
+      "order": 11,
+      "keywords": [
+        {"matches": ["openstack", "ansible", "configuration", "globals", "xavs"]},
+        {"matches": ["deploy", "deployment", "setup", "settings"]},
+        {"matches": ["network", "compute", "storage", "database"]}
+      ]
+    }
+  },
+  "menu": {
+    "index": {
+      "label": "XAVS Configuration",
       "order": 11
     }
   },
-  "content-security-policy": "default-src 'self' data: blob:; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' ws: wss: http: https:; frame-src 'self';"
+  "content-security-policy": "default-src 'self' data: blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss: http: https:; frame-src 'self';"
 }

@@ -1,12 +1,6 @@
 // XAVS Globals Configuration Application for Cockpit
 // Using proven xos-networking file save pattern
 
-// Debug script loading immediately
-console.log('App.js loading...');
-console.log('Scripts loaded check:');
-console.log('CONFIG_SCHEMA:', typeof CONFIG_SCHEMA !== 'undefined' ? 'LOADED' : 'NOT LOADED');
-console.log('FormGenerator:', typeof FormGenerator !== 'undefined' ? 'LOADED' : 'NOT LOADED');
-
 let formGenerator = null;
 let currentConfig = {};
 
@@ -34,82 +28,26 @@ document.addEventListener('DOMContentLoaded', async function() {
     showStatus('Loading OpenStack configuration schema...', 'info');
     
     try {
-        console.log('Checking dependencies...');
-        console.log('FormGenerator available:', typeof FormGenerator);
-        console.log('CONFIG_SCHEMA available:', typeof CONFIG_SCHEMA);
-        
         if (typeof FormGenerator === 'undefined') {
-            console.error('FormGenerator class not found - checking if form-generator.js loaded');
-            throw new Error('FormGenerator class not loaded - please check if form-generator.js is accessible');
+            throw new Error('FormGenerator class not loaded');
         }
         
         if (typeof CONFIG_SCHEMA === 'undefined') {
-            console.error('CONFIG_SCHEMA not found - checking if config-schema.js loaded');
-            throw new Error('Configuration schema not loaded - please check if config-schema.js is accessible');
+            throw new Error('Configuration schema not loaded');
         }
         
-        console.log('Dependencies verified, initializing form generator...');
-        
         // Initialize form generator
-        formGenerator = new FormGenerator('dynamic_form_container', CONFIG_SCHEMA);
-        console.log('FormGenerator instance created successfully');
-        
+        formGenerator = new FormGenerator('config_form', CONFIG_SCHEMA);
         await formGenerator.generateForm();
-        console.log('Form generation completed');
         
         console.log('Form generated successfully');
         showStatus('Configuration form loaded successfully', 'success');
         
-        // Set up button event listeners
-        setupEventListeners();
-        
     } catch (error) {
         console.error('Failed to initialize app:', error);
-        console.error('Error stack:', error.stack);
         showStatus('Failed to load configuration: ' + error.message, 'danger');
     }
 });
-
-// Setup button event listeners
-function setupEventListeners() {
-    const saveBtn = document.getElementById('save');
-    const previewBtn = document.getElementById('preview');
-    const viewFileBtn = document.getElementById('view_file');
-    const testWriteBtn = document.getElementById('test_write');
-    const resetBtn = document.getElementById('reset');
-    
-    if (saveBtn) {
-        saveBtn.addEventListener('click', () => {
-            saveConfiguration().catch(error => {
-                console.error('Save failed:', error);
-            });
-        });
-    }
-    
-    if (previewBtn) {
-        previewBtn.addEventListener('click', previewConfiguration);
-    }
-    
-    if (viewFileBtn) {
-        viewFileBtn.addEventListener('click', viewSavedFile);
-    }
-    
-    if (testWriteBtn) {
-        testWriteBtn.addEventListener('click', () => {
-            testFileWrite().catch(error => {
-                console.error('Test write failed:', error);
-            });
-        });
-    }
-    
-    if (resetBtn) {
-        resetBtn.addEventListener('click', () => {
-            if (confirm('Are you sure you want to reset all settings to defaults?')) {
-                location.reload();
-            }
-        });
-    }
-}
 
 // Save configuration using xos-networking proven pattern
 async function saveConfiguration() {

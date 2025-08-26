@@ -205,7 +205,7 @@ class FormGenerator {
         input.className = 'form-control';
         input.id = fieldKey;
         input.name = fieldKey;
-        if (field.default) {
+        if (field.default !== undefined) {
             input.value = field.default;
         }
         if (field.required) {

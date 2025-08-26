@@ -21,6 +21,7 @@ const CONFIG_SCHEMA = {
                 type: 'text',
                 label: 'Internal VIP Address',
                 description: 'Virtual IP address for internal OpenStack services',
+                default: '10.1.1.100',
                 required: true,
                 validation: /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/
             },
