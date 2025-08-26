@@ -132,23 +132,8 @@ function setupModal(modal) {
 function setStatus(msg) {
   const statusEl = $('#status');
   if (statusEl) {
-    let displayMsg = msg || 'Ready';
-    
-    // Add emojis to common status messages
-    if (displayMsg === 'Ready') {
-      displayMsg = '? Ready';
-    } else if (displayMsg.includes('Loading')) {
-      displayMsg = `? ${displayMsg}`;
-    } else if (displayMsg.includes('Error') || displayMsg.includes('Failed')) {
-      displayMsg = `? ${displayMsg}`;
-    } else if (displayMsg.includes('applied') || displayMsg.includes('successful')) {
-      displayMsg = `? ${displayMsg}`;
-    } else if (displayMsg.includes('Initializing')) {
-      displayMsg = `?? ${displayMsg}`;
-    }
-    
-    statusEl.textContent = displayMsg;
-    console.log('Status:', displayMsg);
+    statusEl.textContent = msg || 'Ready';
+    console.log('Status:', msg || 'Ready');
   }
 }
 
@@ -178,24 +163,10 @@ function createButton(label, handler, className = 'btn') {
 function createStatusBadge(state) {
   const span = document.createElement('span');
   const s = (state || 'unknown').toUpperCase();
-  
-  // Add emoji and styling based on state
-  let displayText = '';
-  let badgeClass = 'badge ';
-  
-  if (s === 'UP' || s === 'CONNECTED') {
-    displayText = `? ${s}`;
-    badgeClass += 'state-up';
-  } else if (s === 'DOWN' || s === 'DISCONNECTED') {
-    displayText = `? ${s}`;
-    badgeClass += 'state-down';
-  } else {
-    displayText = `? ${s}`;
-    badgeClass += 'state-unknown';
-  }
-  
-  span.className = badgeClass;
-  span.textContent = displayText;
+  span.className = 'badge ' + (s === 'UP' || s === 'CONNECTED' ? 'state-up'
+                    : s === 'DOWN' || s === 'DISCONNECTED' ? 'state-down'
+                    : 'state-unknown');
+  span.textContent = s;
   return span;
 }
 
