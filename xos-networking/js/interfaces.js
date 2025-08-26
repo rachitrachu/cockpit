@@ -1,5 +1,5 @@
 'use strict';
-/* global createButton, createStatusBadge, netplanAction, run, setStatus, setupModal, $, $$ */
+/* global createButton, createStatusBadge, netplanAction, run, setStatus, setupModal, addAdvancedInterfaceActions, $, $$ */
 
 async function getPhysicalInterfaces() {
   try {
@@ -113,7 +113,7 @@ async function loadInterfaces() {
 
     interfaces.sort((a, b) => a.dev.localeCompare(b.dev));
 
-    interfaces.forEach(iface => {
+    for (const iface of interfaces) {
       const row = document.createElement('tr');
 
       const actionsCell = document.createElement('td');
@@ -403,6 +403,11 @@ async function loadInterfaces() {
       actionsCell.appendChild(btnSetMTU);
       actionsCell.appendChild(btnInfo);
 
+      // Add advanced actions for constructed interfaces (VLAN, Bridge, Bond)
+      if (typeof addAdvancedInterfaceActions === 'function') {
+        await addAdvancedInterfaceActions(iface, actionsCell);
+      }
+
       const cells = [
         iface.dev,
         iface.type,
@@ -425,7 +430,7 @@ async function loadInterfaces() {
       });
 
       tbody.appendChild(row);
-    });
+    }
 
     setStatus(`Loaded ${interfaces.length} interfaces`);
 

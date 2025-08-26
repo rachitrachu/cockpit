@@ -1,4 +1,4 @@
-﻿/* global cockpit, waitForReady, setStatus, setupTabs, setupEventHandlers, setupNetworkingForms, loadInterfaces, loadConnections, loadDiagnostics */
+﻿/* global cockpit, waitForReady, setStatus, setupTabs, setupEventHandlers, setupNetworkingForms, setupSearchAndFilters, loadInterfaces, loadConnections, loadDiagnostics */
 (() => {
   'use strict';
 
@@ -24,6 +24,11 @@
 
       console.log('Setting up event handlers...');
       setupEventHandlers();
+
+      console.log('Setting up search and filters...');
+      if (typeof setupSearchAndFilters === 'function') {
+        setupSearchAndFilters();
+      }
 
       console.log('Setting up networking forms...');
       await setupNetworkingForms();

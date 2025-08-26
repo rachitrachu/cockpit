@@ -336,6 +336,51 @@ function setupEventHandlers() {
     });
   }
 
+  // Add diagnostic event handlers
+  const btnPing = $('#btn-ping');
+  if (btnPing) {
+    btnPing.addEventListener('click', async () => {
+      const host = $('#diag-host')?.value?.trim() || '8.8.8.8';
+      const pingOut = $('#ping-out');
+      
+      if (pingOut) {
+        pingOut.textContent = `?? Pinging ${host}...\n`;
+        setStatus(`Pinging ${host}...`);
+        
+        try {
+          const result = await run('ping', ['-c', '4', host]);
+          pingOut.textContent = `?? Ping Results for ${host}:\n\n${result}`;
+          setStatus('Ping completed');
+        } catch (e) {
+          pingOut.textContent = `? Ping failed:\n${e}`;
+          setStatus('Ping failed');
+        }
+      }
+    });
+  }
+
+  const btnTraceroute = $('#btn-traceroute');
+  if (btnTraceroute) {
+    btnTraceroute.addEventListener('click', async () => {
+      const host = $('#diag-host')?.value?.trim() || '8.8.8.8';
+      const pingOut = $('#ping-out');
+      
+      if (pingOut) {
+        pingOut.textContent = `??? Tracing route to ${host}...\n`;
+        setStatus(`Tracing route to ${host}...`);
+        
+        try {
+          const result = await run('traceroute', [host]);
+          pingOut.textContent = `??? Traceroute to ${host}:\n\n${result}`;
+          setStatus('Traceroute completed');
+        } catch (e) {
+          pingOut.textContent = `? Traceroute failed:\n${e}`;
+          setStatus('Traceroute failed');
+        }
+      }
+    });
+  }
+
   const btnImportConfig = $('#btn-import-config');
   if (btnImportConfig) {
     btnImportConfig.addEventListener('click', async () => {
@@ -386,12 +431,7 @@ function setupEventHandlers() {
           }
 
           if (typeof config === 'string') {
-            await cockpit.spawn([
-              'bash', '-c', `echo '${config.replace(/'/g, "'\\''")}' > /etc/netplan/99-cockpit.yaml`
-            ], {
-              superuser: 'require',
-              err: 'out'
-            });
+            await run('bash', ['-c', `echo '${config.replace(/'/g, "'\\''")}' > /etc/netplan/99-cockpit.yaml`], { superuser: 'require' });
           } else {
             alert('?? JSON import not fully implemented yet. Please use YAML format.');
             setStatus('Ready');
