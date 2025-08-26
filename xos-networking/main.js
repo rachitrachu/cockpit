@@ -1884,7 +1884,7 @@
                 </div>
                 
                 <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
-                  <button type="button" class="btn" onclick="this.closest('dialog').close()">❌ Cancel</button>
+                  <button type="button" class="btn" id="export-cancel">❌ Cancel</button>
                   <button type="button" class="btn primary" id="export-confirm">📥 Export</button>
                 </div>
               </div>
@@ -1892,6 +1892,12 @@
             
             document.body.appendChild(modal);
             setupModal(modal);
+            
+            // Handle cancel button
+            modal.querySelector('#export-cancel').addEventListener('click', () => {
+              resolve(null);
+              modal.close();
+            });
             
             modal.querySelector('#export-confirm').addEventListener('click', () => {
               const selected = modal.querySelector('input[name="export-type"]:checked');
