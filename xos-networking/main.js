@@ -1436,6 +1436,43 @@
     }
   }
 
+  async function loadConnections() {
+    console.log('Loading connections...');
+    const tbody = $('#table-connections tbody');
+    if (!tbody) return;
+
+    try {
+      const output = await run('networkctl', ['list']);
+      const lines = output.split('\n').slice(1).filter(line => line.trim());
+      
+      tbody.innerHTML = '';
+      
+      lines.forEach(line => {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length >= 4) {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${parts[1] || ''}</td>
+            <td>—</td>
+            <td>${parts[2] || ''}</td>
+            <td>${parts[3] || ''}</td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+            <td class="actions">—</td>
+          `;
+          tbody.appendChild(row);
+        }
+      });
+      
+      console.log('Loaded', lines.length, 'connections');
+      
+    } catch (e) {
+      console.warn('Failed to load connections:', e);
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Connection data unavailable</td></tr>';
+    }
+  }
+
   async function loadDiagnostics() {
     console.log('Loading diagnostics...');
     
@@ -1496,6 +1533,7 @@
         setStatus('Refreshing all data...');
         await Promise.all([
           loadInterfaces(),
+          loadConnections(), 
           loadDiagnostics()
         ]);
         setStatus('All data refreshed');
@@ -2474,6 +2512,15 @@ ${dns}`;
             console.error('Retry failed:', retryError);
           }
         }, 2000);
+      }
+      
+      try {
+        console.log('Loading connections...');
+        await loadConnections();
+        console.log('Connections loaded successfully');
+      } catch (error) {
+        console.warn('Failed to load connections:', error);
+        // Don't fail initialization for connections
       }
       
       try {
