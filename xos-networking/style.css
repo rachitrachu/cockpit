@@ -541,42 +541,11 @@ dialog + .modal-backdrop {
 
 .modal-content {
   padding: 2rem;
-  width: 100%;
-  box-sizing: border-box;
 }
 
 .modal-content h2 {
   margin-top: 0;
   color: var(--primary-color);
-}
-
-/* Modal form styling */
-.modal-content form {
-  width: 100%;
-}
-
-.modal-content input,
-.modal-content select,
-.modal-content textarea {
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.modal-content label {
-  display: block;
-  width: 100%;
-  margin-bottom: 1rem;
-}
-
-.modal-content label span {
-  display: block;
-  margin-bottom: 0.5rem;
-  font-weight: 500;
-  color: var(--dark-color);
-}
-
-.modal-content .btn {
-  box-sizing: border-box;
 }
 
 /* Loading States */

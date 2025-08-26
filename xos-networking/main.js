@@ -329,60 +329,54 @@
         const btnSetIP = createButton('Set IP', async () => {
           // Create a professional modal for IP configuration
           const modal = document.createElement('dialog');
-          modal.style.maxWidth = '550px';
+          modal.style.maxWidth = '650px';
           modal.innerHTML = `
-            <div class="modal-content" style="padding: 1.5rem;">
-              <h2 style="margin: 0 0 1.5rem 0;">🌐 Set IP Address for ${iface.dev}</h2>
+            <div class="modal-content">
+              <h2>🌐 Set IP Address for ${iface.dev}</h2>
               <form id="set-ip-form">
-                <div style="display: flex; flex-direction: column; gap: 1rem;">
-                  <label style="display: flex; flex-direction: column; gap: 0.25rem;">
-                    <span style="font-weight: 500;">📍 Current IPv4 Address</span>
-                    <input type="text" value="${iface.ipv4 || 'None assigned'}" readonly style="background: #f5f5f5; color: #666; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem; box-sizing: border-box;">
+                <label>📍 Current IPv4 Address
+                  <input type="text" value="${iface.ipv4 || 'None assigned'}" readonly style="background: #f5f5f5; color: #666; width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
+                </label>
+                
+                <label>🌐 New IPv4 Address/CIDR
+                  <input type="text" id="new-ip-addr" placeholder="192.168.1.100/24" required 
+                         pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([0-9]|[1-2][0-9]|3[0-2])$"
+                         value="${iface.ipv4 || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
+                  <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">Use CIDR notation (e.g., 192.168.1.100/24)</small>
+                </label>
+                
+                <label>🚪 Gateway (optional)
+                  <input type="text" id="new-gateway" placeholder="192.168.1.1"
+                         pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$" 
+                         style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
+                  <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">Default gateway for this interface</small>
+                </label>
+                
+                <label>🌐 DNS Servers (optional, comma separated)
+                  <input type="text" id="new-dns" placeholder="8.8.8.8,1.1.1.1" 
+                         style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
+                  <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">Comma separated list of DNS servers</small>
+                </label>
+                
+                <div style="margin: 1rem 0; padding: 1rem; background: #e8f4fd; border-radius: var(--border-radius); border: 1px solid #bee5eb;">
+                  <label style="display: flex; align-items: flex-start; gap: 0.5rem; margin: 0;">
+                    <input type="checkbox" id="persist-ip-config" checked style="margin-top: 0.25rem;">
+                    <div>
+                      <strong>💾 Persist configuration to netplan (recommended)</strong>
+                      <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">
+                        When enabled, configuration survives reboots. When disabled, changes are temporary.
+                      </small>
+                    </div>
                   </label>
-                  
-                  <label style="display: flex; flex-direction: column; gap: 0.25rem;">
-                    <span style="font-weight: 500;">🌐 New IPv4 Address/CIDR</span>
-                    <input type="text" id="new-ip-addr" placeholder="192.168.1.100/24" required 
-                           pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([0-9]|[1-2][0-9]|3[0-2])$"
-                           value="${iface.ipv4 || ''}" style="padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem; box-sizing: border-box;">
-                    <small style="color: #666; font-size: 0.875rem;">Use CIDR notation (e.g., 192.168.1.100/24)</small>
-                  </label>
-                  
-                  <label style="display: flex; flex-direction: column; gap: 0.25rem;">
-                    <span style="font-weight: 500;">🚪 Gateway (optional)</span>
-                    <input type="text" id="new-gateway" placeholder="192.168.1.1"
-                           pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$" 
-                           style="padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem; box-sizing: border-box;">
-                    <small style="color: #666; font-size: 0.875rem;">Default gateway for this interface</small>
-                  </label>
-                  
-                  <label style="display: flex; flex-direction: column; gap: 0.25rem;">
-                    <span style="font-weight: 500;">🌐 DNS Servers (optional, comma separated)</span>
-                    <input type="text" id="new-dns" placeholder="8.8.8.8,1.1.1.1" 
-                           style="padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem; box-sizing: border-box;">
-                    <small style="color: #666; font-size: 0.875rem;">Comma separated list of DNS servers</small>
-                  </label>
-                  
-                  <div style="padding: 1rem; background: #e8f4fd; border-radius: 4px; border: 1px solid #bee5eb;">
-                    <label style="display: flex; align-items: flex-start; gap: 0.5rem; margin: 0;">
-                      <input type="checkbox" id="persist-ip-config" checked style="margin-top: 0.25rem;">
-                      <div>
-                        <strong>💾 Persist configuration to netplan (recommended)</strong>
-                        <small style="color: #666; font-size: 0.875rem; display: block; margin-top: 0.25rem;">
-                          When enabled, configuration survives reboots. When disabled, changes are temporary.
-                        </small>
-                      </div>
-                    </label>
-                  </div>
-                  
-                  <div style="padding: 1rem; background: #fff3cd; border-radius: 4px; border: 1px solid #ffeaa7;">
-                    <strong>⚠️ Note:</strong> This will replace any existing IP configuration for this interface.
-                  </div>
                 </div>
                 
-                <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
-                  <button type="button" class="btn" id="cancel-ip-config" style="min-width: 100px; padding: 0.75rem 1rem;">❌ Cancel</button>
-                  <button type="button" class="btn primary" id="apply-ip-config" style="min-width: 100px; padding: 0.75rem 1rem;">💾 Apply Configuration</button>
+                <div style="margin: 1rem 0; padding: 1rem; background: #fff3cd; border-radius: var(--border-radius); border: 1px solid #ffeaa7;">
+                  <strong>⚠️ Note:</strong> This will replace any existing IP configuration for this interface.
+                </div>
+                
+                <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
+                  <button type="button" class="btn" id="cancel-ip-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">❌ Cancel</button>
+                  <button type="button" class="btn primary" id="apply-ip-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">💾 Apply Configuration</button>
                 </div>
               </form>
             </div>
@@ -536,12 +530,6 @@
                   </ul>
                 </div>
                 
-                ${iface.dev.includes('.') ? `
-                <div style="margin: 1rem 0; padding: 1rem; background: #fff3cd; border-radius: var(--border-radius); border: 1px solid #ffeaa7;">
-                  <strong>🏷️ VLAN Interface Notice:</strong> For VLAN interfaces, MTU changes may require the parent interface to support the same or larger MTU.
-                </div>
-                ` : ''}
-                
                 <div style="margin: 1rem 0; padding: 1rem; background: #e8f4fd; border-radius: var(--border-radius); border: 1px solid #bee5eb;">
                   <label style="display: flex; align-items: flex-start; gap: 0.5rem; margin: 0;">
                     <input type="checkbox" id="persist-mtu-config" checked>
@@ -590,59 +578,29 @@
               return;
             }
             
-            // Special validation for VLAN interfaces
-            if (iface.dev.includes('.') && !iface.dev.startsWith('br')) {
-              console.log(`Setting MTU for VLAN interface: ${iface.dev}`);
-              // Check if parent interface MTU is adequate
-              const vlanParts = iface.dev.split('.');
-              const parentInterface = vlanParts[0];
-              
-              // Find parent interface in the current interface list to check its MTU
-              const tableRows = document.querySelectorAll('#table-interfaces tbody tr');
-              let parentMtu = null;
-              
-              tableRows.forEach(row => {
-                const cells = row.cells;
-                if (cells && cells[0] && cells[0].textContent === parentInterface) {
-                  parentMtu = parseInt(cells[6]?.textContent || '1500');
-                }
-              });
-              
-              if (parentMtu && newMtu > parentMtu) {
-                const proceedWithHigherMtu = confirm(
-                  `⚠️ VLAN MTU Warning\n\n` +
-                  `You're setting VLAN ${iface.dev} MTU to ${newMtu}, but parent interface ${parentInterface} has MTU ${parentMtu}.\n\n` +
-                  `This may cause packet drops. Consider setting parent interface MTU to ${newMtu} or higher first.\n\n` +
-                  `Do you want to proceed anyway?`
-                );
-                if (!proceedWithHigherMtu) return;
-              }
-            }
-            
             try {
               setStatus('Setting MTU...');
-              console.log(`Setting MTU ${newMtu} on ${iface.dev} (persist: ${persist})`);
               
-              // Step 1: Apply MTU immediately if not persisting (for immediate feedback)
-              if (!persist) {
-                try {
-                  await run('ip', ['link', 'set', 'dev', iface.dev, 'mtu', newMtu.toString()], { superuser: 'require' });
-                  console.log(`Applied MTU ${newMtu} immediately to ${iface.dev}`);
-                } catch (immediateError) {
-                  console.warn('Failed to apply MTU immediately:', immediateError);
-                }
-              }
+              // Step 1: Apply MTU immediately
+              await run('ip', ['link', 'set', 'dev', iface.dev, 'mtu', newMtu.toString()], { superuser: 'require' });
+              console.log(`Set MTU ${newMtu} on ${iface.dev}`);
               
-              // Step 2: Apply via netplan if persisting (recommended path)
+              // Step 2: Persist to netplan if requested
               if (persist) {
-                console.log('Applying MTU via netplan for persistence...');
-                const result = await netplanAction('set_mtu', { name: iface.dev, mtu: newMtu });
-                
-                if (result.error) {
-                  throw new Error('Netplan MTU configuration failed: ' + result.error);
-                } else {
-                  console.log('Successfully applied MTU via netplan');
-                  alert(`✅ MTU configured and persisted successfully!\n\n📏 MTU: ${newMtu} bytes\n💾 Configuration saved to netplan`);
+                console.log('Persisting MTU configuration to netplan...');
+                try {
+                  const result = await netplanAction('set_mtu', { name: iface.dev, mtu: newMtu });
+                  
+                  if (result.error) {
+                    console.warn('Netplan persistence failed:', result.error);
+                    alert(`⚠️ MTU set successfully, but netplan persistence failed:\n${result.error}\n\nThe MTU is set but may not survive a reboot.`);
+                  } else {
+                    console.log('Successfully persisted MTU to netplan');
+                    alert(`✅ MTU configured and persisted successfully!\n\n📏 MTU: ${newMtu} bytes\n💾 Configuration saved to netplan`);
+                  }
+                } catch (error) {
+                  console.error('Netplan persistence error:', error);
+                  alert(`⚠️ MTU set successfully, but netplan persistence failed:\n${error}\n\nThe MTU is set but may not survive a reboot.`);
                 }
               } else {
                 alert(`✅ MTU configured successfully!\n\n📏 MTU: ${newMtu} bytes\n⚠️ Note: Configuration is temporary and will be lost after reboot.`);
@@ -655,14 +613,7 @@
               
             } catch (error) {
               console.error('MTU configuration error:', error);
-              let errorMsg = error.message || error;
-              
-              // Provide specific error messages for common VLAN MTU issues
-              if (iface.dev.includes('.') && errorMsg.includes('RTNETLINK')) {
-                errorMsg += '\n\nFor VLAN interfaces, ensure:\n• Parent interface exists and is up\n• Parent interface MTU >= VLAN MTU\n• VLAN interface is properly configured';
-              }
-              
-              alert(`❌ Failed to set MTU: ${errorMsg}`);
+              alert(`❌ Failed to set MTU: ${error.message || error}`);
               setStatus('❌ MTU configuration failed');
               setTimeout(() => setStatus('Ready'), 3000);
             }
@@ -990,7 +941,6 @@
                 }
               } catch (e) {
                 console.warn('Could not read netplan config:', e);
-                vlanConfig = { interfaces: [], parameters: {} };
               }
               
               // Parse VLAN info from interface name if config not found
@@ -1068,19 +1018,23 @@
                   return;
                 }
                 
-                // Check if VLAN exists
-                const existingVlan = await getVlanConfig(newName);
-                if (existingVlan && existingVlan.id !== vlanConfig.id) {
-                  alert(`❌ VLAN ${newName} already exists!`);
+                // Check if anything changed
+                const parentChanged = newParent !== vlanConfig.link;
+                const idChanged = newId !== vlanConfig.id;
+                const nameChanged = newName !== iface.dev;
+                
+                if (!parentChanged && !idChanged && !newMtu) {
+                  alert('ℹ️ No changes detected.');
+                  modal.close();
                   return;
                 }
                 
-                // Validate MTU
-                if (newMtu && (isNaN(newMtu) || newMtu < 68 || newMtu > 9000)) {
-                  alert('❌ MTU must be between 68 and 9000!');
-                  modal.querySelector('#edit-vlan-mtu').focus();
-                  return;
-                }
+                if (!confirm(`💾 Apply VLAN changes?\\n\\n` +
+                  `Interface: ${iface.dev} → ${newName}\\n` +
+                  `Parent: ${vlanConfig.link} → ${newParent}\\n` +
+                  `VLAN ID: ${vlanConfig.id} → ${newId}\\n` +
+                  `${newMtu ? `MTU: ${newMtu}\\n` : ''}\\n` +
+                  `⚠️ This will recreate the VLAN interface.`)) return;
                 
                 try {
                   setStatus('Updating VLAN configuration...');
@@ -1158,7 +1112,7 @@
                   }
                   
                   modal.close();
-                  alert(`✅ VLAN ${newName} updated successfully!`);
+                  alert(`✅ VLAN updated successfully!`);
                   await loadInterfaces();
                 } catch (error) {
                   console.error('VLAN update failed:', error);
@@ -1262,7 +1216,7 @@
                         ${currentPorts.length > 0 ? currentPorts.map(p => `<span style="display: inline-block; background: #e8f4fd; padding: 0.25rem 0.5rem; margin: 0.25rem; border-radius: 3px;">${p}</span>`).join('') : '<em>No ports found</em>'}
                       </div>
                     </div>
-                
+                    
                     <div style="margin: 1rem 0;">
                       <h4 style="margin: 0.5rem 0; color: var(--primary-color);">➕ Select Bridge Ports:</h4>
                       <p style="font-size: 0.875rem; color: var(--muted-color); margin: 0.5rem 0;">Select interfaces to include in the bridge. Current ports will be replaced.</p>
@@ -1482,6 +1436,43 @@
     }
   }
 
+  async function loadConnections() {
+    console.log('Loading connections...');
+    const tbody = $('#table-connections tbody');
+    if (!tbody) return;
+
+    try {
+      const output = await run('networkctl', ['list']);
+      const lines = output.split('\n').slice(1).filter(line => line.trim());
+      
+      tbody.innerHTML = '';
+      
+      lines.forEach(line => {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length >= 4) {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${parts[1] || ''}</td>
+            <td>—</td>
+            <td>${parts[2] || ''}</td>
+            <td>${parts[3] || ''}</td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+            <td class="actions">—</td>
+          `;
+          tbody.appendChild(row);
+        }
+      });
+      
+      console.log('Loaded', lines.length, 'connections');
+      
+    } catch (e) {
+      console.warn('Failed to load connections:', e);
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Connection data unavailable</td></tr>';
+    }
+  }
+
   async function loadDiagnostics() {
     console.log('Loading diagnostics...');
     
@@ -1542,6 +1533,7 @@
         setStatus('Refreshing all data...');
         await Promise.all([
           loadInterfaces(),
+          loadConnections(), 
           loadDiagnostics()
         ]);
         setStatus('All data refreshed');
@@ -2191,53 +2183,27 @@ ${dns}`;
           }
         }
         
-        // Validate MTU if provided
-        if (mtu && (isNaN(parseInt(mtu)) || parseInt(mtu) < 68 || parseInt(mtu) > 9000)) {
-          alert('❌ MTU must be between 68 and 9000!');
-          return;
-        }
-        
         try {
           setStatus('Creating VLAN...');
           
-          // Step 1: Create VLAN interface with improved config
+          // Step 1: Create VLAN interface
           const vlanConfig = {
             name: name,
             id: parseInt(id),
             link: parent
           };
           
-          // Add MTU to VLAN creation if specified
           if (mtu && parseInt(mtu) !== 1500) {
             vlanConfig.mtu = parseInt(mtu);
-            console.log(`Including MTU ${mtu} in VLAN creation config`);
           }
           
-          console.log('Creating VLAN with config:', vlanConfig);
           const result = await netplanAction('add_vlan', vlanConfig);
           
           if (result.error) {
             throw new Error(result.error);
           }
           
-          console.log('VLAN created successfully, now configuring additional settings...');
-          
-          // Step 2: Set MTU separately if not included in creation (fallback approach)
-          if (mtu && parseInt(mtu) !== 1500) {
-            console.log('Applying MTU setting separately...');
-            try {
-              const mtuResult = await netplanAction('set_mtu', { name: iface.dev, mtu: newMtu });
-              if (mtuResult.error) {
-                console.warn('Separate MTU setting failed:', mtuResult.error);
-              } else {
-                console.log('MTU applied successfully via separate action');
-              }
-            } catch (mtuError) {
-              console.warn('Failed to apply MTU separately:', mtuError);
-            }
-          }
-          
-          // Step 3: Configure IP if provided
+          // Step 2: Configure IP if provided
           if (staticIp) {
             console.log('Configuring IP for VLAN interface...');
             
@@ -2281,9 +2247,6 @@ ${dns}`;
           const output = $('#vlan-out');
           if (output) {
             let successMsg = `✅ VLAN ${name} created successfully!`;
-            if (mtu && parseInt(mtu) !== 1500) {
-              successMsg += `\n📏 MTU: ${mtu} bytes`;
-            }
             if (staticIp) {
               successMsg += `\n📍 IP: ${staticIp}`;
             }
@@ -2549,6 +2512,15 @@ ${dns}`;
             console.error('Retry failed:', retryError);
           }
         }, 2000);
+      }
+      
+      try {
+        console.log('Loading connections...');
+        await loadConnections();
+        console.log('Connections loaded successfully');
+      } catch (error) {
+        console.warn('Failed to load connections:', error);
+        // Don't fail initialization for connections
       }
       
       try {
