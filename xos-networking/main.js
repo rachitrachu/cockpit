@@ -867,11 +867,11 @@
                   setTimeout(() => setStatus('Ready'), 3000);
                   await loadInterfaces();
                 } catch (error) {
-                  console.error('Bond update failed:', error);
-                  alert(`❌ Failed to update bond: ${error.message || error}`);
-                  setStatus('❌ Bond update failed');
-                  setTimeout(() => setStatus('Ready'), 3000);
-                }
+      console.error('Bond update failed:', error);
+      alert(`❌ Failed to update bond: ${error.message || error}`);
+      setStatus('❌ Bond update failed');
+      setTimeout(() => setStatus('Ready'), 3000);
+    }
               });
               
               modal.showModal();
@@ -1002,7 +1002,7 @@
                 modal.close();
               });
               
-              // Handle save
+              // Handle form submission
               modal.querySelector('#save-vlan-changes').addEventListener('click', async () => {
                 const newParent = modal.querySelector('#edit-vlan-parent').value;
                 const newId = parseInt(modal.querySelector('#edit-vlan-id').value);
@@ -1086,11 +1086,11 @@
               
               modal.showModal();
             } catch (error) {
-              console.error('Failed to load VLAN configuration:', error);
-              alert(`❌ Failed to load VLAN configuration: ${error}`);
-            } finally {
-              setStatus('Ready');
-            }
+      console.error('Failed to load VLAN configuration:', error);
+      alert(`❌ Failed to load VLAN configuration: ${error}`);
+    } finally {
+      setStatus('Ready');
+    }
           });
 
           const btnDeleteVlan = createButton('Delete', async () => {
@@ -1110,7 +1110,7 @@
           const btnEditBridge = createButton('Edit', async () => {
             try {
               setStatus('Loading bridge configuration...');
-              
+
 
               // Get current bridge configuration
               let bridgeConfig = null;
@@ -1330,7 +1330,7 @@
                   setTimeout(() => setStatus('Ready'), 3000);
                 }
               });
-              
+            
               modal.showModal();
             } catch (error) {
               console.error('Failed to load bridge configuration:', error);
@@ -1655,331 +1655,19 @@
       });
     }
 
-    // Ping button
-    const pingBtn = $('#btn-ping');
-    if (pingBtn) {
-      pingBtn.addEventListener('click', async () => {
-        const host = $('#diag-host')?.value?.trim() || '8.8.8.8';
-        const pingOut = $('#ping-out');
-        if (!pingOut) return;
+    // Apply netplan configuration button
+    const btnApplyNetplan = $('#btn-apply-netplan');
+    if (btnApplyNetplan) {
+      btnApplyNetplan.addEventListener('click', async () => {
+        if (!confirm('⚡ Apply Netplan configuration?\n\nThis may temporarily disrupt network connectivity while the configuration is applied.')) return;
         
         try {
-          pingOut.textContent = 'Running ping...';
-          const result = await run('ping', ['-c', '4', host]);
-          pingOut.textContent = result;
+          setStatus('Applying Netplan configuration...');
+          await run('netplan', ['apply'], { superuser: 'require' });
+          alert('✅ Netplan configuration applied successfully!\n\nNetwork interfaces have been reconfigured.');
+          await loadInterfaces(); // Refresh interface list
         } catch (e) {
-          pingOut.textContent = 'Ping failed: ' + e;
-        }
-      });
-    }
-
-    // Traceroute button
-    const traceBtn = $('#btn-traceroute');
-    if (traceBtn) {
-      traceBtn.addEventListener('click', async () => {
-        const host = $('#diag-host')?.value?.trim() || '8.8.8.8';
-        const pingOut = $('#ping-out');
-        if (!pingOut) return;
-        
-        try {
-          pingOut.textContent = 'Running traceroute...';
-          const result = await run('traceroute', [host]);
-          pingOut.textContent = result;
-        } catch (e) {
-          pingOut.textContent = 'Traceroute failed: ' + e;
-        }
-      });
-    }
-    
-    // Setup interface search and sorting
-    const searchInput = $('#search-iface');
-    if (searchInput) {
-      searchInput.addEventListener('input', () => {
-        const term = searchInput.value.toLowerCase();
-        const rows = $$('#table-interfaces tbody tr');
-        
-        rows.forEach(row => {
-          const text = row.textContent.toLowerCase();
-          row.style.display = text.includes(term) ? '' : 'none';
-        });
-      });
-    }
-    
-    const sortSelect = $('#iface-sort');
-    if (sortSelect) {
-      sortSelect.addEventListener('change', () => {
-        const sortBy = sortSelect.value;
-        const tbody = $('#table-interfaces tbody');
-        if (!tbody) return;
-        
-        const rows = Array.from(tbody.querySelectorAll('tr'));
-        
-        rows.sort((a, b) => {
-          let aVal = '', bVal = '';
-          
-          switch (sortBy) {
-            case 'name':
-              aVal = a.cells[0]?.textContent || '';
-              bVal = b.cells[0]?.textContent || '';
-              break;
-            case 'type':
-              aVal = a.cells[1]?.textContent || '';
-              bVal = b.cells[1]?.textContent || '';
-              break;
-            case 'state':
-              aVal = a.cells[2]?.textContent || '';
-              bVal = b.cells[2]?.textContent || '';
-              break;
-            default:
-              return 0;
-          }
-          
-          return aVal.localeCompare(bVal);
-        });
-        
-        // Clear tbody and re-add sorted rows
-        tbody.innerHTML = '';
-        rows.forEach(row => tbody.appendChild(row));
-      });
-    }
-    
-    // Setup connection search
-    const searchConnInput = $('#search-conn');
-    if (searchConnInput) {
-      searchConnInput.addEventListener('input', () => {
-        const term = searchConnInput.value.toLowerCase();
-        const rows = $$('#table-connections tbody tr');
-        
-        rows.forEach(row => {
-          const text = row.textContent.toLowerCase();
-          row.style.display = text.includes(term) ? '' : 'none';
-        });
-      });
-    }
-    
-    // Setup add connection button (basic placeholder functionality)
-    const btnAddConnection = $('#btn-add-connection');
-    if (btnAddConnection) {
-      btnAddConnection.addEventListener('click', () => {
-        alert('🚧 Add Connection functionality is under development.\n\nFor now, please use the VLAN/Bridge/Bond tab to create network constructs,\nor use the "Set IP" button on individual interfaces to configure networking.');
-      });
-    }
-  }
-
-  // Get available physical interfaces for dropdowns
-  async function getPhysicalInterfaces() {
-    try {
-      const output = await run('ip', ['-o', 'link', 'show']);
-      const interfaces = [];
-      
-      output.split('\n').forEach(line => {
-        const match = line.match(/^\d+:\s+([^:]+):/);
-        if (match) {
-          const dev = match[1].trim();
-          // Skip virtual and special interfaces
-          if (dev !== 'lo' && 
-              !dev.startsWith('virbr') && 
-              !dev.startsWith('docker') && 
-              !dev.startsWith('veth') && 
-              !dev.startsWith('bond') && 
-              !dev.startsWith('br') && 
-              !dev.includes('.')) {
-            interfaces.push(dev);
-          }
-        }
-      });
-      
-      return interfaces;
-    } catch (e) {
-      console.error('Failed to get physical interfaces:', e);
-      return [];
-    }
-  }
-
-  // Setup network construction forms
-  async function setupNetworkingForms() {
-    console.log('Setting up networking forms...');
-    
-    // Get physical interfaces for dropdowns
-    const physicalInterfaces = await getPhysicalInterfaces();
-    console.log('Available physical interfaces:', physicalInterfaces);
-    
-    // Populate VLAN parent dropdown
-    const vlanParent = $('#vlan-parent');
-    if (vlanParent) {
-      vlanParent.innerHTML = '<option value="">Select parent interface...</option>';
-      physicalInterfaces.forEach(iface => {
-        const option = document.createElement('option');
-        option.value = iface;
-        option.textContent = iface;
-        vlanParent.appendChild(option);
-      });
-    }
-    
-    // Populate bridge ports multi-select
-    const bridgePorts = $('#br-ports');
-    if (bridgePorts) {
-      bridgePorts.innerHTML = '';
-      physicalInterfaces.forEach(iface => {
-        const option = document.createElement('option');
-        option.value = iface;
-        option.textContent = iface;
-        bridgePorts.appendChild(option);
-      });
-    }
-    
-    // Populate bond slaves multi-select
-    const bondSlaves = $('#bond-slaves');
-    if (bondSlaves) {
-      bondSlaves.innerHTML = '';
-      physicalInterfaces.forEach(iface => {
-        const option = document.createElement('option');
-        option.value = iface;
-        option.textContent = iface;
-        bondSlaves.appendChild(option);
-      });
-    }
-
-    // Setup VLAN creation
-    const btnCreateVlan = $('#btn-create-vlan');
-    if (btnCreateVlan) {
-      btnCreateVlan.addEventListener('click', async () => {
-        const parent = $('#vlan-parent')?.value?.trim();
-        const id = $('#vlan-id')?.value?.trim();
-        const name = $('#vlan-name')?.value?.trim() || `${parent}.${id}`;
-        
-        if (!parent || !id) {
-          alert('❌ Parent interface and VLAN ID are required!');
-          return;
-        }
-        
-        if (!id.match(/^\d+$/) || parseInt(id) < 1 || parseInt(id) > 4094) {
-          alert('❌ VLAN ID must be between 1 and 4094!');
-          return;
-        }
-        
-        try {
-          setStatus('Creating VLAN...');
-          const result = await netplanAction('add_vlan', {
-            name: name,
-            id: parseInt(id),
-            link: parent
-          });
-          
-          const output = $('#vlan-out');
-          if (result.error) {
-            if (output) output.textContent = `❌ Error: ${result.error}`;
-          } else {
-            if (output) output.textContent = `✅ VLAN ${name} created successfully!`;
-            // Clear form
-            $('#vlan-parent').selectedIndex = 0;
-            $('#vlan-id').value = '';
-            $('#vlan-name').value = '';
-            await loadInterfaces();
-          }
-        } catch (e) {
-          const output = $('#vlan-out');
-          if (output) output.textContent = `❌ Failed to create VLAN: ${e}`;
-        } finally {
-          setStatus('Ready');
-        }
-      });
-    }
-
-    // Setup Bridge creation
-    const btnCreateBridge = $('#btn-create-bridge');
-    if (btnCreateBridge) {
-      btnCreateBridge.addEventListener('click', async () => {
-        const name = $('#br-name')?.value?.trim();
-        const portsSelect = $('#br-ports');
-        const ports = portsSelect ? Array.from(portsSelect.selectedOptions).map(opt => opt.value) : [];
-        
-        if (!name) {
-          alert('❌ Bridge name is required!');
-          return;
-        }
-        
-        if (ports.length === 0) {
-          alert('❌ At least one port interface is required!');
-          return;
-        }
-        
-        try {
-          setStatus('Creating bridge...');
-          const result = await netplanAction('add_bridge', {
-            name: name,
-            interfaces: ports
-          });
-          
-          const output = $('#br-out');
-          if (result.error) {
-            if (output) output.textContent = `❌ Error: ${result.error}`;
-          } else {
-            if (output) output.textContent = `✅ Bridge ${name} created with ports: ${ports.join(', ')}`;
-            // Clear form
-            $('#br-name').value = '';
-            if (portsSelect) {
-              Array.from(portsSelect.options).forEach(opt => opt.selected = false);
-            }
-            await loadInterfaces();
-          }
-        } catch (e) {
-          const output = $('#br-out');
-          if (output) output.textContent = `❌ Failed to create bridge: ${e}`;
-        } finally {
-          setStatus('Ready');
-        }
-      });
-    }
-
-    // Setup Bond creation
-    const btnCreateBond = $('#btn-create-bond');
-    if (btnCreateBond) {
-      btnCreateBond.addEventListener('click', async () => {
-        const name = $('#bond-name')?.value?.trim();
-        const mode = $('#bond-mode')?.value;
-        const slavesSelect = $('#bond-slaves');
-        const slaves = slavesSelect ? Array.from(slavesSelect.selectedOptions).map(opt => opt.value) : [];
-        
-        if (!name) {
-          alert('❌ Bond name is required!');
-          return;
-        }
-        
-        if (!mode) {
-          alert('❌ Bond mode is required!');
-          return;
-        }
-        
-        if (slaves.length < 2) {
-          alert('❌ At least two slave interfaces are required for bonding!');
-          return;
-        }
-        
-        try {
-          setStatus('Creating bond...');
-          const result = await netplanAction('add_bond', {
-            name: name,
-            mode: mode,
-            interfaces: slaves
-          });
-          
-          const output = $('#bond-out');
-          if (result.error) {
-            if (output) output.textContent = `❌ Error: ${result.error}`;
-          } else {
-            if (output) output.textContent = `✅ Bond ${name} (${mode}) created with slaves: ${slaves.join(', ')}`;
-            // Clear form
-            $('#bond-name').value = '';
-            $('#bond-mode').selectedIndex = 0;
-            if (slavesSelect) {
-              Array.from(slavesSelect.options).forEach(opt => opt.selected = false);
-            }
-            await loadInterfaces();
-          }
-        } catch (e) {
-          const output = $('#bond-out');
-          if (output) output.textContent = `❌ Failed to create bond: ${e}`;
+          alert(`❌ Failed to apply Netplan configuration:\n${e}`);
         } finally {
           setStatus('Ready');
         }
@@ -2006,35 +1694,19 @@
           
           console.log('Netplan test result:', result);
           
-          // Look for JSON response - it should be the last line starting with {
-          const lines = result.trim().split('\n');
-          let jsonLine = null;
-          
-          // Find the last line that looks like JSON
-          for (let i = lines.length - 1; i >= 0; i--) {
-            const line = lines[i].trim();
-            if (line.startsWith('{')) {
-              jsonLine = line;
-              break;
-            }
-          }
-          
-          if (jsonLine) {
-            try {
-              const parsed = JSON.parse(jsonLine);
-              console.log('Netplan script parsed output:', parsed);
-              
-              if (parsed.error) {
-                alert(`❌ Netplan test failed:\n${parsed.error}`);
-              } else {
-                alert('✅ Netplan test successful!\n\nCheck /etc/netplan/99-cockpit.yaml for changes.');
-              }
-            } catch (parseError) {
-              console.error('JSON parse error:', parseError);
-              alert('❌ Failed to parse netplan test response');
-            }
+          // netplanAction already returns a parsed object, not raw text
+          if (result.error) {
+            alert(`❌ Netplan test failed:\n${result.error}\n\nCheck console for details.`);
           } else {
-            alert('✅ Netplan test completed, but no valid response found. Check logs for details.');
+            alert('✅ Netplan test successful!\n\nCheck /etc/netplan/99-cockpit.yaml for changes.');
+            
+            // Show current netplan content
+            try {
+              const netplanContent = await run('cat', ['/etc/netplan/99-cockpit.yaml'], { superuser: 'try' });
+              console.log('Current netplan content:', netplanContent);
+            } catch (e) {
+              console.warn('Could not read netplan file:', e);
+            }
           }
         } catch (error) {
           console.error('Netplan test error:', error);
