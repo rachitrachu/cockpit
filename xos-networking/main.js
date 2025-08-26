@@ -1,4 +1,4 @@
-﻿/* global cockpit */
+﻿/* global cockpit, waitForReady, setStatus, setupTabs, setupEventHandlers, setupNetworkingForms, loadInterfaces, loadConnections, loadDiagnostics */
 (() => {
   'use strict';
 
