@@ -197,6 +197,56 @@ function saveConfiguration() {
                         const backupFile = cockpit.file('/tmp/xavs-globals.yml.backup');
                         backupFile.replace(yamlContent)
                             .then(() => {
+// Save configuration
+function saveConfiguration() {
+    try {
+        if (!formGenerator) {
+            throw new Error('Form generator not initialized');
+        }
+
+        // Validate form
+        const validation = formGenerator.validateForm();
+        if (!validation.isValid) {
+            const errorMsg = 'Please fix the following errors:\n' + validation.errors.join('\n');
+            showStatus(errorMsg, 'danger');
+            return;
+        }
+        
+        // Collect form data
+        const config = formGenerator.getFormData();
+        const yamlContent = generateYamlContent(config);
+        
+        console.log('Attempting to save configuration...', config);
+        showStatus('Saving configuration...', 'info');
+        
+        // Create directory first if it doesn't exist
+        const dirCommand = cockpit.spawn(['mkdir', '-p', '/etc/xavs/globals.d'], { superuser: "require" });
+        
+        dirCommand.done(() => {
+            // Directory created or already exists, now save the file
+            const yamlFile = cockpit.file('/etc/xavs/globals.d/99_xavs.yml');
+            yamlFile.replace(yamlContent)
+                .then(() => {
+                    console.log('Configuration saved successfully');
+                    showStatus('Configuration saved successfully to /etc/xavs/globals.d/99_xavs.yml', 'success');
+                    currentConfig = config;
+                    
+                    // Also log the file path for easy reference
+                    console.log('File saved to: /etc/xavs/globals.d/99_xavs.yml');
+                    console.log('Generated YAML content length:', yamlContent.length);
+                })
+                .catch(err => {
+                    console.error('Error saving configuration:', err);
+                    showStatus('Error saving configuration: ' + err.message, 'danger');
+                    
+                    // Try alternative path if the primary fails
+                    if (err.message.includes('Permission denied') || err.message.includes('not found')) {
+                        showStatus('Trying alternative save location...', 'warning');
+                        
+                        // Try saving to a backup location
+                        const backupFile = cockpit.file('/tmp/xavs-globals.yml.backup');
+                        backupFile.replace(yamlContent)
+                            .then(() => {
                                 showStatus('Configuration saved to backup location: /tmp/xavs-globals.yml.backup', 'warning');
                             })
                             .catch(backupErr => {
@@ -217,6 +267,9 @@ function saveConfiguration() {
     }
 }
 
+// Preview configuration
+function previewConfiguration() {
+    try {
 // Preview configuration
 function previewConfiguration() {
     try {
