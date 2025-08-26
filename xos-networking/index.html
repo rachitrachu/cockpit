@@ -38,9 +38,6 @@
       <button class="tab active" data-tab="interfaces">
         <span class="icon">🔌</span> Interfaces
       </button>
-      <button class="tab" data-tab="connections">
-        <span class="icon">🔗</span> Connections  
-      </button>
       <button class="tab" data-tab="constructs">
         <span class="icon">🏗️</span> VLAN / Bridge / Bond
       </button>
@@ -104,76 +101,6 @@
             <tbody></tbody>
           </table>
         </div>
-      </section>
-
-      <!-- Connections -->
-      <section id="tab-connections" class="tab-panel">
-        <div class="toolbar">
-          <button id="btn-add-connection" class="btn primary">
-            <span class="icon">➕</span> Add Connection
-          </button>
-          <div class="spacer"></div>
-          <div class="search">
-            <input id="search-conn" placeholder="Search connections..." />
-          </div>
-        </div>
-        
-        <div class="table-responsive">
-          <table class="table" id="table-connections">
-            <thead>
-              <tr>
-                <th>📛 Name</th>
-                <th>🆔 UUID</th>
-                <th>🏷️ Type</th>
-                <th>🔌 Device</th>
-                <th>🔄 Auto</th>
-                <th>🌐 IP4</th>
-                <th>🌍 IP6</th>
-                <th>⚙️ Actions</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-
-        <!-- Add/Edit Connection Modal -->
-        <dialog id="conn-modal">
-          <form method="dialog" id="conn-form" class="form">
-            <div class="modal-content">
-              <h2 id="conn-modal-title">➕ Add Connection</h2>
-              <label>📛 Connection Name
-                <input name="name" required>
-              </label>
-              <label>🔌 Device
-                <input name="device" placeholder="e.g. eth0" required>
-              </label>
-              <label>🏷️ Type
-                <select name="type">
-                  <option value="ethernet">🔌 Ethernet</option>
-                  <option value="vlan">🏷️ VLAN</option>
-                  <option value="bridge">🌉 Bridge</option>
-                  <option value="bond">🔗 Bond</option>
-                </select>
-              </label>
-              <fieldset style="margin: 1rem 0; padding: 1rem; border: 1px solid var(--border-color); border-radius: var(--border-radius);">
-                <legend style="font-weight: 600; color: var(--primary-color);">🌐 IPv4 Configuration (Optional)</legend>
-                <label>📍 Address/CIDR
-                  <input name="ip4addr" placeholder="e.g. 10.0.1.10/24">
-                </label>
-                <label>🚪 Gateway
-                  <input name="ip4gw" placeholder="e.g. 10.0.1.1">
-                </label>
-                <label>🌐 DNS (comma separated)
-                  <input name="ip4dns" placeholder="e.g. 1.1.1.1,8.8.8.8">
-                </label>
-              </fieldset>
-              <menu style="display: flex; gap: 1rem; justify-content: flex-end; margin: 0; padding: 0;">
-                <button id="conn-cancel" value="cancel" class="btn">❌ Cancel</button>
-                <button id="conn-save" value="default" class="btn primary">💾 Save</button>
-              </menu>
-            </div>
-          </form>
-        </dialog>
       </section>
 
       <!-- VLAN/Bridge/Bond -->
