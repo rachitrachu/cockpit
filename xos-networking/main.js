@@ -329,60 +329,55 @@
         const btnSetIP = createButton('Set IP', async () => {
           // Create a professional modal for IP configuration
           const modal = document.createElement('dialog');
-          modal.style.maxWidth = '550px';
           modal.innerHTML = `
-            <div class="modal-content" style="padding: 1.5rem;">
-              <h2 style="margin: 0 0 1.5rem 0;">🌐 Set IP Address for ${iface.dev}</h2>
+            <div class="modal-content">
+              <h2>🌐 Set IP Address for ${iface.dev}</h2>
               <form id="set-ip-form">
-                <div style="display: flex; flex-direction: column; gap: 1rem;">
-                  <label style="display: flex; flex-direction: column; gap: 0.25rem;">
-                    <span style="font-weight: 500;">📍 Current IPv4 Address</span>
-                    <input type="text" value="${iface.ipv4 || 'None assigned'}" readonly style="background: #f5f5f5; color: #666; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem; box-sizing: border-box;">
+                <label>
+                  <span>📍 Current IPv4 Address</span>
+                  <input type="text" value="${iface.ipv4 || 'None assigned'}" readonly style="background: #f5f5f5; color: #666;">
+                </label>
+                
+                <label>
+                  <span>🌐 New IPv4 Address/CIDR</span>
+                  <input type="text" id="new-ip-addr" placeholder="192.168.1.100/24" required 
+                         pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([0-9]|[1-2][0-9]|3[0-2])$"
+                         value="${iface.ipv4 || ''}">
+                  <small>Use CIDR notation (e.g., 192.168.1.100/24)</small>
+                </label>
+                
+                <label>
+                  <span>🚪 Gateway (optional)</span>
+                  <input type="text" id="new-gateway" placeholder="192.168.1.1"
+                         pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$">
+                  <small>Default gateway for this interface</small>
+                </label>
+                
+                <label>
+                  <span>🌐 DNS Servers (optional, comma separated)</span>
+                  <input type="text" id="new-dns" placeholder="8.8.8.8,1.1.1.1">
+                  <small>Comma separated list of DNS servers</small>
+                </label>
+                
+                <div class="modal-section info">
+                  <label style="flex-direction: row; align-items: flex-start; gap: 0.5rem;">
+                    <input type="checkbox" id="persist-ip-config" checked style="margin-top: 0.25rem; width: auto;">
+                    <div>
+                      <strong>💾 Persist configuration to netplan (recommended)</strong>
+                      <small style="display: block; margin-top: 0.25rem;">
+                        When enabled, configuration survives reboots. When disabled, changes are temporary.
+                      </small>
+                    </div>
                   </label>
-                  
-                  <label style="display: flex; flex-direction: column; gap: 0.25rem;">
-                    <span style="font-weight: 500;">🌐 New IPv4 Address/CIDR</span>
-                    <input type="text" id="new-ip-addr" placeholder="192.168.1.100/24" required 
-                           pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([0-9]|[1-2][0-9]|3[0-2])$"
-                           value="${iface.ipv4 || ''}" style="padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem; box-sizing: border-box;">
-                    <small style="color: #666; font-size: 0.875rem;">Use CIDR notation (e.g., 192.168.1.100/24)</small>
-                  </label>
-                  
-                  <label style="display: flex; flex-direction: column; gap: 0.25rem;">
-                    <span style="font-weight: 500;">🚪 Gateway (optional)</span>
-                    <input type="text" id="new-gateway" placeholder="192.168.1.1"
-                           pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$" 
-                           style="padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem; box-sizing: border-box;">
-                    <small style="color: #666; font-size: 0.875rem;">Default gateway for this interface</small>
-                  </label>
-                  
-                  <label style="display: flex; flex-direction: column; gap: 0.25rem;">
-                    <span style="font-weight: 500;">🌐 DNS Servers (optional, comma separated)</span>
-                    <input type="text" id="new-dns" placeholder="8.8.8.8,1.1.1.1" 
-                           style="padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem; box-sizing: border-box;">
-                    <small style="color: #666; font-size: 0.875rem;">Comma separated list of DNS servers</small>
-                  </label>
-                  
-                  <div style="padding: 1rem; background: #e8f4fd; border-radius: 4px; border: 1px solid #bee5eb;">
-                    <label style="display: flex; align-items: flex-start; gap: 0.5rem; margin: 0;">
-                      <input type="checkbox" id="persist-ip-config" checked style="margin-top: 0.25rem;">
-                      <div>
-                        <strong>💾 Persist configuration to netplan (recommended)</strong>
-                        <small style="color: #666; font-size: 0.875rem; display: block; margin-top: 0.25rem;">
-                          When enabled, configuration survives reboots. When disabled, changes are temporary.
-                        </small>
-                      </div>
-                    </label>
-                  </div>
-                  
-                  <div style="padding: 1rem; background: #fff3cd; border-radius: 4px; border: 1px solid #ffeaa7;">
-                    <strong>⚠️ Note:</strong> This will replace any existing IP configuration for this interface.
-                  </div>
                 </div>
                 
-                <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
-                  <button type="button" class="btn" id="cancel-ip-config" style="min-width: 100px; padding: 0.75rem 1rem;">❌ Cancel</button>
-                  <button type="button" class="btn primary" id="apply-ip-config" style="min-width: 100px; padding: 0.75rem 1rem;">💾 Apply Configuration</button>
+                <div class="modal-section warning">
+                  <strong>⚠️ Note:</strong> This will replace any existing IP configuration for this interface.
+                </div>
+                
+                <div class="modal-buttons">
+                  <button type="button" class="btn" id="cancel-ip-config">❌ Cancel</button>
+                  <button type="button" class="btn primary" id="apply-ip-config">💾 Apply Configuration</button>
                 </div>
               </form>
             </div>
@@ -511,19 +506,19 @@
         const btnSetMTU = createButton('Set MTU', async () => {
           // Create a professional modal for MTU configuration
           const modal = document.createElement('dialog');
-          modal.style.maxWidth = '550px';
           modal.innerHTML = `
             <div class="modal-content">
               <h2>📏 Set MTU for ${iface.dev}</h2>
               <form id="set-mtu-form">
-                <label>📏 Current MTU
-                  <input type="text" value="${iface.mtu || 'Unknown'}" readonly style="background: #f5f5f5; color: #666; width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
+                <label>
+                  <span>📏 Current MTU</span>
+                  <input type="text" value="${iface.mtu || 'Unknown'}" readonly style="background: #f5f5f5; color: #666;">
                 </label>
                 
-                <label>🔧 New MTU Value
-                  <input type="number" id="new-mtu-value" min="68" max="9000" value="${iface.mtu || '1500'}" required 
-                         style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
-                  <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">Valid range: 68 - 9000 bytes</small>
+                <label>
+                  <span>🔧 New MTU Value</span>
+                  <input type="number" id="new-mtu-value" min="68" max="9000" value="${iface.mtu || '1500'}" required>
+                  <small>Valid range: 68 - 9000 bytes</small>
                 </label>
                 
                 <div style="margin: 1rem 0;">
@@ -537,28 +532,30 @@
                 </div>
                 
                 ${iface.dev.includes('.') ? `
-                <div style="margin: 1rem 0; padding: 1rem; background: #fff3cd; border-radius: var(--border-radius); border: 1px solid #ffeaa7;">
+                <div class="modal-section warning">
                   <strong>🏷️ VLAN Interface Notice:</strong> For VLAN interfaces, MTU changes may require the parent interface to support the same or larger MTU.
                 </div>
                 ` : ''}
                 
-                <div style="margin: 1rem 0; padding: 1rem; background: #e8f4fd; border-radius: var(--border-radius); border: 1px solid #bee5eb;">
-                  <label style="display: flex; align-items: flex-start; gap: 0.5rem; margin: 0;">
-                    <input type="checkbox" id="persist-mtu-config" checked>
-                    💾 <strong>Persist configuration to netplan (recommended)
+                <div class="modal-section info">
+                  <label style="flex-direction: row; align-items: flex-start; gap: 0.5rem;">
+                    <input type="checkbox" id="persist-mtu-config" checked style="width: auto;">
+                    <div>
+                      <strong>💾 Persist configuration to netplan (recommended)</strong>
+                      <small style="display: block; margin-top: 0.25rem;">
+                        When enabled, configuration survives reboots. When disabled, changes are temporary.
+                      </small>
+                    </div>
                   </label>
-                  <small style="color: var(--muted-color); font-size: 0.875rem; margin-left: 1.5rem;">
-                    When enabled, configuration survives reboots. When disabled, changes are temporary.
-                  </small>
                 </div>
                 
-                <div style="margin: 1rem 0; padding: 1rem; background: #fff3cd; border-radius: var(--border-radius); border: 1px solid #ffeaa7;">
+                <div class="modal-section warning">
                   <strong>⚠️ Note:</strong> Changing MTU may temporarily disrupt network connectivity on this interface.
                 </div>
                 
-                <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
-                  <button type="button" class="btn" id="cancel-mtu-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">❌ Cancel</button>
-                  <button type="button" class="btn primary" id="apply-mtu-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">💾 Apply MTU</button>
+                <div class="modal-buttons">
+                  <button type="button" class="btn" id="cancel-mtu-config">❌ Cancel</button>
+                  <button type="button" class="btn primary" id="apply-mtu-config">💾 Apply MTU</button>
                 </div>
               </form>
             </div>
@@ -1061,6 +1058,8 @@
                 const newParent = modal.querySelector('#edit-vlan-parent').value;
                 const newId = parseInt(modal.querySelector('#edit-vlan-id').value);
                 const newMtu = modal.querySelector('#edit-vlan-mtu').value;
+                const staticIp = modal.querySelector('#vlan-static-ip').value.trim();
+                const gateway = modal.querySelector('#vlan-gateway').value.trim();
                 const newName = `${newParent}.${newId}`;
                 
                 if (!newParent || isNaN(newId) || newId < 1 || newId > 4094) {
@@ -1262,12 +1261,11 @@
                         ${currentPorts.length > 0 ? currentPorts.map(p => `<span style="display: inline-block; background: #e8f4fd; padding: 0.25rem 0.5rem; margin: 0.25rem; border-radius: 3px;">${p}</span>`).join('') : '<em>No ports found</em>'}
                       </div>
                     </div>
-                    
+                
                     <div style="margin: 1rem 0;">
                       <h4 style="margin: 0.5rem 0; color: var(--primary-color);">➕ Select Bridge Ports:</h4>
                       <p style="font-size: 0.875rem; color: var(--muted-color); margin: 0.5rem 0;">Select interfaces to include in the bridge. Current ports will be replaced.</p>
-                      <input type="text" id="bridge-ports-filter" placeholder="Filter interfaces..." style="width: 100%; margin-bottom: 0.5rem; padding: 0.5rem;">
-                      <select id="edit-bridge-ports" multiple style="height: 120px; width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;" onchange="this.size= this.options.length > 5 ? 5 : 1">
+                      <select id="edit-bridge-ports" multiple style="height: 120px; width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
                         ${availableInterfaces.concat(currentPorts).filter((v, i, a) => a.indexOf(v) === i).map(iface => 
                           `<option value="${iface}" ${currentPorts.includes(iface) ? 'selected' : ''}>${iface}${currentPorts.includes(iface) ? ' (current)' : ''}</option>`
                         ).join('')}
@@ -1482,43 +1480,6 @@
     }
   }
 
-  async function loadConnections() {
-    console.log('Loading connections...');
-    const tbody = $('#table-connections tbody');
-    if (!tbody) return;
-
-    try {
-      const output = await run('networkctl', ['list']);
-      const lines = output.split('\n').slice(1).filter(line => line.trim());
-      
-      tbody.innerHTML = '';
-      
-      lines.forEach(line => {
-        const parts = line.trim().split(/\s+/);
-        if (parts.length >= 4) {
-          const row = document.createElement('tr');
-          row.innerHTML = `
-            <td>${parts[1] || ''}</td>
-            <td>—</td>
-            <td>${parts[2] || ''}</td>
-            <td>${parts[3] || ''}</td>
-            <td>—</td>
-            <td>—</td>
-            <td>—</td>
-            <td class="actions">—</td>
-          `;
-          tbody.appendChild(row);
-        }
-      });
-      
-      console.log('Loaded', lines.length, 'connections');
-      
-    } catch (e) {
-      console.warn('Failed to load connections:', e);
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Connection data unavailable</td></tr>';
-    }
-  }
-
   async function loadDiagnostics() {
     console.log('Loading diagnostics...');
     
@@ -1579,7 +1540,6 @@
         setStatus('Refreshing all data...');
         await Promise.all([
           loadInterfaces(),
-          loadConnections(), 
           loadDiagnostics()
         ]);
         setStatus('All data refreshed');
@@ -1625,16 +1585,16 @@
           
           // Create a modal to display the configuration
           const modal = document.createElement('dialog');
-          modal.style.maxWidth = '80vw';
-          modal.style.maxHeight = '80vh';
           modal.innerHTML = `
             <div class="modal-content">
               <h2>📋 ${filename}</h2>
               <div style="margin: 1rem 0;">
-                <label style="font-weight: 500;">Configuration Content:</label>
-                <textarea readonly style="width: 100%; height: 400px; font-family: monospace; font-size: 0.875rem; padding: 1rem; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;">${config}</textarea>
+                <label>
+                  <span style="font-weight: 500;">Configuration Content:</span>
+                  <textarea readonly style="width: 100%; height: 400px; font-family: monospace; font-size: 0.875rem; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; resize: vertical;">${config}</textarea>
+                </label>
               </div>
-              <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1rem;">
+              <div class="modal-buttons">
                 <button type="button" class="btn primary" id="close-config-modal">✅ Close</button>
               </div>
             </div>
@@ -1698,7 +1658,6 @@
           
           // Show success message with details
           const modal = document.createElement('dialog');
-          modal.style.maxWidth = '600px';
           modal.innerHTML = `
             <div class="modal-content">
               <h2>✅ Backup Created Successfully</h2>
@@ -1707,12 +1666,12 @@
                 <p><strong>📊 File Details:</strong><br><code>${backupInfo}</code></p>
                 <details>
                   <summary><strong>📋 Recent Backups</strong></summary>
-                  <pre style="background: #f8f9fa; padding: 1rem; border-radius: 4px; font-size: 0.875rem;">${backupList}</pre>
+                  <pre style="background: #f8f9fa; padding: 1rem; border-radius: 4px; font-size: 0.875rem; max-height: 200px; overflow-y: auto;">${backupList}</pre>
                 </details>
-                <p><strong>💡 Tip:</strong> To restore from backup, extract the tar.gz file to /etc/</p>
+                <p><strong>🚀 Next Steps:</strong><br>To restore from this backup, use the command:<br><code>sudo tar -xzf ${backupFile} -C /etc/netplan/</code></p>
               </div>
-              <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1rem;">
-                <button type="button" class="btn primary" id="close-backup-modal">✅ OK</button>
+              <div class="modal-buttons">
+                <button type="button" class="btn primary" id="close-backup-modal">✅ Close</button>
               </div>
             </div>
           `;
@@ -1732,900 +1691,82 @@
           
         } catch (error) {
           console.error('Backup failed:', error);
-          alert(`❌ Failed to create backup:\n${error.message || error}`);
+          alert(`❌ Failed to create netplan backup:\n${error.message || error}`);
         } finally {
           setStatus('Ready');
         }
       });
     }
-
-    // Apply netplan configuration button
-    const btnApplyNetplan = $('#btn-apply-netplan');
-    if (btnApplyNetplan) {
-      btnApplyNetplan.addEventListener('click', async () => {
-        if (!confirm('⚡ Apply Netplan configuration?\n\nThis may temporarily disrupt network connectivity while the configuration is applied.')) return;
+    
+    // Setup ping functionality
+    const btnPing = $('#btn-ping');
+    if (btnPing) {
+      btnPing.addEventListener('click', async () => {
+        const host = $('#diag-host')?.value?.trim() || '8.8.8.8';
+        const output = $('#ping-out');
         
         try {
-          setStatus('Applying Netplan configuration...');
-          await run('netplan', ['apply'], { superuser: 'require' });
-          alert('✅ Netplan configuration applied successfully!\n\nNetwork interfaces have been reconfigured.');
-          await loadInterfaces(); // Refresh interface list
+          setStatus(`Pinging ${host}...`);
+          if (output) output.textContent = 'Pinging...';
+          
+          const result = await run('ping', ['-c', '4', host], { superuser: 'try' });
+          if (output) output.textContent = result;
+          setStatus('Ping completed');
         } catch (e) {
-          alert(`❌ Failed to apply Netplan configuration:\n${e}`);
-        } finally {
-          setStatus('Ready');
+          if (output) output.textContent = `Ping failed: ${e}`;
+          setStatus('Ping failed');
         }
       });
     }
-
-    // Debug button to test netplan writing
-    const btnTestNetplan = $('#btn-test-netplan');
-    if (btnTestNetplan) {
-      btnTestNetplan.addEventListener('click', async () => {
+    
+    // Setup traceroute functionality  
+    const btnTraceroute = $('#btn-traceroute');
+    if (btnTraceroute) {
+      btnTraceroute.addEventListener('click', async () => {
+        const host = $('#diag-host')?.value?.trim() || '8.8.8.8';
+        const output = $('#ping-out'); // Reuse ping output area
+        
         try {
-          setStatus('Testing netplan write...');
+          setStatus(`Tracing route to ${host}...`);
+          if (output) output.textContent = 'Tracing route...';
           
-          // Test netplan action with a simple configuration
-          const testConfig = {
-            name: 'eth0',
-            static_ip: '192.168.1.100/24',
-            gateway: '192.168.1.1',
-            dns: '8.8.8.8,1.1.1.1'
-          };
-          
-          console.log('Testing netplan action with config:', testConfig);
-          const result = await netplanAction('set_ip', testConfig);
-          
-          console.log('Netplan test result:', result);
-          
-          // netplanAction already returns a parsed object, not raw text
-          if (result.error) {
-   alert(`❌ Netplan test failed:\n${result.error}\n\nCheck console for details.`);
-          } else {
-            alert('✅ Netplan test successful!\n\nCheck /etc/netplan/99-cockpit.yaml for changes.');
-            
-            // Show current netplan content
-            try {
-              const netplanContent = await run('cat', ['/etc/netplan/99-cockpit.yaml'], { superuser: 'try' });
-              console.log('Current netplan content:', netplanContent);
-            } catch (e) {
-              console.warn('Could not read netplan file:', e);
-            }
-          }
-        } catch (error) {
-          console.error('Netplan test error:', error);
-          alert(`❌ Netplan test failed: ${error}`);
-        } finally {
-          setStatus('Ready');
-        }
-      });
-    }
-
-    // Check netplan file status
-    const btnCheckNetplan = $('#btn-check-netplan');
-    if (btnCheckNetplan) {
-      btnCheckNetplan.addEventListener('click', async () => {
-        try {
-          setStatus('Checking netplan file...');
-          
-          // Check if file exists and show its contents
-          let fileExists = true;
-          let fileContent = '';
-          
+          // Try traceroute first, then fallback to tracepath
+          let result;
           try {
-            fileContent = await run('cat', ['/etc/netplan/99-cockpit.yaml'], { superuser: 'try' });
+            result = await run('traceroute', ['-n', '-m', '15', host], { superuser: 'try' });
           } catch (e) {
-            fileExists = false;
-            console.log('Netplan file does not exist:', e);
+            result = await run('tracepath', [host], { superuser: 'try' });
           }
           
-          // Show file status
-          let message = '';
-          if (fileExists) {
-            message = `✅ Netplan file exists at /etc/netplan/99-cockpit.yaml\n\n📄 Current contents:\n${fileContent}`;
-          } else {
-            message = '❌ Netplan file does not exist at /etc/netplan/99-cockpit.yaml\n\nThe file will be created when you first configure an IP address.';
-          }
-          
-          alert(message);
-          
-          // Also check directory permissions
-          try {
-            const dirInfo = await run('ls', ['-la', '/etc/netplan/'], { superuser: 'try' });
-            console.log('Netplan directory contents:', dirInfo);
-          } catch (e) {
-            console.warn('Could not list netplan directory:', e);
-          }
-          
-        } catch (error) {
-          alert(`❌ Failed to check netplan file: ${error}`);
-        } finally {
-          setStatus('Ready');
-        }
-      });
-    }
-    
-    // Setup import/export config buttons
-    const btnImportConfig = $('#btn-import-config');
-    if (btnImportConfig) {
-      btnImportConfig.addEventListener('click', async () => {
-        // Create file input for importing
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.yaml,.yml,.json';
-        input.style.display = 'none';
-        
-        input.addEventListener('change', async (e) => {
-          const file = e.target.files[0];
-          if (!file) return;
-          
-          try {
-            setStatus('Importing configuration...');
-            
-            const content = await file.text();
-            let config;
-            
-            // Try to parse as YAML first, then JSON
-            try {
-              // Simple YAML parsing (for basic netplan configs)
-              if (file.name.endsWith('.json')) {
-                config = JSON.parse(content);
-                
-                // Convert JSON to YAML-like structure for netplan
-                if (config.network) {
-                  config = content; // Keep as JSON for now, implement conversion later
-                } else {
-                  throw new Error('Invalid netplan JSON structure - missing "network" key');
-                }
-              } else {
-                // For YAML, validate basic structure
-                if (!content.includes('network:') && !content.includes('version:')) {
-                  const addHeader = confirm('⚠️ This file doesn\'t appear to be a standard netplan configuration.\n\nWould you like to add a basic netplan header?');
-                  if (addHeader) {
-                    config = 'network:\n  version: 2\n  renderer: networkd\n\n' + content;
-                  } else {
-                    config = content;
-                  }
-                } else {
-                  config = content;
-                }
-              }
-            } catch (parseError) {
-              throw new Error(`Failed to parse config file: ${parseError.message}`);
-            }
-            
-            // Show preview and confirmation
-            const proceed = confirm(`📤 Import Network Configuration?\n\nFile: ${file.name}\nSize: ${file.size} bytes\n\n⚠️ This will replace the current netplan configuration.\n\nProceed with import?`);
-            
-            if (!proceed) {
-              setStatus('Import cancelled');
-              return;
-            }
-            
-            // Write the configuration
-            if (typeof config === 'string') {
-              // Direct YAML content
-              await cockpit.spawn([
-                'bash', '-c', `echo '${config.replace(/'/g, "'\\''")}' > /etc/netplan/99-cockpit.yaml`
-              ], {
-                superuser: 'require',
-                err: 'out'
-              });
-            } else {
-              // JSON config - convert to netplan action
-              // This is a simplified approach - you might want to enhance this
-              alert('⚠️ JSON import not fully implemented yet. Please use YAML format.');
-              setStatus('Ready');
-              return;
-            }
-            
-            // Apply the configuration
-            await run('netplan', ['apply'], { superuser: 'require' });
-            
-            alert('✅ Configuration imported and applied successfully!\n\nReloading interfaces...');
-            await loadInterfaces();
-            
-          } catch (error) {
-            console.error('Import failed:', error);
-            alert(`❌ Failed to import configuration:\n${error.message || error}`);
-          } finally {
-            setStatus('Ready');
-            document.body.removeChild(input);
-          }
-        });
-        
-        document.body.appendChild(input);
-        input.click();
-      });
-    }
-
-    const btnExportConfig = $('#btn-export-config');
-    if (btnExportConfig) {
-      btnExportConfig.addEventListener('click', async () => {
-        try {
-          setStatus('Exporting configuration...');
-          
-          // Show export options
-          const exportType = await new Promise((resolve) => {
-            const modal = document.createElement('dialog');
-            modal.innerHTML = `
-              <div class="modal-content">
-                <h2>📥 Export Network Configuration</h2>
-                <p>Choose what to export:</p>
-                
-                <div style="margin: 1rem 0;">
-                  <label style="display: block; margin: 0.5rem 0;">
-                    <input type="radio" name="export-type" value="cockpit" checked>
-                    🎯 <strong>XOS Networking Config</strong> (99-cockpit.yaml only)
-                  </label>
-                  <label style="display: block; margin: 0.5rem 0;">
-                    <input type="radio" name="export-type" value="all">
-                    📋 <strong>All Netplan Files</strong> (entire /etc/netplan/ directory)
-                  </label>
-                  <label style="display: block; margin: 0.5rem 0;">
-                    <input type="radio" name="export-type" value="current">
-                    📊 <strong>Current Network State</strong> (live interface configuration)
-                  </label>
-                </div>
-                
-                <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
-                  <button type="button" class="btn" id="export-cancel">❌ Cancel</button>
-                  <button type="button" class="btn primary" id="export-confirm">📥 Export</button>
-                </div>
-              </div>
-            `;
-            
-            document.body.appendChild(modal);
-            setupModal(modal);
-            
-            // Handle cancel button
-            modal.querySelector('#export-cancel').addEventListener('click', () => {
-              resolve(null);
-              modal.close();
-            });
-            
-            modal.querySelector('#export-confirm').addEventListener('click', () => {
-              const selected = modal.querySelector('input[name="export-type"]:checked');
-              resolve(selected ? selected.value : 'cockpit');
-              modal.close();
-            });
-            
-            modal.showModal();
-          });
-          
-          if (!exportType) {
-            setStatus('Ready');
-            return;
-          }
-          
-          let config = '';
-          let filename = 'netplan-export.yaml';
-          
-          if (exportType === 'cockpit') {
-            // Export only XOS Networking config
-            try {
-              config = await run('cat', ['/etc/netplan/99-cockpit.yaml'], { superuser: 'try' });
-              filename = '99-cockpit.yaml';
-            } catch (e) {
-              config = '# No XOS Networking configuration found\n# Generated by XOS Networking\nnetwork:\n  version: 2\n  renderer: networkd\n';
-              filename = '99-cockpit-empty.yaml';
-            }
-          } else if (exportType === 'all') {
-            // Export all netplan files
-            try {
-              const allConfigs = await run('bash', ['-c', 'for f in /etc/netplan/*.yaml; do echo "# --- $f ---"; cat "$f" 2>/dev/null; echo; done'], { superuser: 'try' });
-              config = allConfigs;
-              filename = 'netplan-all-configs.yaml';
-            } catch (e) {
-              config = '# No netplan configuration found\n';
-              filename = 'netplan-all-empty.yaml';
-            }
-          } else if (exportType === 'current') {
-            // Export current network state
-            try {
-              const interfaces = await run('ip', ['-details', 'addr', 'show']);
-              const routes = await run('ip', ['route']);
-              const dns = await run('cat', ['/etc/resolv.conf']).catch(() => '# DNS info not available');
-              
-              config = `# Current Network State Export
-# Generated by XOS Networking on ${new Date().toISOString()}
-# This is NOT a netplan configuration file - it's a snapshot of current network state
-
-# === INTERFACE INFORMATION ===
-${interfaces}
-
-# === ROUTING TABLE ===
-${routes}
-
-# === DNS CONFIGURATION ===
-${dns}`;
-              filename = 'network-state-snapshot.txt';
-            } catch (e) {
-              throw new Error('Failed to gather current network state: ' + e);
-            }
-          }
-          
-          // Add timestamp and metadata (except for current state which has its own header)
-          if (exportType !== 'current') {
-            const timestamp = new Date().toISOString();
-            const header = `# Netplan Configuration Export
-# Generated by XOS Networking on ${timestamp}
-# Hostname: ${window.location.hostname}
-# Export Type: ${exportType}
-
-`;
-            config = header + config;
-          }
-          
-          // Create download
-          const mimeType = filename.endsWith('.txt') ? 'text/plain' : 'text/yaml';
-          const blob = new Blob([config], { type: mimeType });
-          const url = URL.createObjectURL(blob);
-          
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = filename;
-          a.style.display = 'none';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-          
-          alert(`✅ Configuration exported successfully!\n\n📄 File: ${filename}\n📊 Size: ${config.length} bytes\n📋 Type: ${exportType}`);
-          
-        } catch (error) {
-          console.error('Export failed:', error);
-          alert(`❌ Failed to export configuration:\n${error.message || error}`);
-        } finally {
-          setStatus('Ready');
-        }
-      });
-    }
-
-    const btnResetForms = $('#btn-reset-forms');
-    if (btnResetForms) {
-      btnResetForms.addEventListener('click', () => {
-        // Reset all form fields
-        const forms = ['vlan', 'br', 'bond'];
-        forms.forEach(prefix => {
-          // Reset text inputs
-          const inputs = $$(`[id^="${prefix}-"]`);
-          inputs.forEach(input => {
-            if (input.tagName === 'INPUT') {
-              if (input.type === 'text' || input.type === 'number') {
-                input.value = '';
-              }
-            } else if (input.tagName === 'SELECT') {
-              input.selectedIndex = 0;
-              // Clear multi-select options
-              if (input.multiple) {
-                Array.from(input.options).forEach(opt => opt.selected = false);
-              }
-            }
-          });
-          
-          // Clear output areas
-          const output = $(`#${prefix}-out`);
-          if (output) {
-            output.textContent = '';
-          }
-        });
-        
-        alert('✅ All forms have been reset!');
-      });
-    }
-  }
-
-  // Get available physical interfaces for dropdowns
-  async function getPhysicalInterfaces() {
-    try {
-      const output = await run('ip', ['-o', 'link', 'show']);
-      const interfaces = [];
-      
-      output.split('\n').forEach(line => {
-        const match = line.match(/^\d+:\s+([^:]+):/);
-        if (match) {
-          const dev = match[1].trim();
-          // Skip virtual and special interfaces
-          if (dev !== 'lo' && 
-              !dev.startsWith('virbr') && 
-              !dev.startsWith('docker') && 
-              !dev.startsWith('veth') && 
-              !dev.startsWith('bond') && 
-              !dev.startsWith('br') && 
-              !dev.includes('.')) {
-            interfaces.push(dev);
-          }
-        }
-      });
-      
-      return interfaces;
-    } catch (e) {
-      console.error('Failed to get physical interfaces:', e);
-      return [];
-    }
-  }
-
-  // Setup network construction forms
-  async function setupNetworkingForms() {
-    console.log('Setting up networking forms...');
-    
-    // Get physical interfaces for dropdowns
-    const physicalInterfaces = await getPhysicalInterfaces();
-    console.log('Available physical interfaces:', physicalInterfaces);
-    
-    // Populate VLAN parent dropdown
-    const vlanParent = $('#vlan-parent');
-    if (vlanParent) {
-      vlanParent.innerHTML = '<option value="">Select parent interface...</option>';
-      physicalInterfaces.forEach(iface => {
-        const option = document.createElement('option');
-        option.value = iface;
-        option.textContent = iface;
-        vlanParent.appendChild(option);
-      });
-    }
-    
-    // Populate bridge ports multi-select
-    const bridgePorts = $('#br-ports');
-    if (bridgePorts) {
-      bridgePorts.innerHTML = '';
-      physicalInterfaces.forEach(iface => {
-        const option = document.createElement('option');
-        option.value = iface;
-        option.textContent = iface;
-        bridgePorts.appendChild(option);
-      });
-    }
-    
-    // Populate bond slaves multi-select
-    const bondSlaves = $('#bond-slaves');
-    if (bondSlaves) {
-      bondSlaves.innerHTML = '';
-      physicalInterfaces.forEach(iface => {
-        const option = document.createElement('option');
-        option.value = iface;
-        option.textContent = iface;
-        bondSlaves.appendChild(option);
-      });
-    }
-
-    // Setup VLAN creation
-    const btnCreateVlan = $('#btn-create-vlan');
-    if (btnCreateVlan) {
-      btnCreateVlan.addEventListener('click', async () => {
-        const parent = $('#vlan-parent')?.value?.trim();
-        const id = $('#vlan-id')?.value?.trim();
-        const name = $('#vlan-name')?.value?.trim() || `${parent}.${id}`;
-        const staticIp = $('#vlan-static-ip')?.value?.trim();
-        const gateway = $('#vlan-gateway')?.value?.trim();
-        const mtu = $('#vlan-mtu')?.value?.trim();
-        
-        if (!parent || !id) {
-          alert('❌ Parent interface and VLAN ID are required!');
-          return;
-        }
-        
-        if (!id.match(/^\d+$/) || parseInt(id) < 1 || parseInt(id) > 4094) {
-          alert('❌ VLAN ID must be between 1 and 4094!');
-          return;
-        }
-        
-        // Validate IP format if provided
-        if (staticIp) {
-          const ipRegex = /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([0-9]|[1-2][0-9]|3[0-2])$/;
-          if (!ipRegex.test(staticIp)) {
-            alert('❌ Invalid IP address format! Use CIDR notation (e.g., 192.168.1.100/24)');
-            return;
-          }
-        }
-        
-        // Validate gateway format if provided
-        if (gateway) {
-          const gatewayRegex = /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
-          if (!gatewayRegex.test(gateway)) {
-            alert('❌ Invalid gateway address format!');
-            return;
-          }
-        }
-        
-        // Validate MTU if provided
-        if (mtu && (isNaN(parseInt(mtu)) || parseInt(mtu) < 68 || parseInt(mtu) > 9000)) {
-          alert('❌ MTU must be between 68 and 9000!');
-          return;
-        }
-        
-        try {
-          setStatus('Creating VLAN...');
-          
-          // Step 1: Create VLAN interface with improved config
-          const vlanConfig = {
-            name: name,
-            id: parseInt(id),
-            link: parent
-          };
-          
-          // Add MTU to VLAN creation if specified
-          if (mtu && parseInt(mtu) !== 1500) {
-            vlanConfig.mtu = parseInt(mtu);
-            console.log(`Including MTU ${mtu} in VLAN creation config`);
-          }
-          
-          console.log('Creating VLAN with config:', vlanConfig);
-          const result = await netplanAction('add_vlan', vlanConfig);
-          
-          if (result.error) {
-            throw new Error(result.error);
-          }
-          
-          console.log('VLAN created successfully, now configuring additional settings...');
-          
-          // Step 2: Set MTU separately if not included in creation (fallback approach)
-          if (mtu && parseInt(mtu) !== 1500) {
-            console.log('Applying MTU setting separately...');
-            try {
-              const mtuResult = await netplanAction('set_mtu', { name: iface.dev, mtu: newMtu });
-              if (mtuResult.error) {
-                console.warn('Separate MTU setting failed:', mtuResult.error);
-              } else {
-                console.log('MTU applied successfully via separate action');
-              }
-            } catch (mtuError) {
-              console.warn('Failed to apply MTU separately:', mtuError);
-            }
-          }
-          
-          // Step 3: Configure IP if provided
-          if (staticIp) {
-            console.log('Configuring IP for VLAN interface...');
-            
-            // Apply IP immediately
-            try {
-              await run('ip', ['addr', 'add', staticIp, 'dev', name], { superuser: 'require' });
-              console.log(`Added IP ${staticIp} to VLAN ${name}`);
-              
-              // Add gateway if specified
-              if (gateway) {
-                await run('ip', ['route', 'add', 'default', 'via', gateway, 'dev', name], { superuser: 'require' });
-                console.log(`Added gateway ${gateway} for VLAN ${name}`);
-              }
-            } catch (ipError) {
-              console.warn('Failed to apply IP immediately:', ipError);
-            }
-            
-            // Persist IP to netplan
-            try {
-              const ipConfig = {
-                name: name,
-                static_ip: staticIp
-              };
-              
-              if (gateway) {
-                ipConfig.gateway = gateway;
-              }
-              
-              const ipResult = await netplanAction('set_ip', ipConfig);
-              
-              if (ipResult.error) {
-                console.warn('Failed to persist IP to netplan:', ipResult.error);
-              } else {
-                console.log('Successfully persisted VLAN IP to netplan');
-              }
-            } catch (ipError) {
-              console.warn('Failed to persist IP configuration:', ipError);
-            }
-          }
-          
-          const output = $('#vlan-out');
-          if (output) {
-            let successMsg = `✅ VLAN ${name} created successfully!`;
-            if (mtu && parseInt(mtu) !== 1500) {
-              successMsg += `\n📏 MTU: ${mtu} bytes`;
-            }
-            if (staticIp) {
-              successMsg += `\n📍 IP: ${staticIp}`;
-            }
-            if (gateway) {
-              successMsg += `\n🚪 Gateway: ${gateway}`;
-            }
-            output.textContent = successMsg;
-          }
-          
-          // Clear form
-          $('#vlan-parent').selectedIndex = 0;
-          $('#vlan-id').value = '';
-          $('#vlan-name').value = '';
-          if ($('#vlan-static-ip')) $('#vlan-static-ip').value = '';
-          if ($('#vlan-gateway')) $('#vlan-gateway').value = '';
-          if ($('#vlan-mtu')) $('#vlan-mtu').value = '';
-          
-          await loadInterfaces();
-          
+          if (output) output.textContent = result;
+          setStatus('Traceroute completed');
         } catch (e) {
-          const output = $('#vlan-out');
-          if (output) output.textContent = `❌ Failed to create VLAN: ${e}`;
-        } finally {
-          setStatus('Ready');
-        }
-      });
-    }
-
-    // Setup Bridge creation
-    const btnCreateBridge = $('#btn-create-bridge');
-    if (btnCreateBridge) {
-      btnCreateBridge.addEventListener('click', async () => {
-        const name = $('#br-name')?.value?.trim();
-        const portsSelect = $('#br-ports');
-        const ports = portsSelect ? Array.from(portsSelect.selectedOptions).map(opt => opt.value) : [];
-        
-        if (!name) {
-          alert('❌ Bridge name is required!');
-          return;
-        }
-        
-        if (ports.length === 0) {
-          alert('❌ At least one port interface is required!');
-          return;
-        }
-        
-        try {
-          setStatus('Creating bridge...');
-          const result = await netplanAction('add_bridge', {
-            name: name,
-            interfaces: ports
-          });
-          
-          const output = $('#br-out');
-          if (result.error) {
-            if (output) output.textContent = `❌ Error: ${result.error}`;
-          } else {
-            if (output) output.textContent = `✅ Bridge ${name} created with ports: ${ports.join(', ')}`;
-            // Clear form
-            $('#br-name').value = '';
-            if (portsSelect) {
-              Array.from(portsSelect.options).forEach(opt => opt.selected = false);
-            }
-            await loadInterfaces();
-          }
-        } catch (e) {
-          const output = $('#br-out');
-          if (output) output.textContent = `❌ Failed to create bridge: ${e}`;
-        } finally {
-          setStatus('Ready');
-        }
-      });
-    }
-
-    // Setup Bond creation
-    const btnCreateBond = $('#btn-create-bond');
-    if (btnCreateBond) {
-      btnCreateBond.addEventListener('click', async () => {
-        const name = $('#bond-name')?.value?.trim();
-        const mode = $('#bond-mode')?.value;
-        const slavesSelect = $('#bond-slaves');
-        const slaves = slavesSelect ? Array.from(slavesSelect.selectedOptions).map(opt => opt.value) : [];
-        
-        if (!name) {
-          alert('❌ Bond name is required!');
-          return;
-        }
-        
-        if (!mode) {
-          alert('❌ Bond mode is required!');
-          return;
-        }
-        
-        if (slaves.length < 2) {
-          alert('❌ At least two slave interfaces are required for bonding!');
-          return;
-        }
-        
-        try {
-          setStatus('Creating bond...');
-          const result = await netplanAction('add_bond', {
-            name: name,
-            mode: mode,
-            interfaces: slaves
-          });
-          
-          const output = $('#bond-out');
-          if (result.error) {
-            if (output) output.textContent = `❌ Error: ${result.error}`;
-          } else {
-            if (output) output.textContent = `✅ Bond ${name} (${mode}) created with slaves: ${slaves.join(', ')}`;
-            // Clear form
-            $('#bond-name').value = '';
-            $('#bond-mode').selectedIndex = 0;
-            if (slavesSelect) {
-              Array.from(slavesSelect.options).forEach(opt => opt.selected = false);
-            }
-            await loadInterfaces();
-          }
-        } catch (e) {
-          const output = $('#bond-out');
-          if (output) output.textContent = `❌ Failed to create bond: ${e}`;
-        } finally {
-          setStatus('Ready');
+          if (output) output.textContent = `Traceroute failed: ${e}`;
+          setStatus('Traceroute failed');
         }
       });
     }
   }
 
-  // Enhanced netplan action function
-  async function netplanAction(action, config) {
-    console.log('netplanAction called with:', { action, config });
-    const payload = JSON.stringify({ action, config });
-    console.log('JSON payload to send:', payload);
+  // Main initialization function
+  async function init() {
+    // Wait for DOM and Cockpit to be ready
+    await waitForReady();
     
-    try {
-      console.log('About to spawn netplan script...');
-      
-      // Use a more direct approach - create a temporary file and execute it
-      const timestamp = Date.now();
-      const tempFile = `/tmp/netplan-${timestamp}.json`;
-      
-      // Write payload to temp file first
-      await cockpit.spawn([
-        'bash', '-c', `echo '${payload.replace(/'/g, "'\\''")}' > ${tempFile}`
-      ], {
-        superuser: 'require',
-        err: 'out'
-      });
-      
-      // Execute the python script with the temp file
-      const result = await cockpit.spawn([
-        'bash', '-c', `cd /usr/share/cockpit/xos-networking && cat ${tempFile} | python3 netplan_manager.py 2>&1; rm -f ${tempFile}`
-      ], {
-        superuser: 'require',
-        err: 'out'
-      });
-      
-      console.log('Netplan script raw output:', result);
-      const cleanResult = result.trim();
-      console.log('Cleaned result:', cleanResult);
-      
-      // Look for JSON response - it should be the last line starting with {
-      const lines = cleanResult.split('\n');
-      let jsonLine = null;
-      
-      // Find the last line that looks like JSON
-      for (let i = lines.length - 1; i >= 0; i--) {
-        const line = lines[i].trim();
-        if (line.startsWith('{') && line.includes('result')) {
-          jsonLine = line;
-          break;
-        }
-      }
-      
-      if (jsonLine) {
-        try {
-          const parsed = JSON.parse(jsonLine);
-          console.log('Netplan script parsed output:', parsed);
-          return parsed;
-        } catch (parseError) {
-          console.error('JSON parse error:', parseError);
-          return { error: `Failed to parse response: ${jsonLine}` };
-        }
-      } else {
-        // Look for error JSON
-        for (let i = lines.length - 1; i >= 0; i--) {
-          const line = lines[i].trim();
-          if (line.startsWith('{') && line.includes('error')) {
-            try {
-              const parsed = JSON.parse(line);
-              console.log('Netplan script error output:', parsed);
-              return parsed;
-            } catch (parseError) {
-              // Continue looking
-            }
-          }
-        }
-        return { error: 'No valid JSON response found in output', debug_output: cleanResult };
-      }
-    } catch (e) {
-      console.error('netplanAction exception:', e);
-      let errorMsg = 'Script execution failed';
-      if (e.exit_status !== undefined) {
-        errorMsg = `Script exited with code ${e.exit_status}`;
-      }
-      if (e.message && e.message.trim()) {
-        errorMsg += `: ${e.message}`;
-      }
-      console.error('Processed error message:', errorMsg);
-      return { error: errorMsg, debug_info: e.toString() };
-    }
-  }
-
-  // Main initialization
-  async function initialize() {
-    console.log('Initializing XOS Networking...');
+    setStatus('Starting up...');
     
-    try {
-      console.log('Waiting for ready state...');
-      await waitForReady();
-      console.log('Ready state achieved');
-      
-      setStatus('Initializing...');
-      
-      // Ensure DOM is fully loaded
-      console.log('Checking DOM elements...');
-      const tableBody = $('#table-interfaces tbody');
-      if (!tableBody) {
-        console.warn('Interface table body not found, waiting...');
-        // Wait a bit more for DOM to be ready
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-      
-      // Setup UI components
-      console.log('Setting up tabs...');
-      setupTabs();
-      
-      console.log('Setting up event handlers...');
-      setupEventHandlers();
-      
-      console.log('Setting up networking forms...');
-      await setupNetworkingForms();
-      
-      // Load initial data with more robust error handling
-      console.log('Loading initial data...');
-      setStatus('Loading data...');
-      
-      try {
-        console.log('Loading interfaces...');
-        await loadInterfaces();
-        console.log('Interfaces loaded successfully');
-      } catch (error) {
-        console.error('Failed to load interfaces:', error);
-        setStatus('Failed to load interfaces: ' + error);
-        
-        // Try again after a delay
-        setTimeout(async () => {
-          console.log('Retrying interface load...');
-          try {
-            await loadInterfaces();
-          } catch (retryError) {
-            console.error('Retry failed:', retryError);
-          }
-        }, 2000);
-      }
-      
-      try {
-        console.log('Loading connections...');
-        await loadConnections();
-        console.log('Connections loaded successfully');
-      } catch (error) {
-        console.warn('Failed to load connections:', error);
-        // Don't fail initialization for connections
-      }
-      
-      try {
-        console.log('Loading diagnostics...');
-        await loadDiagnostics();
-        console.log('Diagnostics loaded successfully');
-      } catch (error) {
-        console.warn('Failed to load diagnostics:', error);
-        // Don't fail initialization for diagnostics
-      }
-      
-      setStatus('Ready');
-      console.log('XOS Networking initialized successfully');
-      
-      // Set a flag to indicate successful initialization
-      window.xosNetworkingReady = true;
-      
-    } catch (e) {
-      console.error('Initialization failed:', e);
-      setStatus('Initialization failed: ' + e);
-      
-      // Try to initialize again after a delay
-      setTimeout(() => {
-        console.log('Retrying initialization...');
-        initialize();
-      }, 3000);
-    }
+    // Setup tabs
+    setupTabs();
+    
+    // Load initial data
+    await Promise.all([
+      loadInterfaces(),
+      loadDiagnostics()
+    ]);
+    
+    setStatus('Ready');
   }
 
   // Start the application
-  initialize();
-
+  init();
 })();
