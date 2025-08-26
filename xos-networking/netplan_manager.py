@@ -79,6 +79,13 @@ def main():
     try:
         # Debug: Print initial info
         print(f"DEBUG: Starting netplan_manager.py", file=sys.stderr, flush=True)
+        print(f"DEBUG: Working directory: {os.getcwd()}", file=sys.stderr, flush=True)
+        print(f"DEBUG: Netplan directory: {NETPLAN_DIR}", file=sys.stderr, flush=True)
+        
+        # Check if netplan directory exists
+        if not os.path.exists(NETPLAN_DIR):
+            print(f"DEBUG: Netplan directory does not exist, creating it", file=sys.stderr, flush=True)
+            os.makedirs(NETPLAN_DIR, mode=0o755, exist_ok=True)
         
         # Read JSON input
         input_data = sys.stdin.read().strip()
@@ -93,7 +100,7 @@ def main():
         config = req.get('config')
         fname = req.get('filename', '99-cockpit.yaml')
 
-        print(f"DEBUG: Action={action}, Config={config}", file=sys.stderr, flush=True)
+        print(f"DEBUG: Action={action}, Config={config}, Filename={fname}", file=sys.stderr, flush=True)
 
         if not action or not config:
             print(json.dumps({'error': 'Missing action or config'}), file=sys.stdout, flush=True)
@@ -342,7 +349,7 @@ def main():
             sys.exit(1)
 
         write_netplan(fname, netplan)
-        print(f"DEBUG: Successfully wrote netplan file", file=sys.stderr, flush=True)
+        print(f"DEBUG: Successfully wrote netplan file {fname}", file=sys.stderr, flush=True)
         
         apply_netplan()
         print(f"DEBUG: Successfully applied netplan", file=sys.stderr, flush=True)
@@ -352,6 +359,7 @@ def main():
         
     except Exception as e:
         print(f"DEBUG: Exception occurred: {e}", file=sys.stderr, flush=True)
+        print(f"DEBUG: Exception type: {type(e).__name__}", file=sys.stderr, flush=True)
         print(json.dumps({'error': str(e), 'trace': traceback.format_exc()}), file=sys.stdout, flush=True)
         sys.exit(1)
 
