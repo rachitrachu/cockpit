@@ -4,7 +4,7 @@
 (() => {
   'use strict';
 
-  const { $, setStatus, run } = XOSNetworking.core;
+  const { $, setStatus, run, getSymbol, createSymbolMessage } = XOSNetworking.core;
   const { setupModal } = XOSNetworking.modals;
   const { 
     applyNetplan, 
@@ -82,7 +82,7 @@
               </label>
             </div>
             <div class="modal-buttons">
-              <button type="button" class="btn primary" id="close-config-modal">? Close</button>
+              <button type="button" class="btn primary" id="close-config-modal">${getSymbol('success')} Close</button>
             </div>
           </div>
         `;
@@ -106,14 +106,14 @@
     const btnApplyNetplan = $('#btn-apply-netplan');
     if (btnApplyNetplan) {
       btnApplyNetplan.addEventListener('click', async () => {
-        if (!confirm('? Apply Netplan configuration?\n\nThis may temporarily disrupt network connectivity while the configuration is applied.')) return;
+        if (!confirm(createSymbolMessage('warning', 'Apply Netplan configuration?\n\nThis may temporarily disrupt network connectivity while the configuration is applied.'))) return;
         
         const result = await applyNetplan();
         
         if (result.error) {
-          alert(`? Failed to apply Netplan configuration:\n${result.error}`);
+          alert(createSymbolMessage('error', `Failed to apply Netplan configuration:\n${result.error}`));
         } else {
-          alert('? Netplan configuration applied successfully!\n\nNetwork interfaces have been reconfigured.');
+          alert(createSymbolMessage('success', 'Netplan configuration applied successfully!\n\nNetwork interfaces have been reconfigured.'));
         }
       });
     }
@@ -125,9 +125,9 @@
         const result = await testNetplan();
         
         if (result.error) {
-          alert(`? Netplan test failed:\n${result.error}\n\nCheck console for details.`);
+          alert(createSymbolMessage('error', `Netplan test failed:\n${result.error}\n\nCheck console for details.`));
         } else {
-          alert('? Netplan test successful!\n\nCheck /etc/netplan/99-cockpit.yaml for changes.');
+          alert(createSymbolMessage('success', 'Netplan test successful!\n\nCheck /etc/netplan/99-cockpit.yaml for changes.'));
         }
       });
     }

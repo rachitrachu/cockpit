@@ -158,6 +158,61 @@ window.XOSNetworking = window.XOSNetworking || {};
     return span;
   }
 
+  // Symbol helper functions for cross-browser compatibility
+  function getSymbol(type) {
+    const symbols = {
+      check: '?',
+      cross: '?', 
+      tick: '?',
+      cancel: '?',
+      success: '?',
+      error: '?',
+      warning: '??',
+      info: '??',
+      ok: 'OK',
+      fail: 'FAIL'
+    };
+    
+    // Fallback for systems with poor Unicode support
+    const fallbacks = {
+      check: '[OK]',
+      cross: '[X]',
+      tick: '[OK]', 
+      cancel: '[X]',
+      success: '[SUCCESS]',
+      error: '[ERROR]',
+      warning: '[WARNING]',
+      info: '[INFO]',
+      ok: '[OK]',
+      fail: '[FAIL]'
+    };
+    
+    // Test if Unicode symbols are supported
+    const testElement = document.createElement('span');
+    testElement.style.visibility = 'hidden';
+    testElement.style.position = 'absolute';
+    testElement.textContent = symbols.check || '?';
+    document.body.appendChild(testElement);
+    
+    const supportsUnicode = testElement.offsetWidth > 0;
+    document.body.removeChild(testElement);
+    
+    return supportsUnicode ? (symbols[type] || type) : (fallbacks[type] || `[${type.toUpperCase()}]`);
+  }
+  
+  // Create element with reliable symbol
+  function createSymbolElement(type, className = '') {
+    const element = document.createElement('span');
+    element.className = `symbol symbol-${type} ${className}`.trim();
+    element.textContent = getSymbol(type);
+    return element;
+  }
+
+  // Create message with symbol
+  function createSymbolMessage(type, message) {
+    return `${getSymbol(type)} ${message}`;
+  }
+
   // Get physical interfaces for dropdowns (filters out virtual interfaces)
   async function getPhysicalInterfaces() {
     try {
@@ -238,7 +293,10 @@ window.XOSNetworking = window.XOSNetworking || {};
     createStatusBadge,
     getPhysicalInterfaces,
     setupTabs,
-    setupErrorHandlers
+    setupErrorHandlers,
+    getSymbol,
+    createSymbolElement,
+    createSymbolMessage
   };
 
 })();

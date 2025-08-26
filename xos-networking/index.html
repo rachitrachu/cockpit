@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
+  <meta charset="UTF-8">
   <title>XOS Networking</title>
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -15,6 +15,16 @@
   <!-- Icons (using Unicode emojis for now, can be replaced with icon font) -->
   <style>
     .icon { display: inline-block; width: 1em; margin-right: 0.5em; }
+    
+    /* Force UTF-8 encoding */
+    @charset "UTF-8";
+    
+    /* Ensure proper symbol rendering */
+    .symbol-check::after { content: "✓"; color: #28a745; }
+    .symbol-cross::after { content: "✗"; color: #dc3545; }
+    .symbol-ok::after { content: "✅"; }
+    .symbol-error::after { content: "❌"; }
+    .symbol-warning::after { content: "⚠️"; }
   </style>
 </head>
 <body>
