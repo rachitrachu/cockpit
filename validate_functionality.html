@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>XOS Networking - Functionality Validation</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .test-result { padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .pass { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .fail { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>?? XOS Networking - Functionality Validation</h1>
+        <div id="test-results"></div>
+        <h2>Module Structure Check</h2>
+        <div id="module-check"></div>
+        <h2>Console Output</h2>
+        <pre id="console-output"></pre>
+    </div>
+
+    <!-- Load the modules -->
+    <script src="js/core.js"></script>
+    <script src="js/network-interface.js"></script>
+    <script src="js/forms.js"></script>
+    <script src="js/diagnostics.js"></script>
+    <script src="js/event-handlers.js"></script>
+    <script src="main.js"></script>
+
+    <script>
+        // Capture console output
+        const originalLog = console.log;
+        const originalError = console.error;
+        const consoleOutput = document.getElementById('console-output');
+        let logMessages = [];
+
+        console.log = function(...args) {
+            logMessages.push('LOG: ' + args.join(' '));
+            originalLog.apply(console, args);
+            updateConsoleOutput();
+        };
+
+        console.error = function(...args) {
+            logMessages.push('ERROR: ' + args.join(' '));
+            originalError.apply(console, args);
+            updateConsoleOutput();
+        };
+
+        function updateConsoleOutput() {
+            consoleOutput.textContent = logMessages.join('\n');
+        }
+
+        function addTestResult(message, success, details = '') {
+            const div = document.createElement('div');
+            div.className = `test-result ${success ? 'pass' : 'fail'}`;
+            div.innerHTML = `${success ? '?' : '?'} ${message}`;
+            if (details) {
+                div.innerHTML += `<br><small>${details}</small>`;
+            }
+            document.getElementById('test-results').appendChild(div);
+        }
+
+        function addInfoResult(message, details = '') {
+            const div = document.createElement('div');
+            div.className = 'test-result info';
+            div.innerHTML = `?? ${message}`;
+            if (details) {
+                div.innerHTML += `<br><small>${details}</small>`;
+            }
+            document.getElementById('test-results').appendChild(div);
+        }
+
+        // Test module loading
+        function testModuleStructure() {
+            const moduleDiv = document.getElementById('module-check');
+            const modules = {
+                'XOSNetworking': typeof window.XOSNetworking !== 'undefined',
+                'core': typeof window.XOSNetworking?.core !== 'undefined',
+                'networkInterface': typeof window.XOSNetworking?.networkInterface !== 'undefined',
+                'forms': typeof window.XOSNetworking?.forms !== 'undefined',
+                'diagnostics': typeof window.XOSNetworking?.diagnostics !== 'undefined',
+                'eventHandlers': typeof window.XOSNetworking?.eventHandlers !== 'undefined'
+            };
+
+            Object.entries(modules).forEach(([name, loaded]) => {
+                const div = document.createElement('div');
+                div.className = `test-result ${loaded ? 'pass' : 'fail'}`;
+                div.innerHTML = `${loaded ? '?' : '?'} Module: ${name}`;
+                moduleDiv.appendChild(div);
+            });
+
+            return modules;
+        }
+
+        // Run validation tests
+        function runValidationTests() {
+            addInfoResult('Starting XOS Networking functionality validation...');
+
+            // Test 1: Check if modules loaded
+            const modules = testModuleStructure();
+            const allModulesLoaded = Object.values(modules).every(loaded => loaded);
+            addTestResult('All modules loaded successfully', allModulesLoaded);
+
+            // Test 2: Check core functions
+            const coreTests = [
+                ['$ function', typeof window.XOSNetworking?.core?.$ === 'function'],
+                ['setStatus function', typeof window.XOSNetworking?.core?.setStatus === 'function'],
+                ['waitForReady function', typeof window.XOSNetworking?.core?.waitForReady === 'function'],
+                ['setupTabs function', typeof window.XOSNetworking?.core?.setupTabs === 'function']
+            ];
+
+            coreTests.forEach(([name, test]) => {
+                addTestResult(`Core: ${name}`, test);
+            });
+
+            // Test 3: Check if DOM elements exist (simulate what would be in index.html)
+            const requiredElements = [
+                ['#status element', !!document.querySelector('#status')],
+                ['Tab buttons', !!document.querySelector('.tab')],
+                ['Tab panels', !!document.querySelector('.tab-panel')]
+            ];
+
+            requiredElements.forEach(([name, exists]) => {
+                addTestResult(`DOM: ${name}`, exists, !exists ? 'Missing from current test page' : '');
+            });
+
+            // Test 4: Check function exports
+            const functionTests = [
+                ['Network Interface functions', 
+                 typeof window.XOSNetworking?.networkInterface?.loadInterfaces === 'function'],
+                ['Forms functions', 
+                 typeof window.XOSNetworking?.forms?.setupNetworkingForms === 'function'],
+                ['Diagnostics functions', 
+                 typeof window.XOSNetworking?.diagnostics?.runPing === 'function']
+            ];
+
+            functionTests.forEach(([name, test]) => {
+                addTestResult(name, test);
+            });
+
+            // Test 5: Simulate core functionality
+            try {
+                // Test DOM helper
+                const testElement = window.XOSNetworking.core.$('body');
+                addTestResult('Core $ function works', !!testElement);
+
+                // Test status function (if status element existed)
+                if (window.XOSNetworking.core.setStatus) {
+                    window.XOSNetworking.core.setStatus('Test status message');
+                    addTestResult('setStatus function callable', true);
+                } else {
+                    addTestResult('setStatus function callable', false);
+                }
+
+                addInfoResult('Basic functionality tests completed');
+
+            } catch (error) {
+                addTestResult('Basic functionality test', false, `Error: ${error.message}`);
+            }
+        }
+
+        // Wait for modules to load and run tests
+        setTimeout(() => {
+            runValidationTests();
+        }, 1000);
+    </script>
+</body>
+</html>
