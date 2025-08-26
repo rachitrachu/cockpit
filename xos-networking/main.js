@@ -58,6 +58,11 @@
 
   // Modal helper function
   function setupModal(modal) {
+    if (!modal) {
+      console.warn('setupModal called with null/undefined modal');
+      return null;
+    }
+    
     // Handle ESC key and backdrop clicks
     modal.addEventListener('click', (e) => {
       if (e.target === modal) {
@@ -74,7 +79,11 @@
     // Cleanup when modal closes
     modal.addEventListener('close', () => {
       if (modal.parentNode) {
-        document.body.removeChild(modal);
+        try {
+          document.body.removeChild(modal);
+        } catch (e) {
+          console.warn('Failed to remove modal from DOM:', e);
+        }
       }
     });
     
@@ -185,6 +194,8 @@
       console.log('Processing', blocks.length, 'interface blocks');
       
       for (const block of blocks) {
+        if (!block.trim()) continue; // Skip empty blocks
+        
         const lines = block.split('\n');
         const firstLine = lines[0];
         const match = firstLine.match(/^(\d+): ([^:]+):/);
@@ -1491,9 +1502,38 @@
     const sortSelect = $('#iface-sort');
     if (sortSelect) {
       sortSelect.addEventListener('change', () => {
-        // This would require re-loading interfaces with different sort order
-        // For now, just trigger a reload
-        loadInterfaces();
+        const sortBy = sortSelect.value;
+        const tbody = $('#table-interfaces tbody');
+        if (!tbody) return;
+        
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        
+        rows.sort((a, b) => {
+          let aVal = '', bVal = '';
+          
+          switch (sortBy) {
+            case 'name':
+              aVal = a.cells[0]?.textContent || '';
+              bVal = b.cells[0]?.textContent || '';
+              break;
+            case 'type':
+              aVal = a.cells[1]?.textContent || '';
+              bVal = b.cells[1]?.textContent || '';
+              break;
+            case 'state':
+              aVal = a.cells[2]?.textContent || '';
+              bVal = b.cells[2]?.textContent || '';
+              break;
+            default:
+              return 0;
+          }
+          
+          return aVal.localeCompare(bVal);
+        });
+        
+        // Clear tbody and re-add sorted rows
+        tbody.innerHTML = '';
+        rows.forEach(row => tbody.appendChild(row));
       });
     }
     
@@ -1526,382 +1566,44 @@
         alert('🚧 Add Connection functionality is under development.\n\nFor now, please use the VLAN/Bridge/Bond tab to create network constructs,\nor use the "Set IP" button on individual interfaces to configure networking.');
       });
     }
-  }
 
-  // Enhanced netplan action function
-  async function netplanAction(action, config) {
-    console.log('netplanAction called with:', { action, config });
-    const payload = JSON.stringify({ action, config });
-    console.log('JSON payload to send:', payload);
-    
-    try {
-      console.log('About to spawn netplan script...');
-      
-      // Use a more direct approach - create a temporary file and execute it
-      const timestamp = Date.now();
-      const tempFile = `/tmp/netplan-${timestamp}.json`;
-      
-      // Write payload to temp file first
-      await cockpit.spawn([
-        'bash', '-c', `echo '${payload.replace(/'/g, "'\\''")}' > ${tempFile}`
-      ], {
-        superuser: 'require',
-        err: 'out'
-      });
-      
-      // Execute the python script with the temp file
-      const result = await cockpit.spawn([
-        'bash', '-c', `cd /usr/share/cockpit/xos-networking && cat ${tempFile} | python3 netplan_manager.py 2>&1; rm -f ${tempFile}`
-      ], {
-        superuser: 'require',
-        err: 'out'
-      });
-      
-      console.log('Netplan script raw output:', result);
-      const cleanResult = result.trim();
-      console.log('Cleaned result:', cleanResult);
-      
-      // Look for JSON response - it should be the last line starting with {
-      const lines = cleanResult.split('\n');
-      let jsonLine = null;
-      
-      // Find the last line that looks like JSON
-      for (let i = lines.length - 1; i >= 0; i--) {
-        const line = lines[i].trim();
-        if (line.startsWith('{') && line.includes('result')) {
-          jsonLine = line;
-          break;
-        }
-      }
-      
-      if (jsonLine) {
+    // Debug button to test netplan writing
+    const btnTestNetplan = $('#btn-test-netplan');
+    if (btnTestNetplan) {
+      btnTestNetplan.addEventListener('click', async () => {
         try {
-          const parsed = JSON.parse(jsonLine);
-          console.log('Netplan script parsed output:', parsed);
-          return parsed;
-        } catch (parseError) {
-          console.error('JSON parse error:', parseError);
-          return { error: `Failed to parse response: ${jsonLine}` };
-        }
-      } else {
-        // Look for error JSON
-        for (let i = lines.length - 1; i >= 0; i--) {
-          const line = lines[i].trim();
-          if (line.startsWith('{') && line.includes('error')) {
+          setStatus('Testing netplan write...');
+          
+          // Test netplan action with a simple configuration
+          const testConfig = {
+            name: 'eth0',
+            static_ip: '192.168.1.100/24',
+            gateway: '192.168.1.1',
+            dns: '8.8.8.8,1.1.1.1'
+          };
+          
+          console.log('Testing netplan action with config:', testConfig);
+          const result = await netplanAction('set_ip', testConfig);
+          
+          console.log('Netplan test result:', result);
+          
+          // Show the result
+          if (result.error) {
+            alert(`❌ Netplan test failed:\n${result.error}\n\nCheck console for details.`);
+          } else {
+            alert('✅ Netplan test successful!\n\nCheck /etc/netplan/99-cockpit.yaml for changes.');
+            
+            // Show current netplan content
             try {
-              const parsed = JSON.parse(line);
-              console.log('Netplan script error output:', parsed);
-              return parsed;
-            } catch (parseError) {
-              // Continue looking
+              const netplanContent = await run('cat', ['/etc/netplan/99-cockpit.yaml'], { superuser: 'try' });
+              console.log('Current netplan content:', netplanContent);
+            } catch (e) {
+              console.warn('Could not read netplan file:', e);
             }
           }
-        }
-        return { error: 'No valid JSON response found in output', debug_output: cleanResult };
-      }
-    } catch (e) {
-      console.error('netplanAction exception:', e);
-      let errorMsg = 'Script execution failed';
-      if (e.exit_status !== undefined) {
-        errorMsg = `Script exited with code ${e.exit_status}`;
-      }
-      if (e.message && e.message.trim()) {
-        errorMsg += `: ${e.message}`;
-      }
-      console.error('Processed error message:', errorMsg);
-      return { error: errorMsg, debug_info: e.toString() };
-    }
-  }
-
-  // Get available physical interfaces for dropdowns
-  async function getPhysicalInterfaces() {
-    try {
-      const output = await run('ip', ['-o', 'link', 'show');
-      const interfaces = [];
-      
-      output.split('\n').forEach(line => {
-        const match = line.match(/^\d+:\s+([^:]+):/);
-        if (match) {
-          const dev = match[1].trim();
-          // Skip virtual and special interfaces
-          if (dev !== 'lo' && 
-              !dev.startsWith('virbr') && 
-              !dev.startsWith('docker') && 
-              !dev.startsWith('veth') && 
-              !dev.startsWith('bond') && 
-              !dev.startsWith('br') && 
-              !dev.includes('.')) {
-            interfaces.push(dev);
-          }
-        }
-      });
-      
-      return interfaces;
-    } catch (e) {
-      console.error('Failed to get physical interfaces:', e);
-      return [];
-    }
-  }
-
-  // Setup network construction forms
-  async function setupNetworkingForms() {
-    console.log('Setting up networking forms...');
-    
-    // Get physical interfaces for dropdowns
-    const physicalInterfaces = await getPhysicalInterfaces();
-    console.log('Available physical interfaces:', physicalInterfaces);
-    
-    // Populate VLAN parent dropdown
-    const vlanParent = $('#vlan-parent');
-    if (vlanParent) {
-      vlanParent.innerHTML = '<option value="">Select parent interface...</option>';
-      physicalInterfaces.forEach(iface => {
-        const option = document.createElement('option');
-        option.value = iface;
-        option.textContent = iface;
-        vlanParent.appendChild(option);
-      });
-    }
-    
-    // Populate bridge ports multi-select
-    const bridgePorts = $('#br-ports');
-    if (bridgePorts) {
-      bridgePorts.innerHTML = '';
-      physicalInterfaces.forEach(iface => {
-        const option = document.createElement('option');
-        option.value = iface;
-        option.textContent = iface;
-        bridgePorts.appendChild(option);
-      });
-    }
-    
-    // Populate bond slaves multi-select
-    const bondSlaves = $('#bond-slaves');
-    if (bondSlaves) {
-      bondSlaves.innerHTML = '';
-      physicalInterfaces.forEach(iface => {
-        const option = document.createElement('option');
-        option.value = iface;
-        option.textContent = iface;
-        bondSlaves.appendChild(option);
-      });
-    }
-
-    // Setup VLAN creation
-    const btnCreateVlan = $('#btn-create-vlan');
-    if (btnCreateVlan) {
-      btnCreateVlan.addEventListener('click', async () => {
-        const parent = $('#vlan-parent')?.value?.trim();
-        const id = $('#vlan-id')?.value?.trim();
-        const name = $('#vlan-name')?.value?.trim() || `${parent}.${id}`;
-        
-        if (!parent || !id) {
-          alert('❌ Parent interface and VLAN ID are required!');
-          return;
-        }
-        
-        if (!id.match(/^\d+$/) || parseInt(id) < 1 || parseInt(id) > 4094) {
-          alert('❌ VLAN ID must be between 1 and 4094!');
-          return;
-        }
-        
-        try {
-          setStatus('Creating VLAN...');
-          const result = await netplanAction('add_vlan', {
-            name: name,
-            id: parseInt(id),
-            link: parent
-          });
-          
-          const output = $('#vlan-out');
-          if (result.error) {
-            if (output) output.textContent = `❌ Error: ${result.error}`;
-          } else {
-            if (output) output.textContent = `✅ VLAN ${name} created successfully!`;
-            // Clear form
-            $('#vlan-parent').selectedIndex = 0;
-            $('#vlan-id').value = '';
-            $('#vlan-name').value = '';
-            await loadInterfaces();
-          }
-        } catch (e) {
-          const output = $('#vlan-out');
-          if (output) output.textContent = `❌ Failed to create VLAN: ${e}`;
-        } finally {
-          setStatus('Ready');
-        }
-      });
-    }
-
-    // Setup Bridge creation
-    const btnCreateBridge = $('#btn-create-bridge');
-    if (btnCreateBridge) {
-      btnCreateBridge.addEventListener('click', async () => {
-        const name = $('#br-name')?.value?.trim();
-        const portsSelect = $('#br-ports');
-        const ports = portsSelect ? Array.from(portsSelect.selectedOptions).map(opt => opt.value) : [];
-        
-        if (!name) {
-          alert('❌ Bridge name is required!');
-          return;
-        }
-        
-        if (ports.length === 0) {
-          alert('❌ At least one port interface is required!');
-          return;
-        }
-        
-        try {
-          setStatus('Creating bridge...');
-          const result = await netplanAction('add_bridge', {
-            name: name,
-            interfaces: ports
-          });
-          
-          const output = $('#br-out');
-          if (result.error) {
-            if (output) output.textContent = `❌ Error: ${result.error}`;
-          } else {
-            if (output) output.textContent = `✅ Bridge ${name} created with ports: ${ports.join(', ')}`;
-            // Clear form
-            $('#br-name').value = '';
-            if (portsSelect) {
-              Array.from(portsSelect.options).forEach(opt => opt.selected = false);
-            }
-            await loadInterfaces();
-          }
-        } catch (e) {
-          const output = $('#br-out');
-          if (output) output.textContent = `❌ Failed to create bridge: ${e}`;
-        } finally {
-          setStatus('Ready');
-        }
-      });
-    }
-
-    // Setup Bond creation
-    const btnCreateBond = $('#btn-create-bond');
-    if (btnCreateBond) {
-      btnCreateBond.addEventListener('click', async () => {
-        const name = $('#bond-name')?.value?.trim();
-        const mode = $('#bond-mode')?.value;
-        const slavesSelect = $('#bond-slaves');
-        const slaves = slavesSelect ? Array.from(slavesSelect.selectedOptions).map(opt => opt.value) : [];
-        
-        if (!name) {
-          alert('❌ Bond name is required!');
-          return;
-        }
-        
-        if (!mode) {
-          alert('❌ Bond mode is required!');
-          return;
-        }
-        
-        if (slaves.length < 2) {
-          alert('❌ At least two slave interfaces are required for bonding!');
-          return;
-        }
-        
-        try {
-          setStatus('Creating bond...');
-          const result = await netplanAction('add_bond', {
-            name: name,
-            mode: mode,
-            interfaces: slaves
-          });
-          
-          const output = $('#bond-out');
-          if (result.error) {
-            if (output) output.textContent = `❌ Error: ${result.error}`;
-          } else {
-            if (output) output.textContent = `✅ Bond ${name} (${mode}) created with slaves: ${slaves.join(', ')}`;
-            // Clear form
-            $('#bond-name').value = '';
-            $('#bond-mode').selectedIndex = 0;
-            if (slavesSelect) {
-              Array.from(slavesSelect.options).forEach(opt => opt.selected = false);
-            }
-            await loadInterfaces();
-          }
-        } catch (e) {
-          const output = $('#bond-out');
-          if (output) output.textContent = `❌ Failed to create bond: ${e}`;
-        } finally {
-          setStatus('Ready');
-        }
-      });
-    }
-
-    // Setup other networking buttons
-    const btnShowNetplan = $('#btn-show-netplan');
-    if (btnShowNetplan) {
-      btnShowNetplan.addEventListener('click', async () => {
-        try {
-          const config = await run('cat', ['/etc/netplan/99-cockpit.yaml'], { superuser: 'try' });
-          alert(`Current Netplan Configuration:\n\n${config}`);
-        } catch (e) {
-          alert(`Failed to show Netplan config: ${e}`);
-        }
-      });
-    }
-
-    const btnApplyNetplan = $('#btn-apply-netplan');
-    if (btnApplyNetplan) {
-      btnApplyNetplan.addEventListener('click', async () => {
-        if (!confirm('Apply Netplan configuration? This may disrupt network connectivity.')) return;
-        
-        try {
-          setStatus('Applying Netplan...');
-          await run('netplan', ['apply'], { superuser: 'require' });
-          alert('✅ Netplan configuration applied successfully!');
-          await loadInterfaces();
-        } catch (e) {
-          alert(`❌ Failed to apply Netplan: ${e}`);
-        } finally {
-          setStatus('Ready');
-        }
-      });
-    }
-    
-    // Setup backup netplan button
-    const btnBackupNetplan = $('#btn-backup-netplan');
-    if (btnBackupNetplan) {
-      btnBackupNetplan.addEventListener('click', async () => {
-        try {
-          setStatus('Creating netplan backup...');
-          
-          // Create backup with timestamp
-          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-          const backupDir = `/etc/netplan/backups`;
-          const backupFile = `${backupDir}/netplan-backup-${timestamp}.tar.gz`;
-          
-          // Create backup directory if it doesn't exist
-          try {
-            await run('mkdir', ['-p', backupDir], { superuser: 'require' });
-          } catch (e) {
-            console.warn('Backup directory might already exist:', e);
-          }
-          
-          // Create backup archive
-          await run('tar', ['-czf', backupFile, '-C', '/etc', 'netplan/'], { superuser: 'require' });
-          
-          // Verify backup was created
-          const backupInfo = await run('ls', ['-lh', backupFile], { superuser: 'try' });
-          
-          // List recent backups
-          let backupList = '';
-          try {
-            backupList = await run('ls', ['-lht', backupDir + '/*.tar.gz'], { superuser: 'try' });
-          } catch (e) {
-            backupList = 'No previous backups found.';
-          }
-          
-          alert(`✅ Netplan backup created successfully!\n\n📁 Backup file: ${backupFile}\n📊 Backup info: ${backupInfo}\n\n📋 Recent backups:\n${backupList}`);
-          
         } catch (error) {
-          console.error('Backup failed:', error);
-          alert(`❌ Failed to create backup:\n${error.message || error}`);
+          console.error('Netplan test error:', error);
+          alert(`❌ Netplan test failed: ${error}`);
         } finally {
           setStatus('Ready');
         }
