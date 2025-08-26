@@ -1473,6 +1473,59 @@
         }
       });
     }
+    
+    // Setup interface search and sorting
+    const searchInput = $('#search-iface');
+    if (searchInput) {
+      searchInput.addEventListener('input', () => {
+        const term = searchInput.value.toLowerCase();
+        const rows = $$('#table-interfaces tbody tr');
+        
+        rows.forEach(row => {
+          const text = row.textContent.toLowerCase();
+          row.style.display = text.includes(term) ? '' : 'none';
+        });
+      });
+    }
+    
+    const sortSelect = $('#iface-sort');
+    if (sortSelect) {
+      sortSelect.addEventListener('change', () => {
+        // This would require re-loading interfaces with different sort order
+        // For now, just trigger a reload
+        loadInterfaces();
+      });
+    }
+    
+    // Setup refresh interfaces button
+    const refreshIfacesBtn = $('#btn-refresh-interfaces');
+    if (refreshIfacesBtn) {
+      refreshIfacesBtn.addEventListener('click', async () => {
+        await loadInterfaces();
+      });
+    }
+    
+    // Setup connection search
+    const searchConnInput = $('#search-conn');
+    if (searchConnInput) {
+      searchConnInput.addEventListener('input', () => {
+        const term = searchConnInput.value.toLowerCase();
+        const rows = $$('#table-connections tbody tr');
+        
+        rows.forEach(row => {
+          const text = row.textContent.toLowerCase();
+          row.style.display = text.includes(term) ? '' : 'none';
+        });
+      });
+    }
+    
+    // Setup add connection button (basic placeholder functionality)
+    const btnAddConnection = $('#btn-add-connection');
+    if (btnAddConnection) {
+      btnAddConnection.addEventListener('click', () => {
+        alert('🚧 Add Connection functionality is under development.\n\nFor now, please use the VLAN/Bridge/Bond tab to create network constructs,\nor use the "Set IP" button on individual interfaces to configure networking.');
+      });
+    }
   }
 
   // Enhanced netplan action function
@@ -1563,7 +1616,7 @@
   // Get available physical interfaces for dropdowns
   async function getPhysicalInterfaces() {
     try {
-      const output = await run('ip', ['-o', 'link', 'show']);
+      const output = await run('ip', ['-o', 'link', 'show');
       const interfaces = [];
       
       output.split('\n').forEach(line => {
@@ -1746,7 +1799,7 @@
         }
         
         if (slaves.length < 2) {
-          alert('❌ At least two slave interfaces are required!');
+          alert('❌ At least two slave interfaces are required for bonding!');
           return;
         }
         
@@ -1811,49 +1864,50 @@
       });
     }
     
-    // Debug button to test netplan writing
-    const btnTestNetplan = $('#btn-test-netplan');
-    if (btnTestNetplan) {
-      btnTestNetplan.addEventListener('click', async () => {
+    // Setup backup netplan button
+    const btnBackupNetplan = $('#btn-backup-netplan');
+    if (btnBackupNetplan) {
+      btnBackupNetplan.addEventListener('click', async () => {
         try {
-          setStatus('Testing netplan write...');
+          setStatus('Creating netplan backup...');
           
-          // Test netplan action with a simple configuration
-          const testConfig = {
-            name: 'eth0',
-            static_ip: '192.168.1.100/24',
-            gateway: '192.168.1.1',
-            dns: '8.8.8.8,1.1.1.1'
-          };
+          // Create backup with timestamp
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const backupDir = `/etc/netplan/backups`;
+          const backupFile = `${backupDir}/netplan-backup-${timestamp}.tar.gz`;
           
-          console.log('Testing netplan action with config:', testConfig);
-          const result = await netplanAction('set_ip', testConfig);
-          
-          console.log('Netplan test result:', result);
-          
-          // Show the result
-          if (result.error) {
-            alert(`❌ Netplan test failed:\n${result.error}\n\nCheck console for details.`);
-          } else {
-            alert('✅ Netplan test successful!\n\nCheck /etc/netplan/99-cockpit.yaml for changes.');
-            
-            // Show current netplan content
-            try {
-              const netplanContent = await run('cat', ['/etc/netplan/99-cockpit.yaml'], { superuser: 'try' });
-              console.log('Current netplan content:', netplanContent);
-            } catch (e) {
-              console.warn('Could not read netplan file:', e);
-            }
+          // Create backup directory if it doesn't exist
+          try {
+            await run('mkdir', ['-p', backupDir], { superuser: 'require' });
+          } catch (e) {
+            console.warn('Backup directory might already exist:', e);
           }
+          
+          // Create backup archive
+          await run('tar', ['-czf', backupFile, '-C', '/etc', 'netplan/'], { superuser: 'require' });
+          
+          // Verify backup was created
+          const backupInfo = await run('ls', ['-lh', backupFile], { superuser: 'try' });
+          
+          // List recent backups
+          let backupList = '';
+          try {
+            backupList = await run('ls', ['-lht', backupDir + '/*.tar.gz'], { superuser: 'try' });
+          } catch (e) {
+            backupList = 'No previous backups found.';
+          }
+          
+          alert(`✅ Netplan backup created successfully!\n\n📁 Backup file: ${backupFile}\n📊 Backup info: ${backupInfo}\n\n📋 Recent backups:\n${backupList}`);
+          
         } catch (error) {
-          console.error('Netplan test error:', error);
-          alert(`❌ Netplan test failed: ${error}`);
+          console.error('Backup failed:', error);
+          alert(`❌ Failed to create backup:\n${error.message || error}`);
         } finally {
           setStatus('Ready');
         }
       });
     }
-    
+
     // Check netplan file status
     const btnCheckNetplan = $('#btn-check-netplan');
     if (btnCheckNetplan) {
@@ -1895,6 +1949,270 @@
         } finally {
           setStatus('Ready');
         }
+      });
+    }
+    
+    // Setup import/export config buttons
+    const btnImportConfig = $('#btn-import-config');
+    if (btnImportConfig) {
+      btnImportConfig.addEventListener('click', async () => {
+        // Create file input for importing
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.yaml,.yml,.json';
+        input.style.display = 'none';
+        
+        input.addEventListener('change', async (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          
+          try {
+            setStatus('Importing configuration...');
+            
+            const content = await file.text();
+            let config;
+            
+            // Try to parse as YAML first, then JSON
+            try {
+              // Simple YAML parsing (for basic netplan configs)
+              if (file.name.endsWith('.json')) {
+                config = JSON.parse(content);
+                
+                // Convert JSON to YAML-like structure for netplan
+                if (config.network) {
+                  config = content; // Keep as JSON for now, implement conversion later
+                } else {
+                  throw new Error('Invalid netplan JSON structure - missing "network" key');
+                }
+              } else {
+                // For YAML, validate basic structure
+                if (!content.includes('network:') && !content.includes('version:')) {
+                  const addHeader = confirm('⚠️ This file doesn\'t appear to be a standard netplan configuration.\n\nWould you like to add a basic netplan header?');
+                  if (addHeader) {
+                    config = 'network:\n  version: 2\n  renderer: networkd\n\n' + content;
+                  } else {
+                    config = content;
+                  }
+                } else {
+                  config = content;
+                }
+              }
+            } catch (parseError) {
+              throw new Error(`Failed to parse config file: ${parseError.message}`);
+            }
+            
+            // Show preview and confirmation
+            const proceed = confirm(`📤 Import Network Configuration?\n\nFile: ${file.name}\nSize: ${file.size} bytes\n\n⚠️ This will replace the current netplan configuration.\n\nProceed with import?`);
+            
+            if (!proceed) {
+              setStatus('Import cancelled');
+              return;
+            }
+            
+            // Write the configuration
+            if (typeof config === 'string') {
+              // Direct YAML content
+              await cockpit.spawn([
+                'bash', '-c', `echo '${config.replace(/'/g, "'\\''")}' > /etc/netplan/99-cockpit.yaml`
+              ], {
+                superuser: 'require',
+                err: 'out'
+              });
+            } else {
+              // JSON config - convert to netplan action
+              // This is a simplified approach - you might want to enhance this
+              alert('⚠️ JSON import not fully implemented yet. Please use YAML format.');
+              setStatus('Ready');
+              return;
+            }
+            
+            // Apply the configuration
+            await run('netplan', ['apply'], { superuser: 'require' });
+            
+            alert('✅ Configuration imported and applied successfully!\n\nReloading interfaces...');
+            await loadInterfaces();
+            
+          } catch (error) {
+            console.error('Import failed:', error);
+            alert(`❌ Failed to import configuration:\n${error.message || error}`);
+          } finally {
+            setStatus('Ready');
+            document.body.removeChild(input);
+          }
+        });
+        
+        document.body.appendChild(input);
+        input.click();
+      });
+    }
+
+    const btnExportConfig = $('#btn-export-config');
+    if (btnExportConfig) {
+      btnExportConfig.addEventListener('click', async () => {
+        try {
+          setStatus('Exporting configuration...');
+          
+          // Show export options
+          const exportType = await new Promise((resolve) => {
+            const modal = document.createElement('dialog');
+            modal.innerHTML = `
+              <div class="modal-content">
+                <h2>📥 Export Network Configuration</h2>
+                <p>Choose what to export:</p>
+                
+                <div style="margin: 1rem 0;">
+                  <label style="display: block; margin: 0.5rem 0;">
+                    <input type="radio" name="export-type" value="cockpit" checked>
+                    🎯 <strong>XOS Networking Config</strong> (99-cockpit.yaml only)
+                  </label>
+                  <label style="display: block; margin: 0.5rem 0;">
+                    <input type="radio" name="export-type" value="all">
+                    📋 <strong>All Netplan Files</strong> (entire /etc/netplan/ directory)
+                  </label>
+                  <label style="display: block; margin: 0.5rem 0;">
+                    <input type="radio" name="export-type" value="current">
+                    📊 <strong>Current Network State</strong> (live interface configuration)
+                  </label>
+                </div>
+                
+                <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
+                  <button type="button" class="btn" onclick="this.closest('dialog').close()">❌ Cancel</button>
+                  <button type="button" class="btn primary" id="export-confirm">📥 Export</button>
+                </div>
+              </div>
+            `;
+            
+            document.body.appendChild(modal);
+            setupModal(modal);
+            
+            modal.querySelector('#export-confirm').addEventListener('click', () => {
+              const selected = modal.querySelector('input[name="export-type"]:checked');
+              resolve(selected ? selected.value : 'cockpit');
+              modal.close();
+            });
+            
+            modal.showModal();
+          });
+          
+          if (!exportType) {
+            setStatus('Ready');
+            return;
+          }
+          
+          let config = '';
+          let filename = 'netplan-export.yaml';
+          
+          if (exportType === 'cockpit') {
+            // Export only XOS Networking config
+            try {
+              config = await run('cat', ['/etc/netplan/99-cockpit.yaml'], { superuser: 'try' });
+              filename = '99-cockpit.yaml';
+            } catch (e) {
+              config = '# No XOS Networking configuration found\n# Generated by XOS Networking\nnetwork:\n  version: 2\n  renderer: networkd\n';
+              filename = '99-cockpit-empty.yaml';
+            }
+          } else if (exportType === 'all') {
+            // Export all netplan files
+            try {
+              const allConfigs = await run('bash', ['-c', 'for f in /etc/netplan/*.yaml; do echo "# --- $f ---"; cat "$f" 2>/dev/null; echo; done'], { superuser: 'try' });
+              config = allConfigs;
+              filename = 'netplan-all-configs.yaml';
+            } catch (e) {
+              config = '# No netplan configuration found\n';
+              filename = 'netplan-all-empty.yaml';
+            }
+          } else if (exportType === 'current') {
+            // Export current network state
+            try {
+              const interfaces = await run('ip', ['-details', 'addr', 'show']);
+              const routes = await run('ip', ['route']);
+              const dns = await run('cat', ['/etc/resolv.conf']).catch(() => '# DNS info not available');
+              
+              config = `# Current Network State Export
+# Generated by XOS Networking on ${new Date().toISOString()}
+# This is NOT a netplan configuration file - it's a snapshot of current network state
+
+# === INTERFACE INFORMATION ===
+${interfaces}
+
+# === ROUTING TABLE ===
+${routes}
+
+# === DNS CONFIGURATION ===
+${dns}`;
+              filename = 'network-state-snapshot.txt';
+            } catch (e) {
+              throw new Error('Failed to gather current network state: ' + e);
+            }
+          }
+          
+          // Add timestamp and metadata (except for current state which has its own header)
+          if (exportType !== 'current') {
+            const timestamp = new Date().toISOString();
+            const header = `# Netplan Configuration Export
+# Generated by XOS Networking on ${timestamp}
+# Hostname: ${window.location.hostname}
+# Export Type: ${exportType}
+
+`;
+            config = header + config;
+          }
+          
+          // Create download
+          const mimeType = filename.endsWith('.txt') ? 'text/plain' : 'text/yaml';
+          const blob = new Blob([config], { type: mimeType });
+          const url = URL.createObjectURL(blob);
+          
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          a.style.display = 'none';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          
+          alert(`✅ Configuration exported successfully!\n\n📄 File: ${filename}\n📊 Size: ${config.length} bytes\n📋 Type: ${exportType}`);
+          
+        } catch (error) {
+          console.error('Export failed:', error);
+          alert(`❌ Failed to export configuration:\n${error.message || error}`);
+        } finally {
+          setStatus('Ready');
+        }
+      });
+    }
+
+    const btnResetForms = $('#btn-reset-forms');
+    if (btnResetForms) {
+      btnResetForms.addEventListener('click', () => {
+        // Reset all form fields
+        const forms = ['vlan', 'br', 'bond'];
+        forms.forEach(prefix => {
+          // Reset text inputs
+          const inputs = $$(`[id^="${prefix}-"]`);
+          inputs.forEach(input => {
+            if (input.tagName === 'INPUT') {
+              if (input.type === 'text' || input.type === 'number') {
+                input.value = '';
+              }
+            } else if (input.tagName === 'SELECT') {
+              input.selectedIndex = 0;
+              // Clear multi-select options
+              if (input.multiple) {
+                Array.from(input.options).forEach(opt => opt.selected = false);
+              }
+            }
+          });
+          
+          // Clear output areas
+          const output = $(`#${prefix}-out`);
+          if (output) {
+            output.textContent = '';
+          }
+        });
+        
+        alert('✅ All forms have been reset!');
       });
     }
   }
