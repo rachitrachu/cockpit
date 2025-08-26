@@ -1,0 +1,183 @@
+/* ===== XAVS Health - Standalone styles (no Cockpit CSS dependency) ===== */
+
+/* Palette */
+:root {
+  --bg: #0f1115;
+  --text: #e8eaed;
+  --muted: #9aa0a6;
+
+  --surface: #171a21;
+  --surface-2: #1d2129;
+  --border: #2a2f3a;
+  --shadow: 0 1px 2px rgba(0,0,0,.35);
+
+  --brand: #0d6efd;
+  --brand-hover: #0b5ed7;
+
+  --ok: #2ecc71;
+  --warn: #f1c40f;
+  --danger: #e74c3c;
+}
+
+/* Base */
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 "Inter", system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+h1 { margin: 0 0 12px; font-size: 20px; font-weight: 700; }
+
+/* Layout */
+.page-wrap { max-width: 1280px; margin: 0 auto; padding: 16px; }
+.grid { display: grid; gap: 16px; }
+.grid.top { grid-template-columns: 1.2fr 2fr 1fr; }
+.grid.second { grid-template-columns: 1fr 1fr 1fr; margin-top: 16px; }
+
+/* ensure the bottom “Live Logs” card has space above */
+.page-wrap > .card { margin-top: 16px; }
+
+@media (max-width: 1100px) {
+  .grid.top, .grid.second { grid-template-columns: 1fr; }
+}
+
+/* Cards */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.card header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.card .body { padding: 12px 16px; }
+
+/* Text helpers */
+.muted { color: var(--muted); }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+.right { text-align: right; }
+.hdr {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  margin: 4px 0 2px;
+}
+
+.flex { display: flex; gap: 12px; align-items: center; }
+.flex-col { display: flex; flex-direction: column; gap: 8px; }
+
+/* Buttons */
+.btn-row { display: flex; gap: 8px; margin: 8px 0 18px; }
+.btn {
+  appearance: none;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+  transition: background .15s, border-color .15s, box-shadow .15s;
+}
+.btn:hover { background: #232836; }
+.btn.primary {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+.btn.primary:hover { background: var(--brand-hover); }
+.btn.ghost { background: transparent; }
+
+/* Status dots & pill */
+.kpi { display: flex; align-items: center; gap: 10px; }
+
+.pill {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  background: #2a2f3a;
+  color: var(--text);
+}
+.pill.ok   { background: rgba(46, 204, 113, .18); color: var(--ok); }
+.pill.warn { background: rgba(241, 196, 15, .18); color: var(--warn); }
+.pill.err  { background: rgba(231, 76, 60, .18);  color: var(--danger); }
+
+.dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: #565c66;
+  box-shadow: inset 0 0 0 2px rgba(0,0,0,.25);
+}
+.dot.ok { background: var(--ok); }
+.dot.warn { background: var(--warn); }
+.dot.err { background: var(--danger); }
+
+/* Lists */
+.list { margin: 0; padding: 0; list-style: none; }
+.list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--border);
+}
+.list li:last-child { border-bottom: 0; }
+
+/* Make Alerts list scrollable so Status card doesn't grow */
+#alertsList {
+  max-height: 180px;
+  overflow: auto;
+  padding-right: 4px; /* room for scrollbar */
+}
+#alertsList::-webkit-scrollbar { width: 8px; }
+#alertsList::-webkit-scrollbar-thumb { background: #3a3f4b; border-radius: 6px; }
+#alertsList { scrollbar-width: thin; scrollbar-color: #3a3f4b transparent; }
+
+/* Table */
+.table { width: 100%; border-collapse: collapse; }
+.table th, .table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.table thead th {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.table tbody tr:hover td { background: rgba(255,255,255,.03); }
+
+/* Log viewer */
+.scroll {
+  max-height: 380px;
+  overflow: auto;
+  background: #0b0e14;
+  color: #e6e6e6;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  line-height: 1.35;
+  white-space: pre-wrap;     /* wrap long lines */
+  word-break: break-word;
+}
+
+/* Scrollbar look */
+.scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.scroll::-webkit-scrollbar-thumb { background: #3a3f4b; border-radius: 8px; }
+.scroll::-webkit-scrollbar-thumb:hover { background: #505667; }
+.scroll::-webkit-scrollbar-track { background: #1b202b; border-radius: 8px; }
+.scroll { scrollbar-width: thin; scrollbar-color: #3a3f4b #1b202b; }
+
+/* Make page itself scrollable on short screens */
+html { overflow-y: auto; }

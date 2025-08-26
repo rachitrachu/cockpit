@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "name": "xavs-deploy",
+  "tools": {
+    "xavs-deploy": {
+      "label": "XAVS-Deploy",
+      "path": "index.html",
+      "order": 10
+    }
+  },
+  "content-security-policy": "default-src 'self' data: blob:; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss: http: https:; frame-src 'self';"
+}

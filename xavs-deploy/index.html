@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Kolla Ansible Deployment</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="../base1/cockpit.js"></script>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    :root { --brand:#197560; --brand-hover:#166b56; }
+
+    .page-wrap{max-width:100%!important; padding:16px 24px;}
+    .grid.two{display:grid; grid-template-columns:1.05fr 1.95fr; gap:16px;}
+    @media (max-width:1100px){.grid.two{grid-template-columns:1fr;}}
+
+    /* chips container: fully responsive (wraps to as many lines as needed) */
+    .services-grid{
+      display:flex; flex-wrap:wrap; gap:10px 14px; align-items:center;
+    }
+    .chip{
+      display:inline-block; padding:6px 12px; border-radius:999px; border:1px solid var(--border);
+      background:var(--surface-2); color:var(--text); cursor:pointer; font-weight:600; line-height:1;
+      transition:background .15s,border-color .15s,color .15s; white-space:nowrap;
+    }
+    .chip:hover{background:#232836;}
+    .chip.active{background:var(--brand); border-color:var(--brand); color:#fff;}
+    .chip[aria-disabled="true"]{opacity:.4; pointer-events:none;}
+
+    /* brand checkboxes */
+    input[type="checkbox"].bxc{
+      appearance:none; -webkit-appearance:none; width:18px; height:18px; margin:0 6px 0 0;
+      border:2px solid var(--brand); border-radius:5px; background:transparent; position:relative;
+      top:3px; cursor:pointer; transition:background .15s,border-color .15s,box-shadow .15s;
+    }
+    input[type="checkbox"].bxc:hover{ box-shadow:0 0 0 3px rgba(25,117,96,.15); }
+    input[type="checkbox"].bxc:checked{ background:var(--brand); border-color:var(--brand);}
+    input[type="checkbox"].bxc:checked::after{
+      content:""; position:absolute; left:5px; top:1px; width:4px; height:9px;
+      border:2px solid #fff; border-top:0; border-left:0; transform:rotate(45deg);
+    }
+    input[type="checkbox"].bxc:disabled{opacity:.45; cursor:not-allowed;}
+
+    /* hosts: fully responsive list; wraps like chips */
+    .brand-outline{border-color:var(--brand)!important;}
+    #hosts-box{
+      display:flex; flex-wrap:wrap; gap:8px 12px;
+      max-height:170px; overflow:auto; border-radius:8px; padding:8px 10px;
+      border:1px solid var(--brand); background:var(--surface-2);
+    }
+    #hosts-box label{display:inline-flex; align-items:center; gap:6px;}
+
+    #selected-hosts{display:flex; flex-wrap:wrap; gap:6px;}
+    .pill .x{margin-left:8px; cursor:pointer; opacity:.8;} .pill .x:hover{opacity:1;}
+
+    .console-toolbar{display:flex; justify-content:space-between; align-items:center; gap:8px;}
+    #console-output{border-color:var(--brand); min-height:65vh; white-space:pre-wrap;}
+    .btn.small{padding:5px 10px; font-size:12px;}
+    .btn.danger{background:var(--danger); border-color:var(--danger); color:#fff;}
+  </style>
+</head>
+<body>
+  <div class="page-wrap">
+    <h1>Kolla Ansible Deployment</h1>
+
+    <div class="grid two">
+      <!-- LEFT: controls -->
+      <div class="card">
+        <header>Controls</header>
+        <div class="body flex-col">
+          <div class="flex-col">
+            <div class="hdr">Action</div>
+            <select id="command" class="btn" aria-label="Kolla command">
+              <!-- default + order -->
+              <option value="bootstrap-servers" selected>bootstrap-servers</option>
+              <option value="prechecks">prechecks</option>
+              <option value="deploy">deploy</option>
+              <option value="post-deploy">post-deploy</option>
+
+              <!-- others -->
+              <option value="pull">pull</option>
+              <option value="reconfigure">reconfigure</option>
+              <option value="upgrade">upgrade</option>
+              <option value="stop">stop</option>
+              <option value="deploy-containers">deploy-containers</option>
+              <option value="prune-images">prune-images</option>
+              <option value="genconfig">genconfig</option>
+              <option value="gather-facts">gather-facts</option>
+              <option value="mariadb_recovery">mariadb_recovery</option>
+            </select>
+          </div>
+
+          <!-- service chips (-t) -->
+          <div id="services-section" class="flex-col">
+            <div class="hdr">Targets (optional)</div>
+            <div id="services-grid" class="services-grid">
+              <span class="chip" data-svc="keystone">keystone</span>
+              <span class="chip" data-svc="glance">glance</span>
+              <span class="chip" data-svc="nova">nova</span>
+              <span class="chip" data-svc="neutron">neutron</span>
+              <span class="chip" data-svc="placement">placement</span>
+              <span class="chip" data-svc="cinder">cinder</span>
+              <span class="chip" data-svc="horizon">horizon</span>
+              <span class="chip" data-svc="heat">heat</span>
+              <span class="chip" data-svc="swift">swift</span>
+              <span class="chip" data-svc="barbican">barbican</span>
+              <span class="chip" data-svc="magnum">magnum</span>
+              <span class="chip" data-svc="octavia">octavia</span>
+              <span class="chip" data-svc="masakari">masakari</span>
+            </div>
+            <input id="custom-services" class="btn ghost mono" placeholder="Other services (comma separated)">
+          </div>
+
+          <!-- hosts -->
+          <div class="flex-col">
+            <div class="hdr">Hosts</div>
+            <div id="hosts-box" class="brand-outline"></div>
+            <div class="hdr">Selected</div>
+            <div id="selected-hosts"></div>
+          </div>
+
+          <div class="right">
+            <button id="runBtn" class="btn primary">Run</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: output -->
+      <div class="card">
+        <header>
+          <div class="console-toolbar">
+            <span>Run Output</span>
+            <button id="clearBtn" class="btn ghost small">Refresh</button>
+          </div>
+        </header>
+        <div class="body">
+          <div id="console-output" class="scroll mono"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
