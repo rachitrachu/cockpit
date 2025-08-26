@@ -77,22 +77,31 @@ def add_empty_ethernets(network, ifaces):
 
 def main():
     try:
+        # Debug: Print initial info
+        print(f"DEBUG: Starting netplan_manager.py", file=sys.stderr, flush=True)
+        
         # Read JSON input
         input_data = sys.stdin.read().strip()
         if not input_data:
             print(json.dumps({'error': 'No input provided'}), file=sys.stdout, flush=True)
             sys.exit(1)
             
+        print(f"DEBUG: Received input: {input_data}", file=sys.stderr, flush=True)
+            
         req = json.loads(input_data)
         action = req.get('action')
         config = req.get('config')
         fname = req.get('filename', '99-cockpit.yaml')
+
+        print(f"DEBUG: Action={action}, Config={config}", file=sys.stderr, flush=True)
 
         if not action or not config:
             print(json.dumps({'error': 'Missing action or config'}), file=sys.stdout, flush=True)
             sys.exit(1)
 
         configs = load_netplan()
+        print(f"DEBUG: Loaded netplan configs: {list(configs.keys())}", file=sys.stderr, flush=True)
+        
         netplan = configs.get(fname, {'network': {}})
         network = ensure_network_root(netplan)
 
@@ -192,26 +201,76 @@ def main():
                 print(json.dumps({'error': 'Interface name and static IP are required'}), flush=True)
                 sys.exit(1)
             
-            # Ensure interface exists in ethernets
-            add_empty_ethernets(network, [iface_name])
+            # Debug: Print current action information
+            print(f"DEBUG: Configuring IP for {iface_name}: static_ip={static_ip}, gateway={gateway}, dns={dns}", file=sys.stderr, flush=True)
             
-            # Configure the interface
-            eth_config = network['ethernets'][iface_name]
-            eth_config['dhcp4'] = False  # Disable DHCP for static IP
+            # Determine the correct section based on interface type
+            target_section = None
+            target_config = None
             
-            # Set static IP
-            eth_config['addresses'] = [static_ip]
+            if iface_name.startswith('bond'):
+                # Bond interface - configure in bonds section
+                if 'bonds' in network and iface_name in network['bonds']:
+                    target_section = 'bonds'
+                    target_config = network['bonds'][iface_name]
+                else:
+                    # Create bond section if it doesn't exist
+                    network.setdefault('bonds', {})
+                    network['bonds'][iface_name] = {'interfaces': []}
+                    target_section = 'bonds'
+                    target_config = network['bonds'][iface_name]
+            elif iface_name.startswith('br'):
+                # Bridge interface - configure in bridges section
+                if 'bridges' in network and iface_name in network['bridges']:
+                    target_section = 'bridges'
+                    target_config = network['bridges'][iface_name]
+                else:
+                    # Create bridge section if it doesn't exist
+                    network.setdefault('bridges', {})
+                    network['bridges'][iface_name] = {'interfaces': []}
+                    target_section = 'bridges'
+                    target_config = network['bridges'][iface_name]
+            elif '.' in iface_name and not iface_name.startswith('br'):
+                # VLAN interface - configure in vlans section
+                if 'vlans' in network and iface_name in network['vlans']:
+                    target_section = 'vlans'
+                    target_config = network['vlans'][iface_name]
+                else:
+                    # Create basic VLAN config if it doesn't exist
+                    network.setdefault('vlans', {})
+                    parts = iface_name.split('.')
+                    network['vlans'][iface_name] = {
+                        'id': int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 1,
+                        'link': parts[0] if len(parts) > 0 else 'eth0'
+                    }
+                    target_section = 'vlans'
+                    target_config = network['vlans'][iface_name]
+            else:
+                # Regular interface - configure in ethernets section
+                add_empty_ethernets(network, [iface_name])
+                target_section = 'ethernets'
+                target_config = network['ethernets'][iface_name]
             
-            # Set gateway if provided
-            if gateway:
-                eth_config['gateway4'] = gateway
-            
-            # Set DNS if provided  
-            if dns:
-                dns_list = [d.strip() for d in dns.split(',') if d.strip()]
-                if dns_list:
-                    eth_config['nameservers'] = {'addresses': dns_list}
-        
+            # Configure the IP settings
+            if target_config is not None:
+                target_config['dhcp4'] = False  # Disable DHCP for static IP
+                target_config['addresses'] = [static_ip]
+                
+                # Set gateway if provided
+                if gateway:
+                    target_config['gateway4'] = gateway
+                
+                # Set DNS if provided  
+                if dns:
+                    dns_list = [d.strip() for d in dns.split(',') if d.strip()]
+                    if dns_list:
+                        target_config['nameservers'] = {'addresses': dns_list}
+                        
+                print(f"DEBUG: Configured IP for {iface_name} in {target_section} section", file=sys.stderr, flush=True)
+                print(f"DEBUG: Config now: {target_config}", file=sys.stderr, flush=True)
+            else:
+                raise Exception(f"Could not determine configuration section for interface {iface_name}")
+
         elif action == 'set_mtu':
             # Set MTU for an interface
             iface_name = config.get('name')
@@ -225,22 +284,74 @@ def main():
                 print(json.dumps({'error': 'MTU must be an integer between 68 and 9000'}), flush=True)
                 sys.exit(1)
             
-            # Ensure interface exists in ethernets
-            add_empty_ethernets(network, [iface_name])
+            # Determine the correct section based on interface type
+            target_section = None
+            target_config = None
+            
+            if iface_name.startswith('bond'):
+                # Bond interface - configure in bonds section
+                if 'bonds' in network and iface_name in network['bonds']:
+                    target_section = 'bonds'
+                    target_config = network['bonds'][iface_name]
+                else:
+                    # Create bond section if it doesn't exist
+                    network.setdefault('bonds', {})
+                    network['bonds'][iface_name] = {'interfaces': []}
+                    target_section = 'bonds'
+                    target_config = network['bonds'][iface_name]
+            elif iface_name.startswith('br'):
+                # Bridge interface - configure in bridges section
+                if 'bridges' in network and iface_name in network['bridges']:
+                    target_section = 'bridges'
+                    target_config = network['bridges'][iface_name]
+                else:
+                    # Create bridge section if it doesn't exist
+                    network.setdefault('bridges', {})
+                    network['bridges'][iface_name] = {'interfaces': []}
+                    target_section = 'bridges'
+                    target_config = network['bridges'][iface_name]
+            elif '.' in iface_name and not iface_name.startswith('br'):
+                # VLAN interface - configure in vlans section
+                if 'vlans' in network and iface_name in network['vlans']:
+                    target_section = 'vlans'
+                    target_config = network['vlans'][iface_name]
+                else:
+                    # Create basic VLAN config if it doesn't exist
+                    network.setdefault('vlans', {})
+                    parts = iface_name.split('.')
+                    network['vlans'][iface_name] = {
+                        'id': int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 1,
+                        'link': parts[0] if len(parts) > 0 else 'eth0'
+                    }
+                    target_section = 'vlans'
+                    target_config = network['vlans'][iface_name]
+            else:
+                # Regular interface - configure in ethernets section
+                add_empty_ethernets(network, [iface_name])
+                target_section = 'ethernets'
+                target_config = network['ethernets'][iface_name]
             
             # Set MTU
-            network['ethernets'][iface_name]['mtu'] = mtu_value
+            if target_config is not None:
+                target_config['mtu'] = mtu_value
+                print(f"Set MTU {mtu_value} for {iface_name} in {target_section} section", file=sys.stderr, flush=True)
+            else:
+                raise Exception(f"Could not determine configuration section for interface {iface_name}")
         else:
             print(json.dumps({'error': 'Unknown action'}), file=sys.stdout, flush=True)
             sys.exit(1)
 
         write_netplan(fname, netplan)
+        print(f"DEBUG: Successfully wrote netplan file", file=sys.stderr, flush=True)
+        
         apply_netplan()
+        print(f"DEBUG: Successfully applied netplan", file=sys.stderr, flush=True)
         
         # Always output clean JSON to stdout
         print(json.dumps({'result': 'success'}), file=sys.stdout, flush=True)
         
     except Exception as e:
+        print(f"DEBUG: Exception occurred: {e}", file=sys.stderr, flush=True)
         print(json.dumps({'error': str(e), 'trace': traceback.format_exc()}), file=sys.stdout, flush=True)
         sys.exit(1)
 
