@@ -315,7 +315,7 @@ async function loadInterfaces() {
               <div style="margin: 1rem 0; padding: 1rem; background: #e8f4fd; border-radius: var(--border-radius); border: 1px solid #bee5eb;">
                 <label style="display: flex; align-items: flex-start; gap: 0.5rem; margin: 0;">
                   <input type="checkbox" id="persist-mtu-config" checked>
-                  ?? <strong>Persist configuration to netplan (recommended)
+                  ?? <strong>Persist configuration to netplan (recommended)</strong>
                 </label>
                 <small style="color: var(--muted-color); font-size: 0.875rem; margin-left: 1.5rem;">
                   When enabled, configuration survives reboots. When disabled, changes are temporary.
@@ -396,8 +396,6 @@ async function loadInterfaces() {
 
         modal.showModal();
       });
-
-      // Note: Editing constructs (bond/vlan/bridge) handled in constructs.js
 
       actionsCell.appendChild(btnUp);
       actionsCell.appendChild(btnDown);
