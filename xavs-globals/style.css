@@ -288,6 +288,35 @@ body {
     border-color: #dc3545;
 }
 
+.btn-outline-secondary {
+    color: #6c757d;
+    background-color: transparent;
+    border: 1px solid #6c757d;
+    font-size: 0.875rem;
+    padding: 0.25rem 0.5rem;
+}
+
+.btn-outline-secondary:hover {
+    color: #fff;
+    background-color: #6c757d;
+    border-color: #6c757d;
+}
+
+.btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    border-radius: 0.2rem;
+}
+
+/* Refresh button styling */
+.form-text .btn-outline-secondary {
+    vertical-align: baseline;
+    margin-left: 0.5rem;
+    font-size: 0.75rem;
+    padding: 0.1rem 0.4rem;
+}
+
 /* Gap utility for older Bootstrap versions */
 .gap-2 > * + * {
     margin-left: 0.5rem;

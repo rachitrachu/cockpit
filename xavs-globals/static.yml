@@ -1,0 +1,184 @@
+--- 
+# xdeploy generated globals for xloud openstck
+
+workaround_ansible_issue_8743: yes
+
+# Valid options are [ COPY_ONCE, COPY_ALWAYS ]
+config_strategy: "COPY_ALWAYS"
+
+
+# custom xdeploy
+config_strategy: "COPY_ALWAYS"
+kolla_base_distro: "ubuntu"
+openstack_release: "2024.1"
+
+
+# Docker version
+docker_apt_package: "docker.io"
+
+#Enable TLS
+kolla_enable_tls_internal: "no"
+kolla_enable_tls_external: "yes"
+kolla_external_fqdn_cert: "/etc/kolla/certificates/xloud.pem"
+
+enable_mariabadb: "yes"
+enable_mariabackup: "yes"
+enable_mariadb_clustercheck: "yes"
+
+
+nova_compute_virt_type: "kvm"
+keystone_token_provider: 'fernet'
+
+
+#Networking
+
+enable_neutron_provider_networks: "yes"
+enable_neutron_vpnaas: "yes"
+enable_neutron_qos: "yes"
+enable_neutron_trunk: "no"
+neutron_plugin_agent: "ovn"
+
+
+
+
+
+libvirt_tls: "no"
+libvirt_enable_sasl: "false"
+
+
+
+
+
+
+# xdeploy repo details
+docker_custom_config:
+ insecure-registries:
+ - docker-registry:4000
+enable_docker_repo: "no"
+docker_registry: "docker-registry:4000"
+docker_namespace: "openstack.kolla"
+tag: "2024.1-ubuntu-jammy"
+kolla_internal_registry: "docker-registry:4000"
+kolla_pull: false
+
+#customports
+prometheus_port: "9291"
+prometheus_node_exporter_port: "9290"
+prometheus_alertmanager_port: "9296"
+prometheus_alertmanager_cluster_port: "9294"
+grafana_server_port: "3200"
+
+##Services
+
+#Cinder
+enable_cinder: "yes"
+
+enable_cinder_backup: "no"
+#enable_cinder_backend_iscsi: "{{ enable_cinder_backend_lvm | bool }}"
+#enable_cinder_backend_lvm: "no"
+#if yes then
+#cinder_volume_group: "cloud-vg"
+
+#Cinder CEPH
+ceph_glance_user: "glance"
+ceph_glance_keyring: "client.glance.keyring"
+ceph_glance_pool_name: "images"
+ceph_cinder_user: "cinder"
+ceph_cinder_keyring: "client.cinder.keyring"
+ceph_cinder_pool_name: "volumes"
+ceph_cinder_backup_user: "cinder-backup"
+ceph_cinder_backup_keyring: "client.cinder-backup.keyring"
+ceph_cinder_backup_pool_name: "backups"
+ceph_nova_keyring: "client.nova.keyring"
+ceph_nova_user: "nova"
+ceph_nova_pool_name: "vms"
+glance_backend_ceph: "yes"
+cinder_backend_ceph: "yes"
+nova_backend_ceph: "yes"
+
+
+#Manila
+enable_manila: "yes"
+enable_manila_backend_generic: "yes"
+
+#Skyline
+#enable_skyline: "no"
+
+#Watcher
+enable_watcher: "yes"
+
+#Masakari
+enable_masakari: "yes"
+enable_hacluster: "yes"
+enable_horizon_masakari: "{{ enable_masakari | bool }}"
+
+
+# Octavia
+octavia_loadbalancer_topology: "ACTIVE_STANDBY"
+
+enable_redis: "yes"
+enable_octavia: "yes"
+octavia_network_interface: "eno12399.1119"
+octavia_auto_configure: yes
+octavia_certs_country: IN
+octavia_certs_state: Delhi
+octavia_certs_organization: xloud.tech
+octavia_certs_organizational_unit: IT
+
+
+octavia_amp_flavor:
+  name: "amphora"
+  is_public: no
+  vcpus: 2
+  ram: 4096
+  disk: 30
+
+octavia_amp_network:
+  name: lb-mgmt-net
+  provider_network_type: vlan
+  provider_segmentation_id: 1119
+  provider_physical_network: physnet1
+  external: false
+  shared: false
+  subnet:
+    name: lb-mgmt-subnet
+    cidr: "10.0.9.0/24"
+    allocation_pool_start: "10.0.9.80"
+    allocation_pool_end: "10.0.9.254"
+    no_gateway_ip: yes
+    enable_dhcp: yes
+
+#CEPH
+ceph_glance_user: "glance"
+ceph_glance_keyring: "client.glance.keyring"
+ceph_glance_pool_name: "images"
+
+ceph_cinder_user: "cinder"
+ceph_cinder_keyring: "client.cinder.keyring"
+ceph_cinder_pool_name: "volumes"
+
+
+ceph_nova_keyring: "client.nova.keyring"
+ceph_nova_user: "nova"
+ceph_nova_pool_name: "vms"
+glance_backend_ceph: "yes"
+cinder_backend_ceph: "yes"
+nova_backend_ceph: "yes"
+
+
+# Magnum
+enable_magnum: true
+enable_cluster_user_trust: true
+
+#Extras
+
+#NTP server not running
+prechecks_enable_host_ntp_checks: false
+
+
+# Horizon
+horizon_custom_themes:
+     - name: ubuntu
+       label: xloud
+horizon_keystone_multidomain: True
+ 

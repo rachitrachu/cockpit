@@ -10,12 +10,12 @@ const CONFIG_SCHEMA = {
         description: 'Core networking settings for XAVS deployment',
         fields: {
             network_interface: {
-                type: 'text',
+                type: 'select',
                 label: 'Management Network Interface',
-                description: 'Primary network interface for XAVS management traffic',
+                description: 'Primary network interface for XAVS management traffic <button type="button" class="btn btn-sm btn-outline-secondary ms-2" onclick="refreshNetworkInterfaces()" title="Refresh available interfaces"></span>Refresh</button>',
                 default: 'eth0',
                 required: true,
-                validation: /^[a-zA-Z0-9-_.]+$/
+                options: ['eth0'] // Will be populated by detectNetworkInterfaces
             },
             kolla_internal_vip_address: {
                 type: 'text',
@@ -25,6 +25,21 @@ const CONFIG_SCHEMA = {
                 required: true,
                 validation: /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/
             },
+                kolla_internal_fqdn: {
+                type: 'text',
+                label: 'Internal FQDN',
+                description: 'Fully qualified domain name for internal access',
+                default: '{{ kolla_internal_vip_address }}',
+                required: false
+            },    
+            neutron_external_interface: {
+                type: 'select',
+                label: 'Neutron External Interface',
+                description: 'Network interface for external/provider networks <button type="button" class="btn btn-sm btn-outline-secondary ms-2" onclick="refreshNetworkInterfaces()" title="Refresh available interfaces"></span>Refresh</button>',
+                default: 'eth1',
+                required: true,
+                options: ['eth1'] // Will be populated by detectNetworkInterfaces
+            },
             kolla_external_vip_address: {
                 type: 'text',
                 label: 'External VIP Address',
@@ -33,45 +48,17 @@ const CONFIG_SCHEMA = {
                 required: true,
                 validation: /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/
             },
-            neutron_external_interface: {
+            kolla_external_fqdn: {
                 type: 'text',
-                label: 'Neutron External Interface',
-                description: 'Network interface for external/provider networks',
-                default: 'eth1',
-                required: true
+                label: 'External FQDN',
+                description: 'Fully qualified domain name for external access',
+                default: '{{ kolla_external_vip_address }}',
+                required: false
             },
             enable_neutron_dvr: {
                 type: 'select',
                 label: 'Enable Neutron DVR',
                 description: 'Enable Distributed Virtual Routing for better performance',
-                options: ['yes', 'no'],
-                default: 'no'
-            }
-        }
-    },
-    compute: {
-        title: 'Compute Configuration',
-        description: 'Nova compute service configuration',
-        fields: {
-            nova_compute_virt_type: {
-                type: 'select',
-                label: 'Virtualization Type',
-                description: 'Hypervisor technology to use for instances',
-                options: ['qemu', 'kvm', 'vmware', 'lxc'],
-                default: 'kvm',
-                required: true
-            },
-            nova_vncproxy_host: {
-                type: 'text',
-                label: 'VNC Proxy Host',
-                description: 'Hostname/IP for VNC console access',
-                default: '{{ kolla_external_vip_address }}',
-                required: false
-            },
-            enable_nova_fake_driver: {
-                type: 'select',
-                label: 'Enable Fake Driver',
-                description: 'Enable fake driver for testing (non-production)',
                 options: ['yes', 'no'],
                 default: 'no'
             }
@@ -112,64 +99,22 @@ const CONFIG_SCHEMA = {
             }
         }
     },
+
     database: {
         title: 'Database Configuration',
-        description: 'MariaDB/MySQL database settings',
+        description: 'MariaDB and database service settings',
         fields: {
-            enable_mariadb: {
+              enable_proxysql: {
                 type: 'select',
-                label: 'Enable MariaDB',
-                description: 'Enable MariaDB database service',
+                label: 'Enable ProxySQL',
+                description: 'Enable ProxySQL for database load balancing',
                 options: ['yes', 'no'],
-                default: 'yes',
-                required: true
+                default: 'no'
             },
-            database_max_timeout: {
-                type: 'number',
-                label: 'Database Max Timeout',
-                description: 'Maximum timeout for database operations (seconds)',
-                default: 120,
-                min: 30,
-                max: 600
-            },
-            mariadb_server_id: {
-                type: 'number',
-                label: 'MariaDB Server ID',
-                description: 'Unique server ID for MariaDB replication',
-                default: 1,
-                min: 1,
-                max: 999999
-            }
+
         }
     },
-    messaging: {
-        title: 'Messaging Configuration',
-        description: 'RabbitMQ message queue settings',
-        fields: {
-            enable_rabbitmq: {
-                type: 'select',
-                label: 'Enable RabbitMQ',
-                description: 'Enable RabbitMQ message broker',
-                options: ['yes', 'no'],
-                default: 'yes',
-                required: true
-            },
-            rabbitmq_user: {
-                type: 'text',
-                label: 'RabbitMQ User',
-                description: 'Username for RabbitMQ service account',
-                default: 'openstack',
-                required: true
-            },
-            rabbitmq_cluster_name: {
-                type: 'text',
-                label: 'RabbitMQ Cluster Name',
-                description: 'Name for RabbitMQ cluster',
-                default: 'openstack',
-                required: false
-            }
-        }
-    },
+
     monitoring: {
         title: 'Monitoring & Logging',
         description: 'Monitoring and logging service configuration',
@@ -222,62 +167,69 @@ const CONFIG_SCHEMA = {
                 options: ['yes', 'no'],
                 default: 'no'
             },
-            keystone_token_provider: {
-                type: 'select',
-                label: 'Token Provider',
-                description: 'Keystone token provider backend',
-                options: ['fernet', 'jws'],
-                default: 'fernet'
-            },
             enable_horizon_ssl: {
                 type: 'select',
                 label: 'Enable Horizon SSL',
                 description: 'Enable SSL/TLS for dashboard access',
                 options: ['yes', 'no'],
                 default: 'yes'
+            },
+            kolla_enable_tls_internal: {
+                type: 'select',
+                label: 'Enable TLS Internal',
+                description: 'Enable TLS encryption for internal API communication',
+                options: ['yes', 'no'],
+                default: 'no'
+            },
+            kolla_enable_tls_external: {
+                type: 'select',
+                label: 'Enable TLS External',
+                description: 'Enable TLS encryption for external API access',
+                options: ['yes', 'no'],
+                default: 'yes'
+            },
+            kolla_external_fqdn_cert: {
+                type: 'text',
+                label: 'External FQDN Certificate Path',
+                description: 'Path to SSL certificate file for external FQDN',
+                default: '/etc/kolla/certificates/xloud.pem',
+                required: false
             }
         }
     },
     advanced: {
         title: 'Advanced Configuration',
-        description: 'Advanced deployment and performance settings',
+        description: 'Advanced service and deployment settings',
         fields: {
-            openstack_release: {
+            enable_keepalived: {
                 type: 'select',
-                label: 'OpenStack Release',
-                description: 'Target OpenStack release version',
-                options: ['wallaby', 'xena', 'yoga', 'zed', 'antelope', 'bobcat'],
-                default: 'bobcat',
-                required: true
-            },
-            kolla_internal_fqdn: {
-                type: 'text',
-                label: 'Internal FQDN',
-                description: 'Fully qualified domain name for internal access',
-                default: '{{ kolla_internal_vip_address }}',
-                required: false
-            },
-            kolla_external_fqdn: {
-                type: 'text',
-                label: 'External FQDN',
-                description: 'Fully qualified domain name for external access',
-                default: '{{ kolla_external_vip_address }}',
-                required: false
-            },
-            docker_registry: {
-                type: 'text',
-                label: 'Docker Registry',
-                description: 'Docker registry for container images',
-                default: 'quay.io',
-                required: false
+                label: 'Enable Keepalived',
+                description: 'Enable Keepalived for high availability',
+                options: ['yes', 'no'],
+                default: 'yes'
             },
             enable_haproxy: {
                 type: 'select',
                 label: 'Enable HAProxy',
-                description: 'Enable load balancer for high availability',
+                description: 'Enable HAProxy load balancer',
                 options: ['yes', 'no'],
                 default: 'yes'
-            }
+            },
+            enable_memcached: {
+                type: 'select',
+                label: 'Enable Memcached',
+                description: 'Enable Memcached caching service',
+                options: ['yes', 'no'],
+                default: 'yes'
+            },
+            enable_haproxy_memcached: {
+                type: 'select',
+                label: 'Enable HAProxy Memcached',
+                description: 'Enable Memcached backend for HAProxy',
+                options: ['yes', 'no'],
+                default: 'yes'
+            },
+
         }
     },
     custom: {
@@ -760,6 +712,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         
         console.log('Cockpit API available, initializing...');
         
+        console.log('Detecting network interfaces...');
+        showStatus('Detecting network interfaces...', 'info');
+        await updateNetworkInterfaceOptions();
+        
         console.log('Creating form generator...');
         formGenerator = new FormGenerator('dynamic_form_container', CONFIG_SCHEMA);
         
@@ -1089,7 +1045,9 @@ function mapKeyToSection(key) {
         // Network section
         'network_interface': 'network',
         'kolla_internal_vip_address': 'network',
+        'kolla_internal_fqdn': 'network',
         'kolla_external_vip_address': 'network',
+        'kolla_external_fqdn': 'network',
         'neutron_external_interface': 'network',
         'enable_neutron_dvr': 'network',
         
@@ -1106,14 +1064,13 @@ function mapKeyToSection(key) {
         
         // Database section
         'enable_mariadb': 'database',
+        'enable_mariabackup': 'database',
+        'enable_mariadb_clustercheck': 'database',
+        'enable_proxysql': 'database',
         'database_max_timeout': 'database',
         'mariadb_server_id': 'database',
         
-        // Messaging section
-        'enable_rabbitmq': 'messaging',
-        'rabbitmq_user': 'messaging',
-        'rabbitmq_cluster_name': 'messaging',
-        
+     
         // Monitoring section
         'enable_prometheus': 'monitoring',
         'enable_grafana': 'monitoring',
@@ -1125,13 +1082,15 @@ function mapKeyToSection(key) {
         'enable_barbican': 'security',
         'keystone_token_provider': 'security',
         'enable_horizon_ssl': 'security',
+        'kolla_enable_tls_internal': 'security',
+        'kolla_enable_tls_external': 'security',
+        'kolla_external_fqdn_cert': 'security',
         
         // Advanced section
-        'openstack_release': 'advanced',
-        'kolla_internal_fqdn': 'advanced',
-        'kolla_external_fqdn': 'advanced',
-        'docker_registry': 'advanced',
-        'enable_haproxy': 'advanced'
+        'enable_haproxy': 'advanced',
+        'enable_keepalived': 'advanced',
+        'enable_memcached': 'advanced',
+        'enable_haproxy_memcached': 'advanced'
     };
     
     return keyMappings[key] || null;
@@ -1187,6 +1146,133 @@ function showConfigPreview(content) {
 }
 
 // Reset configuration to defaults
+// Refresh network interfaces and update dropdowns
+async function refreshNetworkInterfaces() {
+    try {
+        showStatus('Refreshing network interfaces...', 'info');
+        console.log('Refreshing network interfaces...');
+        
+        // Detect interfaces again
+        const interfaces = await detectNetworkInterfaces();
+        
+        // Update the CONFIG_SCHEMA
+        await updateNetworkInterfaceOptions();
+        
+        // Update the dropdowns in the current form
+        const networkInterfaceSelect = document.getElementById('network_network_interface');
+        const neutronInterfaceSelect = document.getElementById('network_neutron_external_interface');
+        
+        if (networkInterfaceSelect) {
+            const currentValue = networkInterfaceSelect.value;
+            networkInterfaceSelect.innerHTML = '';
+            
+            interfaces.forEach(iface => {
+                const option = document.createElement('option');
+                option.value = iface;
+                option.textContent = iface;
+                option.selected = (iface === currentValue);
+                networkInterfaceSelect.appendChild(option);
+            });
+            
+            // If current value is not in new list, select first option
+            if (!interfaces.includes(currentValue) && interfaces.length > 0) {
+                networkInterfaceSelect.value = interfaces[0];
+            }
+        }
+        
+        if (neutronInterfaceSelect) {
+            const currentValue = neutronInterfaceSelect.value;
+            neutronInterfaceSelect.innerHTML = '';
+            
+            interfaces.forEach(iface => {
+                const option = document.createElement('option');
+                option.value = iface;
+                option.textContent = iface;
+                option.selected = (iface === currentValue);
+                neutronInterfaceSelect.appendChild(option);
+            });
+            
+            // If current value is not in new list, select first or second option
+            if (!interfaces.includes(currentValue) && interfaces.length > 0) {
+                neutronInterfaceSelect.value = interfaces[1] || interfaces[0];
+            }
+        }
+        
+        showStatus(`Network interfaces refreshed - ${interfaces.length} interfaces found`, 'success');
+        console.log('Network interfaces refreshed successfully:', interfaces);
+        
+    } catch (error) {
+        console.error('Failed to refresh network interfaces:', error);
+        showStatus('Failed to refresh network interfaces: ' + error.message, 'danger');
+    }
+}
+
+// Network Interface Detection
+async function detectNetworkInterfaces() {
+    try {
+        console.log('Detecting network interfaces...');
+        
+        // Use multiple commands to get comprehensive interface information
+        const result = await cockpit.spawn([
+            'bash', '-c', 
+            'ip link show | grep "^[0-9]" | awk -F": " \'{print $2}\' | grep -v "^lo$" | sort'
+        ], { 
+            superuser: 'try',
+            err: 'message'
+        });
+        
+        const interfaces = result.trim().split('\n').filter(iface => 
+            iface && 
+            iface.length > 0 && 
+            !iface.includes('lo') && 
+            !iface.includes('@')
+        );
+        
+        console.log('Detected interfaces:', interfaces);
+        
+        // If no interfaces detected, provide common defaults
+        if (interfaces.length === 0) {
+            console.log('No interfaces detected, using defaults');
+            return ['eth0', 'eth1', 'ens3', 'ens4', 'enp0s3', 'enp0s8'];
+        }
+        
+        return interfaces;
+    } catch (error) {
+        console.error('Failed to detect network interfaces:', error);
+        showStatus('Could not detect network interfaces, using defaults', 'warning');
+        
+        // Return common interface names as fallback
+        return ['eth0', 'eth1', 'ens3', 'ens4', 'enp0s3', 'enp0s8', 'eno1', 'eno2'];
+    }
+}
+
+// Update network interface options in CONFIG_SCHEMA
+async function updateNetworkInterfaceOptions() {
+    try {
+        const interfaces = await detectNetworkInterfaces();
+        
+        // Update network_interface field
+        if (CONFIG_SCHEMA.network && CONFIG_SCHEMA.network.fields && CONFIG_SCHEMA.network.fields.network_interface) {
+            CONFIG_SCHEMA.network.fields.network_interface.type = 'select';
+            CONFIG_SCHEMA.network.fields.network_interface.options = interfaces;
+            CONFIG_SCHEMA.network.fields.network_interface.default = interfaces[0] || 'eth0';
+        }
+        
+        // Update neutron_external_interface field
+        if (CONFIG_SCHEMA.network && CONFIG_SCHEMA.network.fields && CONFIG_SCHEMA.network.fields.neutron_external_interface) {
+            CONFIG_SCHEMA.network.fields.neutron_external_interface.type = 'select';
+            CONFIG_SCHEMA.network.fields.neutron_external_interface.options = interfaces;
+            CONFIG_SCHEMA.network.fields.neutron_external_interface.default = interfaces[1] || interfaces[0] || 'eth1';
+        }
+        
+        console.log('Updated network interface options:', interfaces);
+        return interfaces;
+    } catch (error) {
+        console.error('Failed to update network interface options:', error);
+        return [];
+    }
+}
+
 function resetToDefaults() {
     if (confirm('Are you sure you want to reset all settings to their default values? This action cannot be undone.')) {
         console.log('Resetting configuration to defaults...');
@@ -1212,3 +1298,6 @@ window.previewConfiguration = previewConfiguration;
 window.downloadConfiguration = downloadConfiguration;
 window.loadSavedConfiguration = loadSavedConfiguration;
 window.resetToDefaults = resetToDefaults;
+window.detectNetworkInterfaces = detectNetworkInterfaces;
+window.updateNetworkInterfaceOptions = updateNetworkInterfaceOptions;
+window.refreshNetworkInterfaces = refreshNetworkInterfaces;
