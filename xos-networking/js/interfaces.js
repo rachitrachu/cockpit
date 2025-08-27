@@ -134,10 +134,25 @@ async function loadInterfaces() {
           if (!confirmationResult) {
             return; // User cancelled or didn't type confirmation correctly
           }
+        } else if (iface.state === 'UP') {
+          // Show simple warning for non-critical UP interfaces
+          const confirmMessage = `📉 Bring Down Interface ${iface.dev}?\n\n` +
+                               `Current Status: ${iface.state}\n` +
+                               `${iface.ipv4 ? `IP Address: ${iface.ipv4}\n` : ''}` +
+                               `\nThis will temporarily disable network connectivity on this interface.\n\n` +
+                               `Are you sure you want to bring it down?`;
+          
+          if (!confirm(confirmMessage)) {
+            return;
+          }
         }
 
-        await run('ip', ['link', 'set', iface.dev, 'down'], { superuser: 'require' });
-        await loadInterfaces();
+        try {
+          await run('ip', ['link', 'set', iface.dev, 'down'], { superuser: 'require' });
+          await loadInterfaces();
+        } catch (error) {
+          alert(`❌ Failed to bring down interface ${iface.dev}: ${error}`);
+        }
       });
 
       const btnInfo = createButton('Info', async () => {
