@@ -36,7 +36,7 @@ async function editConstructedInterface(iface) {
     
     modalContent = `
       <div class="modal-content">
-        <h2>?? Edit VLAN ${iface.dev}</h2>
+        <h2>??? Edit VLAN ${iface.dev}</h2>
         <form id="edit-vlan-form">
           <label>?? Parent Interface
             <input type="text" id="edit-vlan-parent" value="${parent}" readonly style="background: #f5f5f5;">

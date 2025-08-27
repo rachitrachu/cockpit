@@ -1,61 +1,79 @@
 'use strict';
-/* global $, $$, run, setStatus, netplanAction, setupModal, getPhysicalInterfaces, loadInterfaces */
+/* global $, $$, run, setStatus, netplanAction, getPhysicalInterfaces, loadInterfaces */
 
 async function setupNetworkingForms() {
   console.log('Setting up networking forms...');
+  
+  try {
+    console.log('Loading physical interfaces for forms...');
+    const interfaces = await getPhysicalInterfaces();
+    console.log('Physical interfaces for forms:', interfaces);
 
-  const physicalInterfaces = await getPhysicalInterfaces();
-  console.log('Available physical interfaces:', physicalInterfaces);
+    // Populate VLAN parent select
+    const vlanParent = $('#vlan-parent');
+    if (vlanParent) {
+      vlanParent.innerHTML = '<option value="">Choose parent interface...</option>';
+      interfaces.forEach(iface => {
+        vlanParent.innerHTML += `<option value="${iface}">${iface}</option>`;
+      });
+    }
 
-  const vlanParent = $('#vlan-parent');
-  if (vlanParent) {
-    vlanParent.innerHTML = '<option value="">Select parent interface...</option>';
-    physicalInterfaces.forEach(iface => {
-      const option = document.createElement('option');
-      option.value = iface;
-      option.textContent = iface;
-      vlanParent.appendChild(option);
-    });
+    // Populate bridge ports select
+    const brPorts = $('#br-ports');
+    if (brPorts) {
+      brPorts.innerHTML = '';
+      interfaces.forEach(iface => {
+        brPorts.innerHTML += `<option value="${iface}">${iface}</option>`;
+      });
+    }
+
+    // Populate bond slaves select
+    const bondSlaves = $('#bond-slaves');
+    if (bondSlaves) {
+      bondSlaves.innerHTML = '';
+      interfaces.forEach(iface => {
+        bondSlaves.innerHTML += `<option value="${iface}">${iface}</option>`;
+      });
+    }
+
+    // Populate bond primary select
+    const bondPrimary = $('#bond-primary');
+    if (bondPrimary) {
+      bondPrimary.innerHTML = '<option value="">Auto-select primary</option>';
+      interfaces.forEach(iface => {
+        bondPrimary.innerHTML += `<option value="${iface}">${iface}</option>`;
+      });
+    }
+
+    console.log('Populated form selectors with interfaces');
+  } catch (e) {
+    console.warn('Failed to populate networking forms:', e);
   }
 
-  const bridgePorts = $('#br-ports');
-  if (bridgePorts) {
-    bridgePorts.innerHTML = '';
-    physicalInterfaces.forEach(iface => {
-      const option = document.createElement('option');
-      option.value = iface;
-      option.textContent = iface;
-      bridgePorts.appendChild(option);
-    });
-  }
+  setupConstructEventHandlers();
+}
 
-  const bondSlaves = $('#bond-slaves');
-  if (bondSlaves) {
-    bondSlaves.innerHTML = '';
-    physicalInterfaces.forEach(iface => {
-      const option = document.createElement('option');
-      option.value = iface;
-      option.textContent = iface;
-      bondSlaves.appendChild(option);
-    });
-  }
+function setupConstructEventHandlers() {
+  console.log('Setting up construct event handlers...');
 
+  // VLAN creation
   const btnCreateVlan = $('#btn-create-vlan');
   if (btnCreateVlan) {
     btnCreateVlan.addEventListener('click', async () => {
       const parent = $('#vlan-parent')?.value?.trim();
-      const id = $('#vlan-id')?.value?.trim();
-      const name = $('#vlan-name')?.value?.trim() || `${parent}.${id}`;
+      const vlanId = $('#vlan-id')?.value?.trim();
+      const vlanName = $('#vlan-name')?.value?.trim();
+      const vlanMtu = $('#vlan-mtu')?.value?.trim();
       const staticIp = $('#vlan-static-ip')?.value?.trim();
       const gateway = $('#vlan-gateway')?.value?.trim();
-      const mtu = $('#vlan-mtu')?.value?.trim();
 
-      if (!parent || !id) {
+      if (!parent || !vlanId) {
         alert('? Parent interface and VLAN ID are required!');
         return;
       }
 
-      if (!id.match(/^\d+$/) || parseInt(id) < 1 || parseInt(id) > 4094) {
+      const vlanIdNum = parseInt(vlanId);
+      if (vlanIdNum < 1 || vlanIdNum > 4094) {
         alert('? VLAN ID must be between 1 and 4094!');
         return;
       }
@@ -76,187 +94,215 @@ async function setupNetworkingForms() {
         }
       }
 
+      const vlanOut = $('#vlan-out');
+      if (vlanOut) vlanOut.textContent = '? Creating VLAN...\n';
+
       try {
         setStatus('Creating VLAN...');
 
-        const vlanConfig = {
-          name: name,
-          id: parseInt(id),
-          link: parent
+        const config = {
+          parent_interface: parent,
+          vlan_id: vlanIdNum,
+          interface_name: vlanName || `${parent}.${vlanId}`,
+          mtu: vlanMtu ? parseInt(vlanMtu) : undefined,
+          static_ip: staticIp || undefined,
+          gateway: gateway || undefined
         };
 
-        if (mtu && parseInt(mtu) !== 1500) {
-          vlanConfig.mtu = parseInt(mtu);
-        }
-
-        const result = await netplanAction('add_vlan', vlanConfig);
+        console.log('VLAN config:', config);
+        const result = await netplanAction('add_vlan', config);
+        console.log('VLAN result:', result);
 
         if (result.error) {
-          throw new Error(result.error);
+          if (vlanOut) vlanOut.textContent = `? Error: ${result.error}\n`;
+          alert(`? Failed to create VLAN: ${result.error}`);
+        } else {
+          if (vlanOut) vlanOut.textContent = `? VLAN ${config.interface_name} created successfully!\n`;
+          alert(`? VLAN ${config.interface_name} created successfully!`);
+          
+          // Clear form
+          ['#vlan-parent', '#vlan-id', '#vlan-name', '#vlan-mtu', '#vlan-static-ip', '#vlan-gateway'].forEach(sel => {
+            const el = $(sel);
+            if (el) el.value = '';
+          });
+          
+          await loadInterfaces();
         }
-
-        if (staticIp) {
-          console.log('Configuring IP for VLAN interface...');
-
-          try {
-            await run('ip', ['addr', 'add', staticIp, 'dev', name], { superuser: 'require' });
-            console.log(`Added IP ${staticIp} to VLAN ${name}`);
-
-            if (gateway) {
-              await run('ip', ['route', 'add', 'default', 'via', gateway, 'dev', name], { superuser: 'require' });
-              console.log(`Added gateway ${gateway} for VLAN ${name}`);
-            }
-          } catch (ipError) {
-            console.warn('Failed to apply IP immediately:', ipError);
-          }
-
-          try {
-            const ipConfig = {
-              name: name,
-              static_ip: staticIp
-            };
-
-            if (gateway) {
-              ipConfig.gateway = gateway;
-            }
-
-            const ipResult = await netplanAction('set_ip', ipConfig);
-
-            if (ipResult.error) {
-              console.warn('Failed to persist IP to netplan:', ipResult.error);
-            } else {
-              console.log('Successfully persisted VLAN IP to netplan');
-            }
-          } catch (ipError) {
-            console.warn('Failed to persist IP configuration:', ipError);
-          }
-        }
-
-        const output = $('#vlan-out');
-        if (output) {
-          let successMsg = `? VLAN ${name} created successfully!`;
-          if (staticIp) {
-            successMsg += `\n?? IP: ${staticIp}`;
-          }
-          if (gateway) {
-            successMsg += `\n?? Gateway: ${gateway}`;
-          }
-          output.textContent = successMsg;
-        }
-
-        $('#vlan-parent').selectedIndex = 0;
-        $('#vlan-id').value = '';
-        $('#vlan-name').value = '';
-        if ($('#vlan-static-ip')) $('#vlan-static-ip').value = '';
-        if ($('#vlan-gateway')) $('#vlan-gateway').value = '';
-        if ($('#vlan-mtu')) $('#vlan-mtu').value = '';
-
-        await loadInterfaces();
-
-      } catch (e) {
-        const output = $('#vlan-out');
-        if (output) output.textContent = `? Failed to create VLAN: ${e}`;
+      } catch (error) {
+        console.error('VLAN creation error:', error);
+        const errorMsg = `? Failed to create VLAN: ${error}`;
+        if (vlanOut) vlanOut.textContent = errorMsg + '\n';
+        alert(errorMsg);
       } finally {
         setStatus('Ready');
       }
     });
   }
 
+  // Bridge creation
   const btnCreateBridge = $('#btn-create-bridge');
   if (btnCreateBridge) {
     btnCreateBridge.addEventListener('click', async () => {
-      const name = $('#br-name')?.value?.trim();
-      const portsSelect = $('#br-ports');
-      const ports = portsSelect ? Array.from(portsSelect.selectedOptions).map(opt => opt.value) : [];
+      const brName = $('#br-name')?.value?.trim();
+      const brPorts = Array.from($('#br-ports')?.selectedOptions || []).map(opt => opt.value);
+      const brStp = $('#br-stp')?.value === 'true';
+      const brForwardDelay = $('#br-forward-delay')?.value?.trim();
+      const brHelloTime = $('#br-hello-time')?.value?.trim();
 
-      if (!name) {
+      if (!brName) {
         alert('? Bridge name is required!');
         return;
       }
 
-      if (ports.length === 0) {
-        alert('? At least one port interface is required!');
+      if (!brPorts.length) {
+        alert('? At least one port interface must be selected!');
         return;
       }
 
+      const brOut = $('#br-out');
+      if (brOut) brOut.textContent = '? Creating bridge...\n';
+
       try {
         setStatus('Creating bridge...');
-        const result = await netplanAction('add_bridge', {
-          name: name,
-          interfaces: ports
-        });
 
-        const output = $('#br-out');
+        const config = {
+          bridge_name: brName,
+          interfaces: brPorts,
+          stp: brStp,
+          forward_delay: brForwardDelay ? parseInt(brForwardDelay) : undefined,
+          hello_time: brHelloTime ? parseInt(brHelloTime) : undefined
+        };
+
+        console.log('Bridge config:', config);
+        const result = await netplanAction('add_bridge', config);
+        console.log('Bridge result:', result);
+
         if (result.error) {
-          if (output) output.textContent = `? Error: ${result.error}`;
+          if (brOut) brOut.textContent = `? Error: ${result.error}\n`;
+          alert(`? Failed to create bridge: ${result.error}`);
         } else {
-          if (output) output.textContent = `? Bridge ${name} created with ports: ${ports.join(', ')}`;
-          $('#br-name').value = '';
+          if (brOut) brOut.textContent = `? Bridge ${brName} created successfully!\n`;
+          alert(`? Bridge ${brName} created successfully!`);
+          
+          // Clear form
+          const nameField = $('#br-name');
+          if (nameField) nameField.value = '';
+          const portsSelect = $('#br-ports');
           if (portsSelect) {
             Array.from(portsSelect.options).forEach(opt => opt.selected = false);
           }
+          
           await loadInterfaces();
         }
-      } catch (e) {
-        const output = $('#br-out');
-        if (output) output.textContent = `? Failed to create bridge: ${e}`;
+      } catch (error) {
+        console.error('Bridge creation error:', error);
+        const errorMsg = `? Failed to create bridge: ${error}`;
+        if (brOut) brOut.textContent = errorMsg + '\n';
+        alert(errorMsg);
       } finally {
         setStatus('Ready');
       }
     });
   }
 
+  // Bond creation
   const btnCreateBond = $('#btn-create-bond');
   if (btnCreateBond) {
     btnCreateBond.addEventListener('click', async () => {
-      const name = $('#bond-name')?.value?.trim();
-      const mode = $('#bond-mode')?.value;
-      const slavesSelect = $('#bond-slaves');
-      const slaves = slavesSelect ? Array.from(slavesSelect.selectedOptions).map(opt => opt.value) : [];
+      const bondName = $('#bond-name')?.value?.trim();
+      const bondMode = $('#bond-mode')?.value;
+      const bondSlaves = Array.from($('#bond-slaves')?.selectedOptions || []).map(opt => opt.value);
+      const bondMiimon = $('#bond-miimon')?.value?.trim();
+      const bondPrimary = $('#bond-primary')?.value?.trim();
 
-      if (!name) {
+      if (!bondName) {
         alert('? Bond name is required!');
         return;
       }
 
-      if (!mode) {
-        alert('? Bond mode is required!');
+      if (!bondMode) {
+        alert('? Bonding mode must be selected!');
         return;
       }
 
-      if (slaves.length < 2) {
-        alert('? At least two slave interfaces are required for bonding!');
+      if (bondSlaves.length < 2) {
+        alert('? At least two slave interfaces must be selected!');
         return;
       }
+
+      const bondOut = $('#bond-out');
+      if (bondOut) bondOut.textContent = '? Creating bond...\n';
 
       try {
         setStatus('Creating bond...');
-        const result = await netplanAction('add_bond', {
-          name: name,
-          mode: mode,
-          interfaces: slaves
-        });
 
-        const output = $('#bond-out');
+        const config = {
+          bond_name: bondName,
+          mode: bondMode,
+          interfaces: bondSlaves,
+          miimon: bondMiimon ? parseInt(bondMiimon) : undefined,
+          primary: bondPrimary || undefined
+        };
+
+        console.log('Bond config:', config);
+        const result = await netplanAction('add_bond', config);
+        console.log('Bond result:', result);
+
         if (result.error) {
-          if (output) output.textContent = `? Error: ${result.error}`;
+          if (bondOut) bondOut.textContent = `? Error: ${result.error}\n`;
+          alert(`? Failed to create bond: ${result.error}`);
         } else {
-          if (output) output.textContent = `? Bond ${name} (${mode}) created with slaves: ${slaves.join(', ')}`;
-          $('#bond-name').value = '';
-          $('#bond-mode').selectedIndex = 0;
+          if (bondOut) bondOut.textContent = `? Bond ${bondName} created successfully!\n`;
+          alert(`? Bond ${bondName} created successfully!`);
+          
+          // Clear form
+          const nameField = $('#bond-name');
+          if (nameField) nameField.value = '';
+          const slavesSelect = $('#bond-slaves');
           if (slavesSelect) {
             Array.from(slavesSelect.options).forEach(opt => opt.selected = false);
           }
+          
           await loadInterfaces();
         }
-      } catch (e) {
-        const output = $('#bond-out');
-        if (output) output.textContent = `? Failed to create bond: ${e}`;
+      } catch (error) {
+        console.error('Bond creation error:', error);
+        const errorMsg = `? Failed to create bond: ${error}`;
+        if (bondOut) bondOut.textContent = errorMsg + '\n';
+        alert(errorMsg);
       } finally {
         setStatus('Ready');
       }
     });
   }
+
+  // Bridge port filtering
+  const brPortsFilter = $('#br-ports-filter');
+  const brPorts = $('#br-ports');
+  if (brPortsFilter && brPorts) {
+    brPortsFilter.addEventListener('input', () => {
+      const filter = brPortsFilter.value.toLowerCase();
+      Array.from(brPorts.options).forEach(option => {
+        const visible = option.textContent.toLowerCase().includes(filter);
+        option.style.display = visible ? '' : 'none';
+      });
+    });
+  }
+
+  // Bond slaves filtering
+  const bondSlavesFilter = $('#bond-slaves-filter');
+  const bondSlaves = $('#bond-slaves');
+  if (bondSlavesFilter && bondSlaves) {
+    bondSlavesFilter.addEventListener('input', () => {
+      const filter = bondSlavesFilter.value.toLowerCase();
+      Array.from(bondSlaves.options).forEach(option => {
+        const visible = option.textContent.toLowerCase().includes(filter);
+        option.style.display = visible ? '' : 'none';
+      });
+    });
+  }
+
+  console.log('Construct event handlers setup complete');
 }
 
 // expose
