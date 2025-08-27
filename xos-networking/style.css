@@ -301,30 +301,56 @@ main {
   font-size: 0.875rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  position: relative;
+  cursor: pointer;
+  transition: var(--transition);
+  user-select: none;
 }
 
-.table tbody tr {
+/* Enhanced sortable table headers */
+.table th.sortable {
+  cursor: pointer;
   transition: var(--transition);
 }
 
-.table tbody tr:hover {
-  background: rgba(0, 102, 204, 0.02);
+.table th.sortable:hover {
+  background: rgba(0, 102, 204, 0.1);
+  color: var(--primary-color);
 }
 
-.table tbody tr:last-child td {
-  border-bottom: none;
-}
-
-.actions {
-  display: flex;
-  gap: 0.25rem;
-  flex-wrap: wrap;
-}
-
-.actions .btn {
-  padding: 0.4rem 0.8rem;
+.table th.sortable::after {
+  content: '⇅';
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.3;
   font-size: 0.75rem;
-  min-width: auto;
+  transition: var(--transition);
+}
+
+.table th.sortable:hover::after {
+  opacity: 0.7;
+}
+
+.table th.sort-asc::after {
+  content: '↑';
+  opacity: 1;
+  color: var(--primary-color);
+  font-weight: bold;
+}
+
+.table th.sort-desc::after {
+  content: '↓';
+  opacity: 1;
+  color: var(--primary-color);
+  font-weight: bold;
+}
+
+.table th.sort-active {
+  background: rgba(0, 102, 204, 0.15);
+  color: var(--primary-color);
+  font-weight: 700;
 }
 
 /* Cards and Grid */

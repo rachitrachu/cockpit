@@ -391,9 +391,8 @@ async function loadInterfaces() {
 
     console.log('Parsed', interfaces.length, 'interfaces:', interfaces.map(i => i.dev));
 
-    tbody.innerHTML = '';
-
     if (interfaces.length === 0) {
+      tbody.innerHTML = '';
       const row = document.createElement('tr');
       row.innerHTML = '<td colspan="8" style="text-align: center; padding: 2rem;">No network interfaces found</td>';
       tbody.appendChild(row);
@@ -401,570 +400,18 @@ async function loadInterfaces() {
       return;
     }
 
-    interfaces.sort((a, b) => a.dev.localeCompare(b.dev));
-
-    for (const iface of interfaces) {
-      const row = document.createElement('tr');
-
-      // Enhanced device name display with bonding/bridging info
-      const deviceInfo = await createEnhancedDeviceDisplayName(iface.dev, iface.type);
-      const deviceCell = document.createElement('td');
-      
-      // Apply styling based on interface type
-      if (deviceInfo.isVlan) {
-        deviceCell.innerHTML = `
-          <div style="font-weight: 600; color: var(--primary-color);">${deviceInfo.displayName}</div>
-          <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
-            ${deviceInfo.subtitle}
-          </div>
-        `;
-        row.style.background = 'linear-gradient(90deg, rgba(0,102,204,0.05) 0%, rgba(255,255,255,0) 100%)';
-      } else if (deviceInfo.isBond) {
-        deviceCell.innerHTML = `
-          <div style="font-weight: 600; color: var(--warning-color);">${deviceInfo.displayName}</div>
-          <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
-            ${deviceInfo.subtitle}
-          </div>
-        `;
-        row.style.background = 'linear-gradient(90deg, rgba(255,193,7,0.05) 0%, rgba(255,255,255,0) 100%)';
-      } else if (deviceInfo.isBridge) {
-        deviceCell.innerHTML = `
-          <div style="font-weight: 600; color: var(--info-color);">${deviceInfo.displayName}</div>
-          <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
-            ${deviceInfo.subtitle}
-          </div>
-        `;
-        row.style.background = 'linear-gradient(90deg, rgba(23,162,184,0.05) 0%, rgba(255,255,255,0) 100%)';
-      } else if (deviceInfo.memberOf) {
-        deviceCell.innerHTML = `
-          <div style="font-weight: 600;">${deviceInfo.displayName}</div>
-          <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
-            ${deviceInfo.subtitle}
-          </div>
-        `;
-        row.style.background = 'linear-gradient(90deg, rgba(108,117,125,0.03) 0%, rgba(255,255,255,0) 100%)';
-      } else if (deviceInfo.subtitle) {
-        deviceCell.innerHTML = `
-          <div style="font-weight: 600;">${deviceInfo.displayName}</div>
-          <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
-            ${deviceInfo.subtitle}
-          </div>
-        `;
-      } else {
-        deviceCell.textContent = deviceInfo.displayName;
-      }
-
-      const actionsCell = document.createElement('td');
-      actionsCell.className = 'actions';
-
-      const btnUp = createButton('Up', async () => {
-        await run('ip', ['link', 'set', iface.dev, 'up'], { superuser: 'require' });
-        await loadInterfaces();
-      });
-
-      const btnDown = createButton('Down', async () => {
-        // Check if interface is critical before allowing it to be brought down
-        const isCritical = checkIfInterfaceCritical(iface);
-        
-        if (isCritical.critical) {
-          // Show critical interface warning before proceeding
-          const confirmationResult = await showCriticalInterfaceDownConfirmation(iface, isCritical);
-          if (!confirmationResult) {
-            return; // User cancelled or didn't type confirmation correctly
-          }
-        } else if (iface.state === 'UP') {
-          // Show simple warning for non-critical UP interfaces
-          const confirmMessage = `📉 Bring Down Interface ${iface.dev}?\n\n` +
-                               `Current Status: ${iface.state}\n` +
-                               `${iface.ipv4 ? `IP Address: ${iface.ipv4}\n` : ''}` +
-                               `\nThis will temporarily disable network connectivity on this interface.\n\n` +
-                               `Are you sure you want to bring it down?`;
-          
-          if (!confirm(confirmMessage)) {
-            return;
-          }
-        }
-
-        try {
-          await run('ip', ['link', 'set', iface.dev, 'down'], { superuser: 'require' });
-          await loadInterfaces();
-        } catch (error) {
-          alert(`❌ Failed to bring down interface ${iface.dev}: ${error}`);
-        }
-      });
-
-      const btnInfo = createButton('Info', async () => {
-        try {
-          const info = await run('ip', ['addr', 'show', iface.dev]);
-          
-          // Enhanced info display with VLAN and bonding/bridging details
-          let enhancedInfo = `Interface ${iface.dev} Details:\n\n`;
-          
-          if (deviceInfo.isVlan) {
-            enhancedInfo += `🏷️ VLAN Information:\n`;
-            enhancedInfo += `   VLAN ID: ${parseVlanInfo(iface.dev).id}\n`;
-            enhancedInfo += `   Parent Interface: ${parseVlanInfo(iface.dev).parent}\n\n`;
-          }
-          
-          if (deviceInfo.isBond) {
-            enhancedInfo += `🔗 Bond Information:\n`;
-            enhancedInfo += `   Bond Mode: ${deviceInfo.bondMode || 'Unknown'}\n`;
-            enhancedInfo += `   Member Interfaces: ${deviceInfo.members.join(', ') || 'None'}\n`;
-            enhancedInfo += `   Member Count: ${deviceInfo.members.length}\n\n`;
-          }
-          
-          if (deviceInfo.isBridge) {
-            enhancedInfo += `🌉 Bridge Information:\n`;
-            enhancedInfo += `   Bridge Ports: ${deviceInfo.members.join(', ') || 'None'}\n`;
-            enhancedInfo += `   Port Count: ${deviceInfo.members.length}\n\n`;
-          }
-          
-          if (deviceInfo.memberOf) {
-            enhancedInfo += `👥 Membership Information:\n`;
-            enhancedInfo += `   Role: ${deviceInfo.role}\n`;
-            enhancedInfo += `   Master Interface: ${deviceInfo.memberOf}\n\n`;
-          }
-          
-          enhancedInfo += `📊 Technical Details:\n${info}`;
-          alert(enhancedInfo);
-        } catch (e) {
-          alert(`Failed to get info for ${iface.dev}: ${e}`);
-        }
-      });
-
-      const btnSetIP = createButton('Set IP', async () => {
-        // Check if interface is critical before allowing IP changes
-        const isCritical = checkIfInterfaceCritical(iface);
-        
-        if (isCritical.critical) {
-          // Show critical interface warning before proceeding
-          const confirmationResult = await showCriticalIPChangeConfirmation(iface, isCritical);
-          if (!confirmationResult) {
-            return; // User cancelled or didn't type confirmation correctly
-          }
-        }
-
-        const modal = document.createElement('dialog');
-        modal.style.maxWidth = '650px';
-        modal.innerHTML = `
-          <div class="modal-content">
-            <h2>🌐 Set IP Address for ${iface.dev}</h2>
-            <form id="set-ip-form">
-              <label>📍 Current IPv4 Address
-                <input type="text" value="${iface.ipv4 || 'None assigned'}" readonly style="background: #f5f5f5; color: #666; width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
-              </label>
-              <label>🆕 New IPv4 Address/CIDR
-                <input type="text" id="new-ip-addr" placeholder="192.168.1.100/24" required 
-                       pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([0-9]|[1-2][0-9]|3[0-2])$"
-                       value="${iface.ipv4 || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
-                <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">Use CIDR notation (e.g., 192.168.1.100/24)</small>
-              </label>
-              <label>🚪 Gateway (optional)
-                <input type="text" id="new-gateway" placeholder="192.168.1.1"
-                       pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$" 
-                       style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
-                <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">Default gateway for this interface</small>
-              </label>
-              <label>🌐 DNS Servers (optional, comma separated)
-                <input type="text" id="new-dns" placeholder="8.8.8.8,1.1.1.1" 
-                       style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
-                <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">Comma separated list of DNS servers</small>
-              </label>
-              <div style="margin: 1rem 0; padding: 1rem; background: #e8f4fd; border-radius: var(--border-radius); border: 1px solid #bee5eb;">
-                <label style="display: flex; align-items: flex-start; gap: 0.5rem; margin: 0;">
-                  <input type="checkbox" id="persist-ip-config" checked style="margin-top: 0.25rem;">
-                  <div>
-                    <strong>💾 Persist configuration to netplan (recommended)</strong>
-                    <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">
-                      When enabled, configuration survives reboots. When disabled, changes are temporary.
-                    </small>
-                  </div>
-                </label>
-              </div>
-              ${isCritical.critical ? `
-              <div style="margin: 1rem 0; padding: 1rem; background: #fff3cd; border: 2px solid #ffc107; border-radius: var(--border-radius);">
-                <strong>⚠️ CRITICAL INTERFACE WARNING:</strong> You are modifying a critical interface that ${isCritical.reasons.join(' and ')}.
-                <br><small>Changes may affect network connectivity. Ensure you have alternative access before proceeding.</small>
-              </div>
-              ` : `
-              <div style="margin: 1rem 0; padding: 1rem; background: #fff3cd; border-radius: var(--border-radius); border: 1px solid #ffeaa7;">
-                <strong>⚠️ Note:</strong> This will replace any existing IP configuration for this interface.
-              </div>
-              `}
-              <div style="margin: 1rem 0; padding: 1rem; background: #d4edda; border-radius: var(--border-radius); border: 1px solid #c3e6cb;">
-                <strong>🔍 Debugging:</strong> Check browser console (F12) for detailed logging during IP configuration process.
-              </div>
-              <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
-                <button type="button" class="btn" id="cancel-ip-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">❌ Cancel</button>
-                <button type="button" class="btn ${isCritical.critical ? 'btn-warning' : 'primary'}" id="apply-ip-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">⚡ Apply Configuration</button>
-              </div>
-            </form>
-          </div>
-        `;
-
-        document.body.appendChild(modal);
-        setupModal(modal);
-
-        modal.querySelector('#cancel-ip-config').addEventListener('click', () => {
-          modal.close();
-        });
-
-        modal.querySelector('#apply-ip-config').addEventListener('click', async () => {
-          const newIp = modal.querySelector('#new-ip-addr').value.trim();
-          const gateway = modal.querySelector('#new-gateway').value.trim();
-          const dns = modal.querySelector('#new-dns').value.trim();
-          const persist = modal.querySelector('#persist-ip-config').checked;
-
-          if (!newIp) {
-            alert('❌ IP address is required!');
-            modal.querySelector('#new-ip-addr').focus();
-            return;
-          }
-
-          const ipRegex = /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([0-9]|[1-2][0-9]|3[0-2])$/;
-          if (!ipRegex.test(newIp)) {
-            alert('❌ Invalid IP address format! Use CIDR notation (e.g., 192.168.1.100/24)');
-            modal.querySelector('#new-ip-addr').focus();
-            return;
-          }
-
-          if (gateway && !/^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(gateway)) {
-            alert('❌ Invalid gateway address format!');
-            modal.querySelector('#new-gateway').focus();
-            return;
-          }
-
-          try {
-            setStatus('Configuring IP address...');
-            
-            // Step 1: Ensure interface is UP before configuring IP
-            console.log(`🔍 Checking interface ${iface.dev} status before IP configuration`);
-            
-            // First, let's get detailed info about the interface
-            try {
-              const interfaceInfo = await run('ip', ['addr', 'show', iface.dev], { superuser: 'try' });
-              console.log(`📋 Current interface info:\n${interfaceInfo}`);
-              
-              // Check if the requested IP already exists
-              if (interfaceInfo.includes(newIp.split('/')[0])) {
-                console.log(`ℹ️ IP ${newIp} already configured on ${iface.dev}`);
-                const confirmed = confirm(`The IP address ${newIp} appears to already be configured on ${iface.dev}.\n\nDo you want to continue anyway? This will remove and re-add the IP address.`);
-                if (!confirmed) {
-                  modal.close();
-                  setStatus('Operation cancelled');
-                  setTimeout(() => setStatus('Ready'), 2000);
-                  return;
-                }
-              }
-            } catch (infoError) {
-              console.warn('Could not get interface info:', infoError);
-            }
-            
-            try {
-              if (iface.state !== 'UP') {
-                console.log(`📈 Interface ${iface.dev} is ${iface.state}, bringing it UP first`);
-                await run('ip', ['link', 'set', iface.dev, 'up'], { superuser: 'require' });
-                console.log(`✅ Interface ${iface.dev} brought UP successfully`);
-                
-                // Wait a moment for interface to come up
-                await new Promise(resolve => setTimeout(resolve, 1000));
-              } else {
-                console.log(`✅ Interface ${iface.dev} is already UP`);
-              }
-            } catch (upError) {
-              console.warn(`⚠️ Could not bring interface UP: ${upError}`);
-              // Continue anyway, might still work
-            }
-
-            // Step 2: Remove old IP if exists
-            if (iface.ipv4) {
-              try {
-                console.log(`🗑️ Removing old IP ${iface.ipv4} from ${iface.dev}`);
-                await run('ip', ['addr', 'del', iface.ipv4, 'dev', iface.dev], { superuser: 'require' });
-                console.log(`✅ Removed old IP ${iface.ipv4} from ${iface.dev}`);
-              } catch (e) {
-                console.warn('⚠️ Could not remove old IP (may not exist):', e);
-                // Continue anyway, might not exist
-              }
-            }
-
-            // Step 3: Add new IP address
-            try {
-              console.log(`➕ Adding new IP ${newIp} to ${iface.dev}`);
-              const ipResult = await run('ip', ['addr', 'add', newIp, 'dev', iface.dev], { superuser: 'require' });
-              console.log(`✅ Added new IP ${newIp} to ${iface.dev}`);
-              console.log(`📋 IP command output:`, ipResult);
-            } catch (ipError) {
-              console.error('❌ Failed to add IP address:', ipError);
-              console.error('❌ IP command error details:', {
-                message: ipError.message,
-                problem: ipError.problem,
-                exit_status: ipError.exit_status,
-                exit_signal: ipError.exit_signal
-              });
-              
-              // Try alternative method for VLAN interfaces
-              if (iface.dev.includes('@') || iface.dev.includes('.')) {
-                console.log(`🔄 Trying alternative method for VLAN interface ${iface.dev}`);
-                try {
-                  // Get the real interface name (remove @parent suffix)
-                  const realIfaceName = iface.dev.split('@')[0];
-                  console.log(`🔄 Using interface name: ${realIfaceName}`);
-                  
-                  const altResult = await run('ip', ['addr', 'add', newIp, 'dev', realIfaceName], { superuser: 'require' });
-                  console.log(`✅ Alternative method succeeded for ${realIfaceName}`);
-                  console.log(`📋 Alternative command output:`, altResult);
-                } catch (altError) {
-                  console.error('❌ Alternative method also failed:', altError);
-                  
-                  // Check if IP already exists
-                  try {
-                    const checkResult = await run('ip', ['addr', 'show', iface.dev], { superuser: 'try' });
-                    if (checkResult.includes(newIp.split('/')[0])) {
-                      console.log(`ℹ️ IP ${newIp} already exists on ${iface.dev}`);
-                      alert(`ℹ️ IP address ${newIp} is already configured on ${iface.dev}.\n\nNo changes were made.`);
-                      modal.close();
-                      setStatus('IP already configured');
-                      setTimeout(() => setStatus('Ready'), 2000);
-                      return;
-                    }
-                  } catch (e) {
-                    console.warn('Could not check existing IP addresses:', e);
-                  }
-                  
-                  throw new Error(`Failed to add IP address ${newIp} to ${iface.dev}. Error: ${ipError.message || ipError}. Alternative method also failed: ${altError.message || altError}`);
-                }
-              } else {
-                throw new Error(`Failed to add IP address ${newIp} to ${iface.dev}. Error: ${ipError.message || ipError}`);
-              }
-            }
-
-            // Step 4: Configure gateway if provided
-            if (gateway) {
-              try {
-                console.log(`🚪 Configuring gateway ${gateway} for ${iface.dev}`);
-                
-                // Try to remove any existing default route for this interface
-                try {
-                  await run('ip', ['route', 'del', 'default', 'dev', iface.dev], { superuser: 'require' });
-                  console.log(`🗑️ Removed existing default route for ${iface.dev}`);
-                } catch (e) {
-                  console.log('ℹ️ No existing default route to remove (this is fine)');
-                }
-                
-                // Add new default route
-                await run('ip', ['route', 'add', 'default', 'via', gateway, 'dev', iface.dev], { superuser: 'require' });
-                console.log(`✅ Added gateway ${gateway} for ${iface.dev}`);
-              } catch (gwError) {
-                console.warn('⚠️ Failed to configure gateway:', gwError);
-                // Don't fail the entire operation for gateway issues
-              }
-            }
-
-            // Step 5: Verify the IP was actually set
-            try {
-              console.log(`🔍 Verifying IP configuration was applied`);
-              const verifyResult = await run('ip', ['addr', 'show', iface.dev], { superuser: 'try' });
-              console.log(`📋 Current interface status:\n${verifyResult}`);
-              
-              if (!verifyResult.includes(newIp.split('/')[0])) {
-                throw new Error(`IP address ${newIp} does not appear to be configured on ${iface.dev}`);
-              }
-              console.log(`✅ Verified IP ${newIp} is configured on ${iface.dev}`);
-            } catch (verifyError) {
-              console.warn('⚠️ Could not verify IP configuration:', verifyError);
-              // Continue anyway, the set might have worked
-            }
-
-            if (persist) {
-              console.log('💾 Persisting IP configuration to netplan...');
-              try {
-                const netplanConfig = {
-                  name: iface.dev,
-                  static_ip: newIp
-                };
-
-                if (gateway) {
-                  netplanConfig.gateway = gateway;
-                }
-
-                if (dns) {
-                  netplanConfig.dns = dns;
-                }
-
-                console.log('📤 Sending netplan config:', netplanConfig);
-                const result = await netplanAction('set_ip', netplanConfig);
-                console.log('📥 Netplan result:', result);
-
-                if (result.error) {
-                  console.warn('❌ Netplan persistence failed:', result.error);
-                  alert(`⚠️ IP configured successfully, but netplan persistence failed:\n${result.error}\n\nThe IP is set but may not survive a reboot.`);
-                } else {
-                  console.log('✅ Successfully persisted to netplan');
-                  alert(`✅ IP address configured and persisted successfully!\n\n📍 Address: ${newIp}\n${gateway ? `🚪 Gateway: ${gateway}\n` : ''}${dns ? `🌐 DNS: ${dns}\n` : ''}💾 Configuration saved to netplan`);
-                }
-              } catch (error) {
-                console.error('💥 Netplan persistence error:', error);
-                alert(`⚠️ IP configured successfully, but netplan persistence failed:\n${error}\n\nThe IP is set but may not survive a reboot.`);
-              }
-            } else {
-              alert(`✅ IP address configured successfully!\n\n📍 Address: ${newIp}\n${gateway ? `🚪 Gateway: ${gateway}\n` : ''}⚠️ Note: Configuration is temporary and will be lost after reboot.`);
-            }
-
-            modal.close();
-            setStatus('✅ IP configuration applied');
-            setTimeout(() => setStatus('Ready'), 3000);
-            await loadInterfaces();
-
-          } catch (error) {
-            console.error('💥 IP configuration error:', error);
-            alert(`❌ Failed to set IP address: ${error.message || error}`);
-            setStatus('❌ IP configuration failed');
-            setTimeout(() => setStatus('Ready'), 3000);
-          }
-        });
-
-        modal.showModal();
-      });
-
-      const btnSetMTU = createButton('Set MTU', async () => {
-        const modal = document.createElement('dialog');
-        modal.style.maxWidth = '550px';
-        modal.innerHTML = `
-          <div class="modal-content">
-            <h2>📏 Set MTU for ${iface.dev}</h2>
-            <form id="set-mtu-form">
-              <label>📊 Current MTU
-                <input type="text" value="${iface.mtu || 'Unknown'}" readonly style="background: #f5f5f5; color: #666; width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
-              </label>
-              <label>🆕 New MTU Value
-                <input type="number" id="new-mtu-value" min="68" max="9000" value="${iface.mtu || '1500'}" required 
-                       style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
-                <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">Valid range: 68 - 9000 bytes</small>
-              </label>
-              <div style="margin: 1rem 0; padding: 1rem; background: #e8f4fd; border-radius: var(--border-radius); border: 1px solid #bee5eb;">
-                <label style="display: flex; align-items: flex-start; gap: 0.5rem; margin: 0;">
-                  <input type="checkbox" id="persist-mtu-config" checked>
-                  💾 <strong>Persist configuration to netplan (recommended)</strong>
-                </label>
-                <small style="color: var(--muted-color); font-size: 0.875rem; margin-left: 1.5rem;">
-                  When enabled, configuration survives reboots. When disabled, changes are temporary.
-                </small>
-              </div>
-              <div style="margin: 1rem 0; padding: 1rem; background: #fff3cd; border-radius: var(--border-radius); border: 1px solid #ffeaa7;">
-                <strong>⚠️ Note:</strong> Changing MTU may temporarily disrupt network connectivity on this interface.
-              </div>
-              <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
-                <button type="button" class="btn" id="cancel-mtu-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">❌ Cancel</button>
-                <button type="button" class="btn primary" id="apply-mtu-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">⚡ Apply MTU</button>
-              </div>
-            </form>
-          </div>
-        `;
-
-        document.body.appendChild(modal);
-        setupModal(modal);
-
-        modal.querySelector('#cancel-mtu-config').addEventListener('click', () => {
-          modal.close();
-        });
-
-        modal.querySelector('#apply-mtu-config').addEventListener('click', async () => {
-          const newMtu = parseInt(modal.querySelector('#new-mtu-value').value);
-          const persist = modal.querySelector('#persist-mtu-config').checked;
-
-          if (isNaN(newMtu) || newMtu < 68 || newMtu > 9000) {
-            alert('❌ MTU must be between 68 and 9000!');
-            modal.querySelector('#new-mtu-value').focus();
-            return;
-          }
-
-          if (iface.mtu && parseInt(iface.mtu) === newMtu) {
-            alert(`ℹ️ MTU is already set to ${newMtu}`);
-            modal.close();
-            return;
-          }
-
-          try {
-            setStatus('Setting MTU...' );
-
-            await run('ip', ['link', 'set', 'dev', iface.dev, 'mtu', newMtu.toString()], { superuser: 'require' });
-            console.log(`Set MTU ${newMtu} on ${iface.dev}`);
-
-            if (persist) {
-              console.log('Persisting MTU configuration to netplan...');
-              try {
-                const result = await netplanAction('set_mtu', { name: iface.dev, mtu: newMtu });
-
-                if (result.error) {
-                  console.warn('Netplan persistence failed:', result.error);
-                  alert(`⚠️ MTU set successfully, but netplan persistence failed:\n${result.error}\n\nThe MTU is set but may not survive a reboot.`);
-                } else {
-                  console.log('Successfully persisted MTU to netplan');
-                  alert(`✅ MTU configured and persisted successfully!\n\n📏 MTU: ${newMtu} bytes\n💾 Configuration saved to netplan`);
-                }
-              } catch (error) {
-                console.error('Netplan persistence error:', error);
-                alert(`⚠️ MTU set successfully, but netplan persistence failed:\n${error}\n\nThe MTU is set but may not survive a reboot.`);
-              }
-            } else {
-              alert(`✅ MTU configured successfully!\n\n📏 MTU: ${newMtu} bytes\n⚠️ Note: Configuration is temporary and will be lost after reboot.`);
-            }
-
-            modal.close();
-            setStatus('✅ MTU configuration applied');
-            setTimeout(() => setStatus('Ready'), 3000);
-            await loadInterfaces();
-
-          } catch (error) {
-            console.error('MTU configuration error:', error);
-            alert(`❌ Failed to set MTU: ${error.message || error}`);
-            setStatus('❌ MTU configuration failed');
-            setTimeout(() => setStatus('Ready'), 3000);
-          }
-        });
-
-        modal.showModal();
-      });
-
-      actionsCell.appendChild(btnUp);
-      actionsCell.appendChild(btnDown);
-      actionsCell.appendChild(btnSetIP);
-      actionsCell.appendChild(btnSetMTU);
-      actionsCell.appendChild(btnInfo);
-
-      // Add advanced actions for constructed interfaces (VLAN, Bridge, Bond)
-      if (typeof addAdvancedInterfaceActions === 'function') {
-        await addAdvancedInterfaceActions(iface, actionsCell);
-      }
-
-      const cells = [
-        deviceCell, // Already created with enhanced VLAN info
-        iface.type,
-        createStatusBadge(iface.state),
-        iface.mac,
-        iface.ipv4,
-        iface.ipv6,
-        iface.mtu,
-        actionsCell
-      ];
-
-      // Skip the first cell since we already created deviceCell
-      cells.slice(1).forEach(content => {
-        const cell = document.createElement('td');
-        if (typeof content === 'string') {
-          cell.textContent = content;
-        } else {
-          cell.appendChild(content);
-        }
-        row.appendChild(cell);
-      });
-      
-      // Add the deviceCell as the first cell
-      row.insertBefore(deviceCell, row.firstChild);
-
-      tbody.appendChild(row);
+    // Store interfaces globally for sorting
+    globalInterfaces = interfaces;
+    
+    // Initialize table sorting on first load
+    if (!document.querySelector('#table-interfaces th.sort-active')) {
+      initializeTableSorting();
+      updateSortHeaders(); // Set initial sort state
     }
+
+    // Display sorted interfaces
+    const sortedInterfaces = sortInterfaces(interfaces);
+    await displayInterfaces(sortedInterfaces);
 
     setStatus(`Loaded ${interfaces.length} interfaces`);
 
@@ -975,6 +422,692 @@ async function loadInterfaces() {
     row.innerHTML = `<td colspan="8" style="text-align: center; padding: 2rem; color: red;">Error: ${e}</td>`;
     tbody.appendChild(row);
     setStatus('Error loading interfaces');
+  }
+}
+
+// Table sorting functionality
+let currentSort = {
+  column: 'device',
+  direction: 'asc'
+};
+
+function initializeTableSorting() {
+  const headers = $$('#table-interfaces th.sortable');
+  headers.forEach(header => {
+    header.addEventListener('click', () => {
+      const sortColumn = header.getAttribute('data-sort');
+      handleColumnSort(sortColumn);
+    });
+  });
+}
+
+function handleColumnSort(column) {
+  // Toggle direction if same column, otherwise default to ascending
+  if (currentSort.column === column) {
+    currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+  } else {
+    currentSort.column = column;
+    currentSort.direction = 'asc';
+  }
+  
+  updateSortHeaders();
+  sortAndDisplayInterfaces();
+}
+
+function updateSortHeaders() {
+  // Clear all sort classes
+  $$('#table-interfaces th').forEach(th => {
+    th.classList.remove('sort-asc', 'sort-desc', 'sort-active');
+  });
+  
+  // Add sort class to active column
+  const activeHeader = $(`#table-interfaces th[data-sort="${currentSort.column}"]`);
+  if (activeHeader) {
+    activeHeader.classList.add('sort-active');
+    activeHeader.classList.add(currentSort.direction === 'asc' ? 'sort-asc' : 'sort-desc');
+  }
+}
+
+function sortInterfaces(interfaces) {
+  return [...interfaces].sort((a, b) => {
+    let aVal, bVal;
+    
+    switch (currentSort.column) {
+      case 'device':
+        aVal = a.dev.toLowerCase();
+        bVal = b.dev.toLowerCase();
+        break;
+      case 'type':
+        aVal = a.type.toLowerCase();
+        bVal = b.type.toLowerCase();
+        break;
+      case 'state':
+        aVal = a.state.toLowerCase();
+        bVal = b.state.toLowerCase();
+        break;
+      case 'mac':
+        aVal = a.mac.toLowerCase();
+        bVal = b.mac.toLowerCase();
+        break;
+      case 'ipv4':
+        aVal = a.ipv4 || '';
+        bVal = b.ipv4 || '';
+        // Sort IP addresses numerically
+        if (aVal && bVal) {
+          const aIP = aVal.split('.').map(num => parseInt(num.split('/')[0]));
+          const bIP = bVal.split('.').map(num => parseInt(num.split('/')[0]));
+          for (let i = 0; i < 4; i++) {
+            if (aIP[i] !== bIP[i]) {
+              return currentSort.direction === 'asc' ? aIP[i] - bIP[i] : bIP[i] - aIP[i];
+            }
+          }
+          return 0;
+        }
+        break;
+      case 'ipv6':
+        aVal = a.ipv6 || '';
+        bVal = b.ipv6 || '';
+        break;
+      case 'mtu':
+        aVal = parseInt(a.mtu) || 0;
+        bVal = parseInt(b.mtu) || 0;
+        return currentSort.direction === 'asc' ? aVal - bVal : bVal - aVal;
+      default:
+        aVal = a.dev.toLowerCase();
+        bVal = b.dev.toLowerCase();
+    }
+    
+    if (aVal < bVal) return currentSort.direction === 'asc' ? -1 : 1;
+    if (aVal > bVal) return currentSort.direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+}
+
+let globalInterfaces = []; // Store interfaces for sorting
+
+async function sortAndDisplayInterfaces() {
+  if (globalInterfaces.length === 0) return;
+  
+  const sortedInterfaces = sortInterfaces(globalInterfaces);
+  await displayInterfaces(sortedInterfaces);
+}
+
+async function displayInterfaces(interfaces) {
+  const tbody = $('#table-interfaces tbody');
+  if (!tbody) return;
+  
+  tbody.innerHTML = '';
+  
+  for (const iface of interfaces) {
+    const row = document.createElement('tr');
+    row.style.opacity = '0';
+    row.style.transform = 'translateY(-10px)';
+
+    // Enhanced device name display with bonding/bridging info
+    const deviceInfo = await createEnhancedDeviceDisplayName(iface.dev, iface.type);
+    const deviceCell = document.createElement('td');
+    
+    // Apply styling based on interface type
+    if (deviceInfo.isVlan) {
+      deviceCell.innerHTML = `
+        <div style="font-weight: 600; color: var(--primary-color);">${deviceInfo.displayName}</div>
+        <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
+          ${deviceInfo.subtitle}
+        </div>
+      `;
+      row.style.background = 'linear-gradient(90deg, rgba(0,102,204,0.05) 0%, rgba(255,255,255,0) 100%)';
+    } else if (deviceInfo.isBond) {
+      deviceCell.innerHTML = `
+        <div style="font-weight: 600; color: var(--warning-color);">${deviceInfo.displayName}</div>
+        <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
+          ${deviceInfo.subtitle}
+        </div>
+      `;
+      row.style.background = 'linear-gradient(90deg, rgba(255,193,7,0.05) 0%, rgba(255,255,255,0) 100%)';
+    } else if (deviceInfo.isBridge) {
+      deviceCell.innerHTML = `
+        <div style="font-weight: 600; color: var(--info-color);">${deviceInfo.displayName}</div>
+        <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
+          ${deviceInfo.subtitle}
+        </div>
+      `;
+      row.style.background = 'linear-gradient(90deg, rgba(23,162,184,0.05) 0%, rgba(255,255,255,0) 100%)';
+    } else if (deviceInfo.memberOf) {
+      deviceCell.innerHTML = `
+        <div style="font-weight: 600;">${deviceInfo.displayName}</div>
+        <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
+          ${deviceInfo.subtitle}
+        </div>
+      `;
+      row.style.background = 'linear-gradient(90deg, rgba(108,117,125,0.03) 0%, rgba(255,255,255,0) 100%)';
+    } else if (deviceInfo.subtitle) {
+      deviceCell.innerHTML = `
+        <div style="font-weight: 600;">${deviceInfo.displayName}</div>
+        <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
+          ${deviceInfo.subtitle}
+        </div>
+      `;
+    } else {
+      deviceCell.textContent = deviceInfo.displayName;
+    }
+
+    const actionsCell = document.createElement('td');
+    actionsCell.className = 'actions';
+
+    const btnUp = createButton('Up', async () => {
+      await run('ip', ['link', 'set', iface.dev, 'up'], { superuser: 'require' });
+      await loadInterfaces();
+    });
+
+    const btnDown = createButton('Down', async () => {
+      // Check if interface is critical before allowing it to be brought down
+      const isCritical = checkIfInterfaceCritical(iface);
+      
+      if (isCritical.critical) {
+        // Show critical interface warning before proceeding
+        const confirmationResult = await showCriticalInterfaceDownConfirmation(iface, isCritical);
+        if (!confirmationResult) {
+          return; // User cancelled or didn't type confirmation correctly
+        }
+      } else if (iface.state === 'UP') {
+        // Show simple warning for non-critical UP interfaces
+        const confirmMessage = `📉 Bring Down Interface ${iface.dev}?\n\n` +
+                             `Current Status: ${iface.state}\n` +
+                             `${iface.ipv4 ? `IP Address: ${iface.ipv4}\n` : ''}` +
+                             `\nThis will temporarily disable network connectivity on this interface.\n\n` +
+                             `Are you sure you want to bring it down?`;
+        
+        if (!confirm(confirmMessage)) {
+          return;
+        }
+      }
+
+      try {
+        await run('ip', ['link', 'set', iface.dev, 'down'], { superuser: 'require' });
+        await loadInterfaces();
+      } catch (error) {
+        alert(`❌ Failed to bring down interface ${iface.dev}: ${error}`);
+      }
+    });
+
+    const btnInfo = createButton('Info', async () => {
+      try {
+        const info = await run('ip', ['addr', 'show', iface.dev]);
+        
+        // Enhanced info display with VLAN and bonding/bridging details
+        let enhancedInfo = `Interface ${iface.dev} Details:\n\n`;
+        
+        if (deviceInfo.isVlan) {
+          enhancedInfo += `🏷️ VLAN Information:\n`;
+          enhancedInfo += `   VLAN ID: ${parseVlanInfo(iface.dev).id}\n`;
+          enhancedInfo += `   Parent Interface: ${parseVlanInfo(iface.dev).parent}\n\n`;
+        }
+        
+        if (deviceInfo.isBond) {
+          enhancedInfo += `🔗 Bond Information:\n`;
+          enhancedInfo += `   Bond Mode: ${deviceInfo.bondMode || 'Unknown'}\n`;
+          enhancedInfo += `   Member Interfaces: ${deviceInfo.members.join(', ') || 'None'}\n`;
+          enhancedInfo += `   Member Count: ${deviceInfo.members.length}\n\n`;
+        }
+        
+        if (deviceInfo.isBridge) {
+          enhancedInfo += `🌉 Bridge Information:\n`;
+          enhancedInfo += `   Bridge Ports: ${deviceInfo.members.join(', ') || 'None'}\n`;
+          enhancedInfo += `   Port Count: ${deviceInfo.members.length}\n\n`;
+        }
+        
+        if (deviceInfo.memberOf) {
+          enhancedInfo += `👥 Membership Information:\n`;
+          enhancedInfo += `   Role: ${deviceInfo.role}\n`;
+          enhancedInfo += `   Master Interface: ${deviceInfo.memberOf}\n\n`;
+        }
+        
+        enhancedInfo += `📊 Technical Details:\n${info}`;
+        alert(enhancedInfo);
+      } catch (e) {
+        alert(`Failed to get info for ${iface.dev}: ${e}`);
+      }
+    });
+
+    const btnSetIP = createButton('Set IP', async () => {
+      // Check if interface is critical before allowing IP changes
+      const isCritical = checkIfInterfaceCritical(iface);
+      
+      if (isCritical.critical) {
+        // Show critical interface warning before proceeding
+        const confirmationResult = await showCriticalIPChangeConfirmation(iface, isCritical);
+        if (!confirmationResult) {
+          return; // User cancelled or didn't type confirmation correctly
+        }
+      }
+
+      const modal = document.createElement('dialog');
+      modal.style.maxWidth = '650px';
+      modal.innerHTML = `
+        <div class="modal-content">
+          <h2>🌐 Set IP Address for ${iface.dev}</h2>
+          <form id="set-ip-form">
+            <label>📍 Current IPv4 Address
+              <input type="text" value="${iface.ipv4 || 'None assigned'}" readonly style="background: #f5f5f5; color: #666; width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
+            </label>
+            <label>🆕 New IPv4 Address/CIDR
+              <input type="text" id="new-ip-addr" placeholder="192.168.1.100/24" required 
+                     pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([0-9]|[1-2][0-9]|3[0-2])$"
+                     value="${iface.ipv4 || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
+              <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">Use CIDR notation (e.g., 192.168.1.100/24)</small>
+            </label>
+            <label>🚪 Gateway (optional)
+              <input type="text" id="new-gateway" placeholder="192.168.1.1"
+                     pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$" 
+                     style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
+              <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">Default gateway for this interface</small>
+            </label>
+            <label>🌐 DNS Servers (optional, comma separated)
+              <input type="text" id="new-dns" placeholder="8.8.8.8,1.1.1.1" 
+                     style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
+              <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">Comma separated list of DNS servers</small>
+            </label>
+            <div style="margin: 1rem 0; padding: 1rem; background: #e8f4fd; border-radius: var(--border-radius); border: 1px solid #bee5eb;">
+              <label style="display: flex; align-items: flex-start; gap: 0.5rem; margin: 0;">
+                <input type="checkbox" id="persist-ip-config" checked style="margin-top: 0.25rem;">
+                <div>
+                  <strong>💾 Persist configuration to netplan (recommended)</strong>
+                  <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">
+                    When enabled, configuration survives reboots. When disabled, changes are temporary.
+                  </small>
+                </div>
+              </label>
+            </div>
+            ${isCritical.critical ? `
+            <div style="margin: 1rem 0; padding: 1rem; background: #fff3cd; border: 2px solid #ffc107; border-radius: var(--border-radius);">
+              <strong>⚠️ CRITICAL INTERFACE WARNING:</strong> You are modifying a critical interface that ${isCritical.reasons.join(' and ')}.
+              <br><small>Changes may affect network connectivity. Ensure you have alternative access before proceeding.</small>
+            </div>
+            ` : `
+            <div style="margin: 1rem 0; padding: 1rem; background: #fff3cd; border-radius: var(--border-radius); border: 1px solid #ffeaa7;">
+              <strong>⚠️ Note:</strong> This will replace any existing IP configuration for this interface.
+            </div>
+            `}
+            <div style="margin: 1rem 0; padding: 1rem; background: #d4edda; border-radius: var(--border-radius); border: 1px solid #c3e6cb;">
+              <strong>🔍 Debugging:</strong> Check browser console (F12) for detailed logging during IP configuration process.
+            </div>
+            <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
+              <button type="button" class="btn" id="cancel-ip-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">❌ Cancel</button>
+              <button type="button" class="btn ${isCritical.critical ? 'btn-warning' : 'primary'}" id="apply-ip-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">⚡ Apply Configuration</button>
+            </div>
+          </form>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+      setupModal(modal);
+
+      modal.querySelector('#cancel-ip-config').addEventListener('click', () => {
+        modal.close();
+      });
+
+      modal.querySelector('#apply-ip-config').addEventListener('click', async () => {
+        const newIp = modal.querySelector('#new-ip-addr').value.trim();
+        const gateway = modal.querySelector('#new-gateway').value.trim();
+        const dns = modal.querySelector('#new-dns').value.trim();
+        const persist = modal.querySelector('#persist-ip-config').checked;
+
+        if (!newIp) {
+          alert('❌ IP address is required!');
+          modal.querySelector('#new-ip-addr').focus();
+          return;
+        }
+
+        const ipRegex = /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([0-9]|[1-2][0-9]|3[0-2])$/;
+        if (!ipRegex.test(newIp)) {
+          alert('❌ Invalid IP address format! Use CIDR notation (e.g., 192.168.1.100/24)');
+          modal.querySelector('#new-ip-addr').focus();
+          return;
+        }
+
+        if (gateway && !/^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(gateway)) {
+          alert('❌ Invalid gateway address format!');
+          modal.querySelector('#new-gateway').focus();
+          return;
+        }
+
+        try {
+          setStatus('Configuring IP address...');
+          
+          // Step 1: Ensure interface is UP before configuring IP
+          console.log(`🔍 Checking interface ${iface.dev} status before IP configuration`);
+          
+          // First, let's get detailed info about the interface
+          try {
+            const interfaceInfo = await run('ip', ['addr', 'show', iface.dev], { superuser: 'try' });
+            console.log(`📋 Current interface info:\n${interfaceInfo}`);
+            
+            // Check if the requested IP already exists
+            if (interfaceInfo.includes(newIp.split('/')[0])) {
+              console.log(`ℹ️ IP ${newIp} already configured on ${iface.dev}`);
+              const confirmed = confirm(`The IP address ${newIp} appears to already be configured on ${iface.dev}.\n\nDo you want to continue anyway? This will remove and re-add the IP address.`);
+              if (!confirmed) {
+                modal.close();
+                setStatus('Operation cancelled');
+                setTimeout(() => setStatus('Ready'), 2000);
+                return;
+              }
+            }
+          } catch (infoError) {
+            console.warn('Could not get interface info:', infoError);
+          }
+          
+          try {
+            if (iface.state !== 'UP') {
+              console.log(`📈 Interface ${iface.dev} is ${iface.state}, bringing it UP first`);
+              await run('ip', ['link', 'set', iface.dev, 'up'], { superuser: 'require' });
+              console.log(`✅ Interface ${iface.dev} brought UP successfully`);
+              
+              // Wait a moment for interface to come up
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            } else {
+              console.log(`✅ Interface ${iface.dev} is already UP`);
+            }
+          } catch (upError) {
+            console.warn(`⚠️ Could not bring interface UP: ${upError}`);
+            // Continue anyway, might still work
+          }
+
+          // Step 2: Remove old IP if exists
+          if (iface.ipv4) {
+            try {
+              console.log(`🗑️ Removing old IP ${iface.ipv4} from ${iface.dev}`);
+              await run('ip', ['addr', 'del', iface.ipv4, 'dev', iface.dev], { superuser: 'require' });
+              console.log(`✅ Removed old IP ${iface.ipv4} from ${iface.dev}`);
+            } catch (e) {
+              console.warn('⚠️ Could not remove old IP (may not exist):', e);
+              // Continue anyway, might not exist
+            }
+          }
+
+          // Step 3: Add new IP address
+          try {
+            console.log(`➕ Adding new IP ${newIp} to ${iface.dev}`);
+            const ipResult = await run('ip', ['addr', 'add', newIp, 'dev', iface.dev], { superuser: 'require' });
+            console.log(`✅ Added new IP ${newIp} to ${iface.dev}`);
+            console.log(`📋 IP command output:`, ipResult);
+          } catch (ipError) {
+            console.error('❌ Failed to add IP address:', ipError);
+            console.error('❌ IP command error details:', {
+              message: ipError.message,
+              problem: ipError.problem,
+              exit_status: ipError.exit_status,
+              exit_signal: ipError.exit_signal
+            });
+            
+            // Try alternative method for VLAN interfaces
+            if (iface.dev.includes('@') || iface.dev.includes('.')) {
+              console.log(`🔄 Trying alternative method for VLAN interface ${iface.dev}`);
+              try {
+                // Get the real interface name (remove @parent suffix)
+                const realIfaceName = iface.dev.split('@')[0];
+                console.log(`🔄 Using interface name: ${realIfaceName}`);
+                
+                const altResult = await run('ip', ['addr', 'add', newIp, 'dev', realIfaceName], { superuser: 'require' });
+                console.log(`✅ Alternative method succeeded for ${realIfaceName}`);
+                console.log(`📋 Alternative command output:`, altResult);
+              } catch (altError) {
+                console.error('❌ Alternative method also failed:', altError);
+                
+                // Check if IP already exists
+                try {
+                  const checkResult = await run('ip', ['addr', 'show', iface.dev], { superuser: 'try' });
+                  if (checkResult.includes(newIp.split('/')[0])) {
+                    console.log(`ℹ️ IP ${newIp} already exists on ${iface.dev}`);
+                    alert(`ℹ️ IP address ${newIp} is already configured on ${iface.dev}.\n\nNo changes were made.`);
+                    modal.close();
+                    setStatus('IP already configured');
+                    setTimeout(() => setStatus('Ready'), 2000);
+                    return;
+                  }
+                } catch (e) {
+                  console.warn('Could not check existing IP addresses:', e);
+                }
+                
+                throw new Error(`Failed to add IP address ${newIp} to ${iface.dev}. Error: ${ipError.message || ipError}. Alternative method also failed: ${altError.message || altError}`);
+              }
+            } else {
+              throw new Error(`Failed to add IP address ${newIp} to ${iface.dev}. Error: ${ipError.message || ipError}`);
+            }
+          }
+
+          // Step 4: Configure gateway if provided
+          if (gateway) {
+            try {
+              console.log(`🚪 Configuring gateway ${gateway} for ${iface.dev}`);
+              
+              // Try to remove any existing default route for this interface
+              try {
+                await run('ip', ['route', 'del', 'default', 'dev', iface.dev], { superuser: 'require' });
+                console.log(`🗑️ Removed existing default route for ${iface.dev}`);
+              } catch (e) {
+                console.log('ℹ️ No existing default route to remove (this is fine)');
+              }
+              
+              // Add new default route
+              await run('ip', ['route', 'add', 'default', 'via', gateway, 'dev', iface.dev], { superuser: 'require' });
+              console.log(`✅ Added gateway ${gateway} for ${iface.dev}`);
+            } catch (gwError) {
+              console.warn('⚠️ Failed to configure gateway:', gwError);
+              // Don't fail the entire operation for gateway issues
+            }
+          }
+
+          // Step 5: Verify the IP was actually set
+          try {
+            console.log(`🔍 Verifying IP configuration was applied`);
+            const verifyResult = await run('ip', ['addr', 'show', iface.dev], { superuser: 'try' });
+            console.log(`📋 Current interface status:\n${verifyResult}`);
+            
+            if (!verifyResult.includes(newIp.split('/')[0])) {
+              throw new Error(`IP address ${newIp} does not appear to be configured on ${iface.dev}`);
+            }
+            console.log(`✅ Verified IP ${newIp} is configured on ${iface.dev}`);
+          } catch (verifyError) {
+            console.warn('⚠️ Could not verify IP configuration:', verifyError);
+            // Continue anyway, the set might have worked
+          }
+
+          if (persist) {
+            console.log('💾 Persisting IP configuration to netplan...');
+            try {
+              const netplanConfig = {
+                name: iface.dev,
+                static_ip: newIp
+              };
+
+              if (gateway) {
+                netplanConfig.gateway = gateway;
+              }
+
+              if (dns) {
+                netplanConfig.dns = dns;
+              }
+
+              console.log('📤 Sending netplan config:', netplanConfig);
+              const result = await netplanAction('set_ip', netplanConfig);
+              console.log('📥 Netplan result:', result);
+
+              if (result.error) {
+                console.warn('❌ Netplan persistence failed:', result.error);
+                alert(`⚠️ IP configured successfully, but netplan persistence failed:\n${result.error}\n\nThe IP is set but may not survive a reboot.`);
+              } else {
+                console.log('✅ Successfully persisted to netplan');
+                alert(`✅ IP address configured and persisted successfully!\n\n📍 Address: ${newIp}\n${gateway ? `🚪 Gateway: ${gateway}\n` : ''}${dns ? `🌐 DNS: ${dns}\n` : ''}💾 Configuration saved to netplan`);
+              }
+            } catch (error) {
+              console.error('💥 Netplan persistence error:', error);
+              alert(`⚠️ IP configured successfully, but netplan persistence failed:\n${error}\n\nThe IP is set but may not survive a reboot.`);
+            }
+          } else {
+            alert(`✅ IP address configured successfully!\n\n📍 Address: ${newIp}\n${gateway ? `🚪 Gateway: ${gateway}\n` : ''}⚠️ Note: Configuration is temporary and will be lost after reboot.`);
+          }
+
+          modal.close();
+          setStatus('✅ IP configuration applied');
+          setTimeout(() => setStatus('Ready'), 3000);
+          await loadInterfaces();
+
+        } catch (error) {
+          console.error('💥 IP configuration error:', error);
+          alert(`❌ Failed to set IP address: ${error.message || error}`);
+          setStatus('❌ IP configuration failed');
+          setTimeout(() => setStatus('Ready'), 3000);
+        }
+      });
+
+      modal.showModal();
+    });
+
+    const btnSetMTU = createButton('Set MTU', async () => {
+      const modal = document.createElement('dialog');
+      modal.style.maxWidth = '550px';
+      modal.innerHTML = `
+        <div class="modal-content">
+          <h2>📏 Set MTU for ${iface.dev}</h2>
+          <form id="set-mtu-form">
+            <label>📊 Current MTU
+              <input type="text" value="${iface.mtu || 'Unknown'}" readonly style="background: #f5f5f5; color: #666; width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
+            </label>
+            <label>🆕 New MTU Value
+              <input type="number" id="new-mtu-value" min="68" max="9000" value="${iface.mtu || '1500'}" required 
+                     style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
+              <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">Valid range: 68 - 9000 bytes</small>
+            </label>
+            <div style="margin: 1rem 0; padding: 1rem; background: #e8f4fd; border-radius: var(--border-radius); border: 1px solid #bee5eb;">
+              <label style="display: flex; align-items: flex-start; gap: 0.5rem; margin: 0;">
+                <input type="checkbox" id="persist-mtu-config" checked>
+                💾 <strong>Persist configuration to netplan (recommended)</strong>
+              </label>
+              <small style="color: var(--muted-color); font-size: 0.875rem; margin-left: 1.5rem;">
+                When enabled, configuration survives reboots. When disabled, changes are temporary.
+              </small>
+            </div>
+            <div style="margin: 1rem 0; padding: 1rem; background: #fff3cd; border-radius: var(--border-radius); border: 1px solid #ffeaa7;">
+              <strong>⚠️ Note:</strong> Changing MTU may temporarily disrupt network connectivity on this interface.
+            </div>
+            <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
+              <button type="button" class="btn" id="cancel-mtu-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">❌ Cancel</button>
+              <button type="button" class="btn primary" id="apply-mtu-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">⚡ Apply MTU</button>
+            </div>
+          </form>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+      setupModal(modal);
+
+      modal.querySelector('#cancel-mtu-config').addEventListener('click', () => {
+        modal.close();
+      });
+
+      modal.querySelector('#apply-mtu-config').addEventListener('click', async () => {
+        const newMtu = parseInt(modal.querySelector('#new-mtu-value').value);
+        const persist = modal.querySelector('#persist-mtu-config').checked;
+
+        if (isNaN(newMtu) || newMtu < 68 || newMtu > 9000) {
+          alert('❌ MTU must be between 68 and 9000!');
+          modal.querySelector('#new-mtu-value').focus();
+          return;
+        }
+
+        if (iface.mtu && parseInt(iface.mtu) === newMtu) {
+          alert(`ℹ️ MTU is already set to ${newMtu}`);
+          modal.close();
+          return;
+        }
+
+        try {
+          setStatus('Setting MTU...' );
+
+          await run('ip', ['link', 'set', 'dev', iface.dev, 'mtu', newMtu.toString()], { superuser: 'require' });
+          console.log(`Set MTU ${newMtu} on ${iface.dev}`);
+
+          if (persist) {
+            console.log('Persisting MTU configuration to netplan...');
+            try {
+              const result = await netplanAction('set_mtu', { name: iface.dev, mtu: newMtu });
+
+              if (result.error) {
+                console.warn('Netplan persistence failed:', result.error);
+                alert(`⚠️ MTU set successfully, but netplan persistence failed:\n${result.error}\n\nThe MTU is set but may not survive a reboot.`);
+              } else {
+                console.log('Successfully persisted MTU to netplan');
+                alert(`✅ MTU configured and persisted successfully!\n\n📏 MTU: ${newMtu} bytes\n💾 Configuration saved to netplan`);
+              }
+            } catch (error) {
+              console.error('Netplan persistence error:', error);
+              alert(`⚠️ MTU set successfully, but netplan persistence failed:\n${error}\n\nThe MTU is set but may not survive a reboot.`);
+            }
+          } else {
+            alert(`✅ MTU configured successfully!\n\n📏 MTU: ${newMtu} bytes\n⚠️ Note: Configuration is temporary and will be lost after reboot.`);
+          }
+
+          modal.close();
+          setStatus('✅ MTU configuration applied');
+          setTimeout(() => setStatus('Ready'), 3000);
+          await loadInterfaces();
+
+        } catch (error) {
+          console.error('MTU configuration error:', error);
+          alert(`❌ Failed to set MTU: ${error.message || error}`);
+          setStatus('❌ MTU configuration failed');
+          setTimeout(() => setStatus('Ready'), 3000);
+        }
+      });
+
+      modal.showModal();
+    });
+
+    actionsCell.appendChild(btnUp);
+    actionsCell.appendChild(btnDown);
+    actionsCell.appendChild(btnSetIP);
+    actionsCell.appendChild(btnSetMTU);
+    actionsCell.appendChild(btnInfo);
+
+    // Add advanced actions for constructed interfaces (VLAN, Bridge, Bond)
+    if (typeof addAdvancedInterfaceActions === 'function') {
+      await addAdvancedInterfaceActions(iface, actionsCell);
+    }
+
+    const cells = [
+      deviceCell, // Already created with enhanced VLAN info
+      iface.type,
+      createStatusBadge(iface.state),
+      iface.mac,
+      iface.ipv4,
+      iface.ipv6,
+      iface.mtu,
+      actionsCell
+    ];
+
+    // Skip the first cell since we already created deviceCell
+    cells.slice(1).forEach(content => {
+      const cell = document.createElement('td');
+      if (typeof content === 'string') {
+        cell.textContent = content;
+      } else {
+        cell.appendChild(content);
+      }
+      row.appendChild(cell);
+    });
+    
+    // Add the deviceCell as the first cell
+    row.insertBefore(deviceCell, row.firstChild);
+
+    tbody.appendChild(row);
+
+    // Animate row appearance
+    setTimeout(() => {
+      row.style.transition = 'all 0.3s ease-out';
+      row.style.opacity = '1';
+      row.style.transform = 'translateY(0)';
+    }, 50);
   }
 }
 
@@ -1376,7 +1509,7 @@ async function showCriticalIPChangeConfirmation(iface, criticalInfo) {
             </ul>
           </div>
         </div>
-        
+
         <div style="margin: 1rem 0; padding: 1rem; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px;">
           <strong style="color: #721c24;">⚠️ Changing the IP address on this interface may:</strong>
           <ul style="color: #721c24; margin: 0.5rem 0; padding-left: 2rem;">
@@ -1511,7 +1644,7 @@ async function showCriticalInterfaceDownConfirmation(iface, criticalInfo) {
             <li>Immediately disconnect all network traffic on this interface</li>
             <li>Make the system unreachable via this IP address</li>
             <li>Terminate active SSH sessions and connections</li>
-            <li>Disrupt services and applications using this interface</li>
+            <li>Affect services and applications using this interface</li>
             <li>May require console/physical access to bring it back up</li>
           </ul>
         </div>
@@ -1621,3 +1754,4 @@ async function showCriticalInterfaceDownConfirmation(iface, criticalInfo) {
 // expose
 window.getPhysicalInterfaces = getPhysicalInterfaces;
 window.loadInterfaces = loadInterfaces;
+window.initializeTableSorting = initializeTableSorting;
