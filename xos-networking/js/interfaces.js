@@ -1050,12 +1050,17 @@ class InterfaceTableManager {
         header.style.userSelect = 'none';
         header.style.position = 'relative';
         
-        // Add sort indicator
+        // Add sort indicator with cleaner styling
         const indicator = document.createElement('span');
         indicator.className = 'sort-indicator';
-        indicator.style.marginLeft = '0.5rem';
-        indicator.style.opacity = '0.5';
-        indicator.textContent = '↕️';
+        indicator.style.cssText = `
+          margin-left: 0.5rem;
+          opacity: 0.3;
+          font-size: 0.8rem;
+          font-weight: normal;
+          color: #666;
+        `;
+        indicator.textContent = '⇅';
         header.appendChild(indicator);
 
         header.addEventListener('click', () => {
@@ -1065,10 +1070,14 @@ class InterfaceTableManager {
         // Add hover effect
         header.addEventListener('mouseenter', () => {
           header.style.backgroundColor = 'rgba(0, 102, 204, 0.1)';
+          indicator.style.opacity = '0.6';
         });
 
         header.addEventListener('mouseleave', () => {
           header.style.backgroundColor = '';
+          if (!this.currentSort.column || this.currentSort.column !== col.key) {
+            indicator.style.opacity = '0.3';
+          }
         });
       }
     });
@@ -1271,8 +1280,9 @@ class InterfaceTableManager {
     // Reset all indicators
     const indicators = document.querySelectorAll('.sort-indicator');
     indicators.forEach(indicator => {
-      indicator.textContent = '↕️';
-      indicator.style.opacity = '0.5';
+      indicator.textContent = '⇅';
+      indicator.style.opacity = '0.3';
+      indicator.style.color = '#666';
     });
 
     // Update active indicator
@@ -1281,8 +1291,9 @@ class InterfaceTableManager {
       if (header.textContent.includes(activeColumnName)) {
         const indicator = header.querySelector('.sort-indicator');
         if (indicator) {
-          indicator.textContent = this.currentSort.direction === 'asc' ? '🔼' : '🔽';
+          indicator.textContent = this.currentSort.direction === 'asc' ? '↑' : '↓';
           indicator.style.opacity = '1';
+          indicator.style.color = '#0066cc';
         }
       }
     });
@@ -1392,11 +1403,12 @@ class InterfaceTableManager {
     // Reset sorting
     this.currentSort = { column: null, direction: 'asc' };
     
-    // Reset sort indicators
+    // Reset sort indicators to neutral state
     const indicators = document.querySelectorAll('.sort-indicator');
     indicators.forEach(indicator => {
-      indicator.textContent = '↕️';
-      indicator.style.opacity = '0.5';
+      indicator.textContent = '⇅';
+      indicator.style.opacity = '0.3';
+      indicator.style.color = '#666';
     });
 
     // Apply cleared filters
@@ -1532,10 +1544,10 @@ class InterfaceTableManager {
       } else if (iface.state === 'UP') {
         // Show simple warning for non-critical UP interfaces
         const confirmMessage = `📉 Bring Down Interface ${iface.dev}?\n\n` +
-                             `Current Status: ${iface.state}\n` +
-                             `${iface.ipv4 ? `IP Address: ${iface.ipv4}\n` : ''}` +
-                             `\nThis will temporarily disable network connectivity on this interface.\n\n` +
-                             `Are you sure you want to bring it down?`;
+                               `Current Status: ${iface.state}\n` +
+                               `${iface.ipv4 ? `IP Address: ${iface.ipv4}\n` : ''}` +
+                               `\nThis will temporarily disable network connectivity on this interface.\n\n` +
+                               `Are you sure you want to bring it down?`;
         
         if (!confirm(confirmMessage)) {
           return;
