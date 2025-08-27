@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 /* global createButton, createStatusBadge, netplanAction, run, setStatus, setupModal, addAdvancedInterfaceActions, $, $$ */
 
 async function getPhysicalInterfaces() {
@@ -143,24 +143,24 @@ async function loadInterfaces() {
         modal.style.maxWidth = '650px';
         modal.innerHTML = `
           <div class="modal-content">
-            <h2>?? Set IP Address for ${iface.dev}</h2>
+            <h2>🌐 Set IP Address for ${iface.dev}</h2>
             <form id="set-ip-form">
-              <label>?? Current IPv4 Address
+              <label>📍 Current IPv4 Address
                 <input type="text" value="${iface.ipv4 || 'None assigned'}" readonly style="background: #f5f5f5; color: #666; width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
               </label>
-              <label>?? New IPv4 Address/CIDR
+              <label>🆕 New IPv4 Address/CIDR
                 <input type="text" id="new-ip-addr" placeholder="192.168.1.100/24" required 
                        pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([0-9]|[1-2][0-9]|3[0-2])$"
                        value="${iface.ipv4 || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
                 <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">Use CIDR notation (e.g., 192.168.1.100/24)</small>
               </label>
-              <label>?? Gateway (optional)
+              <label>🚪 Gateway (optional)
                 <input type="text" id="new-gateway" placeholder="192.168.1.1"
                        pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$" 
                        style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
                 <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">Default gateway for this interface</small>
               </label>
-              <label>?? DNS Servers (optional, comma separated)
+              <label>🌐 DNS Servers (optional, comma separated)
                 <input type="text" id="new-dns" placeholder="8.8.8.8,1.1.1.1" 
                        style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
                 <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">Comma separated list of DNS servers</small>
@@ -169,7 +169,7 @@ async function loadInterfaces() {
                 <label style="display: flex; align-items: flex-start; gap: 0.5rem; margin: 0;">
                   <input type="checkbox" id="persist-ip-config" checked style="margin-top: 0.25rem;">
                   <div>
-                    <strong>?? Persist configuration to netplan (recommended)</strong>
+                    <strong>💾 Persist configuration to netplan (recommended)</strong>
                     <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">
                       When enabled, configuration survives reboots. When disabled, changes are temporary.
                     </small>
@@ -177,11 +177,11 @@ async function loadInterfaces() {
                 </label>
               </div>
               <div style="margin: 1rem 0; padding: 1rem; background: #fff3cd; border-radius: var(--border-radius); border: 1px solid #ffeaa7;">
-                <strong>?? Note:</strong> This will replace any existing IP configuration for this interface.
+                <strong>⚠️ Note:</strong> This will replace any existing IP configuration for this interface.
               </div>
               <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
-                <button type="button" class="btn" id="cancel-ip-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">? Cancel</button>
-                <button type="button" class="btn primary" id="apply-ip-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">?? Apply Configuration</button>
+                <button type="button" class="btn" id="cancel-ip-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">❌ Cancel</button>
+                <button type="button" class="btn primary" id="apply-ip-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">⚡ Apply Configuration</button>
               </div>
             </form>
           </div>
@@ -201,20 +201,20 @@ async function loadInterfaces() {
           const persist = modal.querySelector('#persist-ip-config').checked;
 
           if (!newIp) {
-            alert('? IP address is required!');
+            alert('❌ IP address is required!');
             modal.querySelector('#new-ip-addr').focus();
             return;
           }
 
           const ipRegex = /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([0-9]|[1-2][0-9]|3[0-2])$/;
           if (!ipRegex.test(newIp)) {
-            alert('? Invalid IP address format! Use CIDR notation (e.g., 192.168.1.100/24)');
+            alert('❌ Invalid IP address format! Use CIDR notation (e.g., 192.168.1.100/24)');
             modal.querySelector('#new-ip-addr').focus();
             return;
           }
 
           if (gateway && !/^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(gateway)) {
-            alert('? Invalid gateway address format!');
+            alert('❌ Invalid gateway address format!');
             modal.querySelector('#new-gateway').focus();
             return;
           }
@@ -268,28 +268,28 @@ async function loadInterfaces() {
 
                 if (result.error) {
                   console.warn('Netplan persistence failed:', result.error);
-                  alert(`?? IP configured successfully, but netplan persistence failed:\n${result.error}\n\nThe IP is set but may not survive a reboot.`);
+                  alert(`⚠️ IP configured successfully, but netplan persistence failed:\n${result.error}\n\nThe IP is set but may not survive a reboot.`);
                 } else {
                   console.log('Successfully persisted to netplan');
-                  alert(`? IP address configured and persisted successfully!\n\n?? Address: ${newIp}\n${gateway ? `?? Gateway: ${gateway}\n` : ''}${dns ? `?? DNS: ${dns}\n` : ''}?? Configuration saved to netplan`);
+                  alert(`✅ IP address configured and persisted successfully!\n\n📍 Address: ${newIp}\n${gateway ? `🚪 Gateway: ${gateway}\n` : ''}${dns ? `🌐 DNS: ${dns}\n` : ''}💾 Configuration saved to netplan`);
                 }
               } catch (error) {
                 console.error('Netplan persistence error:', error);
-                alert(`?? IP configured successfully, but netplan persistence failed:\n${error}\n\nThe IP is set but may not survive a reboot.`);
+                alert(`⚠️ IP configured successfully, but netplan persistence failed:\n${error}\n\nThe IP is set but may not survive a reboot.`);
               }
             } else {
-              alert(`? IP address configured successfully!\n\n?? Address: ${newIp}\n${gateway ? `?? Gateway: ${gateway}\n` : ''}?? Note: Configuration is temporary and will be lost after reboot.`);
+              alert(`✅ IP address configured successfully!\n\n📍 Address: ${newIp}\n${gateway ? `🚪 Gateway: ${gateway}\n` : ''}⚠️ Note: Configuration is temporary and will be lost after reboot.`);
             }
 
             modal.close();
-            setStatus('? IP configuration applied');
+            setStatus('✅ IP configuration applied');
             setTimeout(() => setStatus('Ready'), 3000);
             await loadInterfaces();
 
           } catch (error) {
             console.error('IP configuration error:', error);
-            alert(`? Failed to set IP address: ${error.message || error}`);
-            setStatus('? IP configuration failed');
+            alert(`❌ Failed to set IP address: ${error.message || error}`);
+            setStatus('❌ IP configuration failed');
             setTimeout(() => setStatus('Ready'), 3000);
           }
         });
@@ -302,12 +302,12 @@ async function loadInterfaces() {
         modal.style.maxWidth = '550px';
         modal.innerHTML = `
           <div class="modal-content">
-            <h2>?? Set MTU for ${iface.dev}</h2>
+            <h2>📏 Set MTU for ${iface.dev}</h2>
             <form id="set-mtu-form">
-              <label>?? Current MTU
+              <label>📊 Current MTU
                 <input type="text" value="${iface.mtu || 'Unknown'}" readonly style="background: #f5f5f5; color: #666; width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
               </label>
-              <label>?? New MTU Value
+              <label>🆕 New MTU Value
                 <input type="number" id="new-mtu-value" min="68" max="9000" value="${iface.mtu || '1500'}" required 
                        style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
                 <small style="color: var(--muted-color); font-size: 0.875rem; display: block; margin-top: 0.25rem;">Valid range: 68 - 9000 bytes</small>
@@ -315,18 +315,18 @@ async function loadInterfaces() {
               <div style="margin: 1rem 0; padding: 1rem; background: #e8f4fd; border-radius: var(--border-radius); border: 1px solid #bee5eb;">
                 <label style="display: flex; align-items: flex-start; gap: 0.5rem; margin: 0;">
                   <input type="checkbox" id="persist-mtu-config" checked>
-                  ?? <strong>Persist configuration to netplan (recommended)</strong>
+                  💾 <strong>Persist configuration to netplan (recommended)</strong>
                 </label>
                 <small style="color: var(--muted-color); font-size: 0.875rem; margin-left: 1.5rem;">
                   When enabled, configuration survives reboots. When disabled, changes are temporary.
                 </small>
               </div>
               <div style="margin: 1rem 0; padding: 1rem; background: #fff3cd; border-radius: var(--border-radius); border: 1px solid #ffeaa7;">
-                <strong>?? Note:</strong> Changing MTU may temporarily disrupt network connectivity on this interface.
+                <strong>⚠️ Note:</strong> Changing MTU may temporarily disrupt network connectivity on this interface.
               </div>
               <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
-                <button type="button" class="btn" id="cancel-mtu-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">? Cancel</button>
-                <button type="button" class="btn primary" id="apply-mtu-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">?? Apply MTU</button>
+                <button type="button" class="btn" id="cancel-mtu-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">❌ Cancel</button>
+                <button type="button" class="btn primary" id="apply-mtu-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">⚡ Apply MTU</button>
               </div>
             </form>
           </div>
@@ -344,13 +344,13 @@ async function loadInterfaces() {
           const persist = modal.querySelector('#persist-mtu-config').checked;
 
           if (isNaN(newMtu) || newMtu < 68 || newMtu > 9000) {
-            alert('? MTU must be between 68 and 9000!');
+            alert('❌ MTU must be between 68 and 9000!');
             modal.querySelector('#new-mtu-value').focus();
             return;
           }
 
           if (iface.mtu && parseInt(iface.mtu) === newMtu) {
-            alert(`?? MTU is already set to ${newMtu}`);
+            alert(`ℹ️ MTU is already set to ${newMtu}`);
             modal.close();
             return;
           }
@@ -368,28 +368,28 @@ async function loadInterfaces() {
 
                 if (result.error) {
                   console.warn('Netplan persistence failed:', result.error);
-                  alert(`?? MTU set successfully, but netplan persistence failed:\n${result.error}\n\nThe MTU is set but may not survive a reboot.`);
+                  alert(`⚠️ MTU set successfully, but netplan persistence failed:\n${result.error}\n\nThe MTU is set but may not survive a reboot.`);
                 } else {
                   console.log('Successfully persisted MTU to netplan');
-                  alert(`? MTU configured and persisted successfully!\n\n?? MTU: ${newMtu} bytes\n?? Configuration saved to netplan`);
+                  alert(`✅ MTU configured and persisted successfully!\n\n📏 MTU: ${newMtu} bytes\n💾 Configuration saved to netplan`);
                 }
               } catch (error) {
                 console.error('Netplan persistence error:', error);
-                alert(`?? MTU set successfully, but netplan persistence failed:\n${error}\n\nThe MTU is set but may not survive a reboot.`);
+                alert(`⚠️ MTU set successfully, but netplan persistence failed:\n${error}\n\nThe MTU is set but may not survive a reboot.`);
               }
             } else {
-              alert(`? MTU configured successfully!\n\n?? MTU: ${newMtu} bytes\n?? Note: Configuration is temporary and will be lost after reboot.`);
+              alert(`✅ MTU configured successfully!\n\n📏 MTU: ${newMtu} bytes\n⚠️ Note: Configuration is temporary and will be lost after reboot.`);
             }
 
             modal.close();
-            setStatus('? MTU configuration applied');
+            setStatus('✅ MTU configuration applied');
             setTimeout(() => setStatus('Ready'), 3000);
             await loadInterfaces();
 
           } catch (error) {
             console.error('MTU configuration error:', error);
-            alert(`? Failed to set MTU: ${error.message || error}`);
-            setStatus('? MTU configuration failed');
+            alert(`❌ Failed to set MTU: ${error.message || error}`);
+            setStatus('❌ MTU configuration failed');
             setTimeout(() => setStatus('Ready'), 3000);
           }
         });

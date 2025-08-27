@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 /* global $, $$, run, setStatus, netplanAction, getPhysicalInterfaces, loadInterfaces */
 
 async function setupNetworkingForms() {
@@ -68,20 +68,20 @@ function setupConstructEventHandlers() {
       const gateway = $('#vlan-gateway')?.value?.trim();
 
       if (!parent || !vlanId) {
-        alert('? Parent interface and VLAN ID are required!');
+        alert('❌ Parent interface and VLAN ID are required!');
         return;
       }
 
       const vlanIdNum = parseInt(vlanId);
       if (vlanIdNum < 1 || vlanIdNum > 4094) {
-        alert('? VLAN ID must be between 1 and 4094!');
+        alert('❌ VLAN ID must be between 1 and 4094!');
         return;
       }
 
       if (staticIp) {
         const ipRegex = /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([0-9]|[1-2][0-9]|3[0-2])$/;
         if (!ipRegex.test(staticIp)) {
-          alert('? Invalid IP address format! Use CIDR notation (e.g., 192.168.1.100/24)');
+          alert('❌ Invalid IP address format! Use CIDR notation (e.g., 192.168.1.100/24)');
           return;
         }
       }
@@ -89,13 +89,13 @@ function setupConstructEventHandlers() {
       if (gateway) {
         const gatewayRegex = /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
         if (!gatewayRegex.test(gateway)) {
-          alert('? Invalid gateway address format!');
+          alert('❌ Invalid gateway address format!');
           return;
         }
       }
 
       const vlanOut = $('#vlan-out');
-      if (vlanOut) vlanOut.textContent = '? Creating VLAN...\n';
+      if (vlanOut) vlanOut.textContent = '⏳ Creating VLAN...\n';
 
       try {
         setStatus('Creating VLAN...');
@@ -114,11 +114,11 @@ function setupConstructEventHandlers() {
         console.log('VLAN result:', result);
 
         if (result.error) {
-          if (vlanOut) vlanOut.textContent = `? Error: ${result.error}\n`;
-          alert(`? Failed to create VLAN: ${result.error}`);
+          if (vlanOut) vlanOut.textContent = `❌ Error: ${result.error}\n`;
+          alert(`❌ Failed to create VLAN: ${result.error}`);
         } else {
-          if (vlanOut) vlanOut.textContent = `? VLAN ${config.interface_name} created successfully!\n`;
-          alert(`? VLAN ${config.interface_name} created successfully!`);
+          if (vlanOut) vlanOut.textContent = `✅ VLAN ${config.name} created successfully!\n`;
+          alert(`✅ VLAN ${config.name} created successfully!`);
           
           // Clear form
           ['#vlan-parent', '#vlan-id', '#vlan-name', '#vlan-mtu', '#vlan-static-ip', '#vlan-gateway'].forEach(sel => {
@@ -130,7 +130,7 @@ function setupConstructEventHandlers() {
         }
       } catch (error) {
         console.error('VLAN creation error:', error);
-        const errorMsg = `? Failed to create VLAN: ${error}`;
+        const errorMsg = `❌ Failed to create VLAN: ${error}`;
         if (vlanOut) vlanOut.textContent = errorMsg + '\n';
         alert(errorMsg);
       } finally {
@@ -150,17 +150,17 @@ function setupConstructEventHandlers() {
       const brHelloTime = $('#br-hello-time')?.value?.trim();
 
       if (!brName) {
-        alert('? Bridge name is required!');
+        alert('❌ Bridge name is required!');
         return;
       }
 
       if (!brPorts.length) {
-        alert('? At least one port interface must be selected!');
+        alert('❌ At least one port interface must be selected!');
         return;
       }
 
       const brOut = $('#br-out');
-      if (brOut) brOut.textContent = '? Creating bridge...\n';
+      if (brOut) brOut.textContent = '⏳ Creating bridge...\n';
 
       try {
         setStatus('Creating bridge...');
@@ -178,11 +178,11 @@ function setupConstructEventHandlers() {
         console.log('Bridge result:', result);
 
         if (result.error) {
-          if (brOut) brOut.textContent = `? Error: ${result.error}\n`;
-          alert(`? Failed to create bridge: ${result.error}`);
+          if (brOut) brOut.textContent = `❌ Error: ${result.error}\n`;
+          alert(`❌ Failed to create bridge: ${result.error}`);
         } else {
-          if (brOut) brOut.textContent = `? Bridge ${brName} created successfully!\n`;
-          alert(`? Bridge ${brName} created successfully!`);
+          if (brOut) brOut.textContent = `✅ Bridge ${brName} created successfully!\n`;
+          alert(`✅ Bridge ${brName} created successfully!`);
           
           // Clear form
           const nameField = $('#br-name');
@@ -196,7 +196,7 @@ function setupConstructEventHandlers() {
         }
       } catch (error) {
         console.error('Bridge creation error:', error);
-        const errorMsg = `? Failed to create bridge: ${error}`;
+        const errorMsg = `❌ Failed to create bridge: ${error}`;
         if (brOut) brOut.textContent = errorMsg + '\n';
         alert(errorMsg);
       } finally {
@@ -216,22 +216,22 @@ function setupConstructEventHandlers() {
       const bondPrimary = $('#bond-primary')?.value?.trim();
 
       if (!bondName) {
-        alert('? Bond name is required!');
+        alert('❌ Bond name is required!');
         return;
       }
 
       if (!bondMode) {
-        alert('? Bonding mode must be selected!');
+        alert('❌ Bonding mode must be selected!');
         return;
       }
 
       if (bondSlaves.length < 2) {
-        alert('? At least two slave interfaces must be selected!');
+        alert('❌ At least two slave interfaces must be selected!');
         return;
       }
 
       const bondOut = $('#bond-out');
-      if (bondOut) bondOut.textContent = '? Creating bond...\n';
+      if (bondOut) bondOut.textContent = '⏳ Creating bond...\n';
 
       try {
         setStatus('Creating bond...');
@@ -249,11 +249,11 @@ function setupConstructEventHandlers() {
         console.log('Bond result:', result);
 
         if (result.error) {
-          if (bondOut) bondOut.textContent = `? Error: ${result.error}\n`;
-          alert(`? Failed to create bond: ${result.error}`);
+          if (bondOut) bondOut.textContent = `❌ Error: ${result.error}\n`;
+          alert(`❌ Failed to create bond: ${result.error}`);
         } else {
-          if (bondOut) bondOut.textContent = `? Bond ${bondName} created successfully!\n`;
-          alert(`? Bond ${bondName} created successfully!`);
+          if (bondOut) bondOut.textContent = `✅ Bond ${bondName} created successfully!\n`;
+          alert(`✅ Bond ${bondName} created successfully!`);
           
           // Clear form
           const nameField = $('#bond-name');
@@ -267,7 +267,7 @@ function setupConstructEventHandlers() {
         }
       } catch (error) {
         console.error('Bond creation error:', error);
-        const errorMsg = `? Failed to create bond: ${error}`;
+        const errorMsg = `❌ Failed to create bond: ${error}`;
         if (bondOut) bondOut.textContent = errorMsg + '\n';
         alert(errorMsg);
       } finally {
