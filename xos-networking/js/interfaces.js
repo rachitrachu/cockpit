@@ -270,23 +270,16 @@ async function createEnhancedDeviceDisplayName(interfaceName, interfaceType) {
   
   if (bondBridgeInfo.isBond && bondBridgeInfo.members.length > 0) {
     subtitleParts.push(`🔗 Bond: ${bondBridgeInfo.members.length} members (${bondBridgeInfo.bondMode || 'unknown mode'})`);
-  } else if (bondBridgeInfo.isBond) {
-    // Bond with no members detected
-    subtitleParts.push(`🔗 Bond: No active members`);
   }
   
   if (bondBridgeInfo.isBridge && bondBridgeInfo.members.length > 0) {
     subtitleParts.push(`🌉 Bridge: ${bondBridgeInfo.members.length} ports`);
-  } else if (bondBridgeInfo.isBridge) {
-    // Bridge with no ports detected
-    subtitleParts.push(`🌉 Bridge: No active ports`);
   }
   
   if (bondBridgeInfo.memberOf) {
     subtitleParts.push(`👥 ${bondBridgeInfo.role} of ${bondBridgeInfo.memberOf}`);
   }
   
-  // Only set subtitle if we have meaningful content
   if (subtitleParts.length > 0) {
     displayInfo.subtitle = subtitleParts.join(' • ');
   }
@@ -428,41 +421,48 @@ async function loadInterfaces() {
       const deviceInfo = await createEnhancedDeviceDisplayName(iface.dev, iface.type);
       const deviceCell = document.createElement('td');
       
-      // Apply styling based on interface type with better structure
+      // Apply styling based on interface type
       if (deviceInfo.isVlan) {
         deviceCell.innerHTML = `
-          <div class="device-main" style="color: var(--primary-color);">${deviceInfo.displayName}</div>
-          ${deviceInfo.subtitle ? `<div class="device-subtitle">${deviceInfo.subtitle}</div>` : ''}
+          <div style="font-weight: 600; color: var(--primary-color);">${deviceInfo.displayName}</div>
+          <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
+            ${deviceInfo.subtitle}
+          </div>
         `;
-        row.style.background = 'linear-gradient(90deg, rgba(0,102,204,0.03) 0%, rgba(255,255,255,0) 100%)';
+        row.style.background = 'linear-gradient(90deg, rgba(0,102,204,0.05) 0%, rgba(255,255,255,0) 100%)';
       } else if (deviceInfo.isBond) {
         deviceCell.innerHTML = `
-          <div class="device-main" style="color: var(--warning-color);">${deviceInfo.displayName}</div>
-          ${deviceInfo.subtitle ? `<div class="device-subtitle">${deviceInfo.subtitle}</div>` : ''}
+          <div style="font-weight: 600; color: var(--warning-color);">${deviceInfo.displayName}</div>
+          <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
+            ${deviceInfo.subtitle}
+          </div>
         `;
-        row.style.background = 'linear-gradient(90deg, rgba(255,193,7,0.03) 0%, rgba(255,255,255,0) 100%)';
+        row.style.background = 'linear-gradient(90deg, rgba(255,193,7,0.05) 0%, rgba(255,255,255,0) 100%)';
       } else if (deviceInfo.isBridge) {
         deviceCell.innerHTML = `
-          <div class="device-main" style="color: var(--info-color);">${deviceInfo.displayName}</div>
-          ${deviceInfo.subtitle ? `<div class="device-subtitle">${deviceInfo.subtitle}</div>` : ''}
+          <div style="font-weight: 600; color: var(--info-color);">${deviceInfo.displayName}</div>
+          <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
+            ${deviceInfo.subtitle}
+          </div>
         `;
-        row.style.background = 'linear-gradient(90deg, rgba(23,162,184,0.03) 0%, rgba(255,255,255,0) 100%)';
+        row.style.background = 'linear-gradient(90deg, rgba(23,162,184,0.05) 0%, rgba(255,255,255,0) 100%)';
       } else if (deviceInfo.memberOf) {
         deviceCell.innerHTML = `
-          <div class="device-main">${deviceInfo.displayName}</div>
-          ${deviceInfo.subtitle ? `<div class="device-subtitle">${deviceInfo.subtitle}</div>` : ''}
+          <div style="font-weight: 600;">${deviceInfo.displayName}</div>
+          <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
+            ${deviceInfo.subtitle}
+          </div>
         `;
-        row.style.background = 'linear-gradient(90deg, rgba(108,117,125,0.02) 0%, rgba(255,255,255,0) 100%)';
+        row.style.background = 'linear-gradient(90deg, rgba(108,117,125,0.03) 0%, rgba(255,255,255,0) 100%)';
+      } else if (deviceInfo.subtitle) {
+        deviceCell.innerHTML = `
+          <div style="font-weight: 600;">${deviceInfo.displayName}</div>
+          <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
+            ${deviceInfo.subtitle}
+          </div>
+        `;
       } else {
-        // For simple interfaces, use clean structure
-        if (deviceInfo.subtitle) {
-          deviceCell.innerHTML = `
-            <div class="device-main">${deviceInfo.displayName}</div>
-            <div class="device-subtitle">${deviceInfo.subtitle}</div>
-          `;
-        } else {
-          deviceCell.innerHTML = `<div class="device-main">${deviceInfo.displayName}</div>`;
-        }
+        deviceCell.textContent = deviceInfo.displayName;
       }
 
       const actionsCell = document.createElement('td');
@@ -1435,41 +1435,48 @@ class InterfaceTableManager {
       const deviceInfo = await createEnhancedDeviceDisplayName(iface.dev, iface.type);
       const deviceCell = document.createElement('td');
       
-      // Apply styling based on interface type with better structure
+      // Apply styling based on interface type
       if (deviceInfo.isVlan) {
         deviceCell.innerHTML = `
-          <div class="device-main" style="color: var(--primary-color);">${deviceInfo.displayName}</div>
-          ${deviceInfo.subtitle ? `<div class="device-subtitle">${deviceInfo.subtitle}</div>` : ''}
+          <div style="font-weight: 600; color: var(--primary-color);">${deviceInfo.displayName}</div>
+          <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
+            ${deviceInfo.subtitle}
+          </div>
         `;
-        row.style.background = 'linear-gradient(90deg, rgba(0,102,204,0.03) 0%, rgba(255,255,255,0) 100%)';
+        row.style.background = 'linear-gradient(90deg, rgba(0,102,204,0.05) 0%, rgba(255,255,255,0) 100%)';
       } else if (deviceInfo.isBond) {
         deviceCell.innerHTML = `
-          <div class="device-main" style="color: var(--warning-color);">${deviceInfo.displayName}</div>
-          ${deviceInfo.subtitle ? `<div class="device-subtitle">${deviceInfo.subtitle}</div>` : ''}
+          <div style="font-weight: 600; color: var(--warning-color);">${deviceInfo.displayName}</div>
+          <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
+            ${deviceInfo.subtitle}
+          </div>
         `;
-        row.style.background = 'linear-gradient(90deg, rgba(255,193,7,0.03) 0%, rgba(255,255,255,0) 100%)';
+        row.style.background = 'linear-gradient(90deg, rgba(255,193,7,0.05) 0%, rgba(255,255,255,0) 100%)';
       } else if (deviceInfo.isBridge) {
         deviceCell.innerHTML = `
-          <div class="device-main" style="color: var(--info-color);">${deviceInfo.displayName}</div>
-          ${deviceInfo.subtitle ? `<div class="device-subtitle">${deviceInfo.subtitle}</div>` : ''}
+          <div style="font-weight: 600; color: var(--info-color);">${deviceInfo.displayName}</div>
+          <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
+            ${deviceInfo.subtitle}
+          </div>
         `;
-        row.style.background = 'linear-gradient(90deg, rgba(23,162,184,0.03) 0%, rgba(255,255,255,0) 100%)';
+        row.style.background = 'linear-gradient(90deg, rgba(23,162,184,0.05) 0%, rgba(255,255,255,0) 100%)';
       } else if (deviceInfo.memberOf) {
         deviceCell.innerHTML = `
-          <div class="device-main">${deviceInfo.displayName}</div>
-          ${deviceInfo.subtitle ? `<div class="device-subtitle">${deviceInfo.subtitle}</div>` : ''}
+          <div style="font-weight: 600;">${deviceInfo.displayName}</div>
+          <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
+            ${deviceInfo.subtitle}
+          </div>
         `;
-        row.style.background = 'linear-gradient(90deg, rgba(108,117,125,0.02) 0%, rgba(255,255,255,0) 100%)';
+        row.style.background = 'linear-gradient(90deg, rgba(108,117,125,0.03) 0%, rgba(255,255,255,0) 100%)';
+      } else if (deviceInfo.subtitle) {
+        deviceCell.innerHTML = `
+          <div style="font-weight: 600;">${deviceInfo.displayName}</div>
+          <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
+            ${deviceInfo.subtitle}
+          </div>
+        `;
       } else {
-        // For simple interfaces, use clean structure
-        if (deviceInfo.subtitle) {
-          deviceCell.innerHTML = `
-            <div class="device-main">${deviceInfo.displayName}</div>
-            <div class="device-subtitle">${deviceInfo.subtitle}</div>
-          `;
-        } else {
-          deviceCell.innerHTML = `<div class="device-main">${deviceInfo.displayName}</div>`;
-        }
+        deviceCell.textContent = deviceInfo.displayName;
       }
 
       // Create action cell with all the buttons (keeping existing functionality)

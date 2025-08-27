@@ -9,35 +9,8 @@
   <!-- Cockpit API -->
   <script src="../base1/cockpit.js"></script>
 
-  <!-- Styles - Try different loading methods -->
-  <link href="./style.css" rel="stylesheet" type="text/css">
-  
-  <!-- Debug CSS loading -->
-  <style>
-    /* Fallback styles if CSS doesn't load */
-    body { 
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      margin: 0;
-      padding: 20px;
-      background: #f5f5f5;
-    }
-    
-    .debug-css-loading {
-      background: #ff6b6b;
-      color: white;
-      padding: 1rem;
-      margin-bottom: 1rem;
-      border-radius: 4px;
-      font-weight: bold;
-      text-align: center;
-    }
-    
-    /* This should be overridden by external CSS if it loads */
-    .table {
-      border: 2px solid red;
-      background: yellow;
-    }
-  </style>
+  <!-- Styles -->
+  <link href="style.css" rel="stylesheet">
   
   <!-- Icons (using Unicode emojis for now, can be replaced with icon font) -->
   <style>
@@ -45,10 +18,6 @@
   </style>
 </head>
 <body>
-  <div class="debug-css-loading">
-    ⚠️ If you see this red box, the external CSS is not loading properly!
-  </div>
-
   <div class="xos-container">
     <header class="xos-header">
       <div class="xos-title">
@@ -372,34 +341,6 @@
       <span id="status">Ready</span> | XOS Networking Management Interface
     </footer>
   </div>
-  
-  <!-- JavaScript to detect CSS loading -->
-  <script>
-    // Check if CSS is loaded properly
-    window.addEventListener('DOMContentLoaded', function() {
-      const debugBox = document.querySelector('.debug-css-loading');
-      const table = document.querySelector('.table');
-      
-      // Check if our CSS custom properties are working
-      const computed = window.getComputedStyle(document.documentElement);
-      const primaryColor = computed.getPropertyValue('--primary-color').trim();
-      
-      if (primaryColor && primaryColor !== '') {
-        // CSS is loaded, hide debug box
-        if (debugBox) {
-          debugBox.style.display = 'none';
-        }
-        console.log('✅ CSS loaded successfully! Primary color:', primaryColor);
-      } else {
-        // CSS not loaded, show debug info
-        console.error('❌ CSS not loaded properly');
-        if (debugBox) {
-          debugBox.innerHTML = '❌ External CSS failed to load - using fallback styles';
-        }
-      }
-    });
-  </script>
-
   <!-- Load JavaScript files in correct dependency order -->
   <script src="js/utils.js"></script>
   <script src="js/run.js"></script>
