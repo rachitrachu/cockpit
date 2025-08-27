@@ -171,24 +171,35 @@ function setupEventHandlers() {
   }
 
   const btnBackupNetplan = $('#btn-backup-netplan');
+  console.log('🔍 Backup button element found:', !!btnBackupNetplan);
   if (btnBackupNetplan) {
-    btnBackupNetplan.addEventListener('click', async () => {
-      console.log('Backup netplan button clicked');
+    console.log('✅ Adding event listener to backup button');
+    btnBackupNetplan.addEventListener('click', async (event) => {
+      console.log('🚀 Backup netplan button clicked - event fired!');
+      event.preventDefault();
+      event.stopPropagation();
+      
       try {
+        console.log('📥 Starting backup process...');
         setStatus('Creating netplan backup...');
 
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const backupDir = `/etc/netplan/backups`;
         const backupFile = `${backupDir}/netplan-backup-${timestamp}.tar.gz`;
 
+        console.log('📁 Creating backup directory:', backupDir);
         try {
           await run('mkdir', ['-p', backupDir], { superuser: 'require' });
+          console.log('✅ Backup directory created/exists');
         } catch (e) {
           console.warn('Backup directory might already exist:', e);
         }
 
+        console.log('📦 Creating tar archive:', backupFile);
         await run('tar', ['-czf', backupFile, '-C', '/etc', 'netplan/'], { superuser: 'require' });
+        console.log('✅ Tar archive created successfully');
 
+        console.log('📊 Getting file info...');
         const backupInfo = await run('ls', ['-lh', backupFile], { superuser: 'try' });
 
         let backupList = '';
@@ -198,6 +209,7 @@ function setupEventHandlers() {
           backupList = 'This is the first backup.';
         }
 
+        console.log('🎨 Creating modal dialog...');
         const modal = document.createElement('dialog');
         modal.style.maxWidth = '600px';
         modal.innerHTML = `
@@ -228,15 +240,21 @@ function setupEventHandlers() {
           });
         }
 
+        console.log('🎉 Showing backup success modal...');
         modal.showModal();
 
       } catch (error) {
-        console.error('Backup failed:', error);
+        console.error('💥 Backup failed with error:', error);
         alert(`❌ Failed to create backup:\n${error.message || error}`);
       } finally {
         setStatus('Ready');
       }
     });
+    console.log('✅ Backup button event listener attached successfully');
+  } else {
+    console.error('❌ Backup button not found! Checking DOM...');
+    console.log('🔍 All buttons with backup in ID:', $$('[id*="backup"]'));
+    console.log('🔍 All buttons in quick-actions:', $$('.quick-actions button'));
   }
 
   const btnApplyNetplan = $('#btn-apply-netplan');
