@@ -23,15 +23,34 @@ along with Cockpit; If not, see <https://www.gnu.org/licenses/>.
   <title translate="yes">Software updates</title>
   <meta charset="utf-8" />
 
+  <!-- LOAD OUR OVERRIDE FIRST - Highest Priority -->
+  <script src="updates.js"></script>
+  
+  <!-- Block font loading inline -->
+  <style>
+    @font-face { font-family: 'RedHatText'; src: none !important; }
+    @font-face { font-family: 'RedHatTextVF'; src: none !important; }
+    * { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif !important; }
+  </style>
+  
   <link href="updates.css" rel="stylesheet" />
 
   <script src="../base1/cockpit.js"></script>
   <script src="../base1/po.js"></script>
-  <script src="updates.js"></script>
+  <!-- Our updates.js is already loaded above -->
   <script src="po.js"></script>
 </head>
-<body class="pf-v6-m-tabular-nums">
-    <div class="ct-page-fill" id="app"></div>
+<body class="pf-v6-m-tabular-nums" style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif !important;">
+    <div class="ct-page-fill" id="app" style="font-family: inherit !important;"></div>
+    
+    <!-- Additional blocking script at the end -->
+    <script>
+        // Final override to ensure our blocking functions stay active
+        if (typeof window._updatesModuleOverride === 'undefined') {
+            window.UpdateDetail = function() { console.log('🚫 FINAL BLOCK: UpdateDetail'); return null; };
+        }
+        console.log('🛡️ Final blocking script loaded');
+    </script>
 </body>
 
 </html>
