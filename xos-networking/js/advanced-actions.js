@@ -380,10 +380,16 @@ async function deleteConstructedInterface(iface) {
       
       if (iface.dev.includes('.')) {
         deleteType = 'vlans';
-        // Normalize VLAN name: remove @parent suffix if present
-        // e.g., "eno3.1166@eno3" -> "eno3.1166"
+        // Enhanced VLAN name normalization
+        // Handle cases like: eno4.1188@eno4@eno4 -> eno4.1188@eno4
         if (normalizedName.includes('@')) {
-          normalizedName = normalizedName.split('@')[0];
+          // Split by @ and keep only the first two parts (interface.vlan@parent)
+          const parts = normalizedName.split('@');
+          if (parts.length > 2) {
+            // If we have eno4.1188@eno4@eno4, normalize to eno4.1188@eno4
+            normalizedName = `${parts[0]}@${parts[1]}`;
+          }
+          // If it's already eno4.1188@eno4, keep it as is
         }
       } else if (iface.dev.startsWith('br')) {
         deleteType = 'bridges';
@@ -398,7 +404,7 @@ async function deleteConstructedInterface(iface) {
       
       const result = await netplanAction('delete', { 
         type: deleteType, 
-        name: normalizedName  // Use normalized name
+        name: normalizedName  // Use properly normalized name
       });
       
       console.log(`📥 Netplan response:`, result);
@@ -439,10 +445,15 @@ async function deleteConstructedInterface(iface) {
       console.log(`📋 Current netplan config after deletion:`);
       console.log(showConfigResult);
       
-      // Normalize the interface name for checking (remove @parent suffix)
+      // Enhanced normalization for checking (handle double @parent suffixes)
       let checkName = iface.dev;
       if (checkName.includes('@')) {
-        checkName = checkName.split('@')[0];
+        // Handle cases like eno4.1188@eno4@eno4 -> eno4.1188@eno4
+        const parts = checkName.split('@');
+        if (parts.length > 2) {
+          checkName = `${parts[0]}@${parts[1]}`;
+        }
+        // If it's already normalized (eno4.1188@eno4), keep it as is
       }
       
       // Check if the normalized interface name still appears in the config
