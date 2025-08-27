@@ -139,6 +139,17 @@ async function loadInterfaces() {
       });
 
       const btnSetIP = createButton('Set IP', async () => {
+        // Check if interface is critical before allowing IP changes
+        const isCritical = checkIfInterfaceCritical(iface);
+        
+        if (isCritical.critical) {
+          // Show critical interface warning before proceeding
+          const confirmationResult = await showCriticalIPChangeConfirmation(iface, isCritical);
+          if (!confirmationResult) {
+            return; // User cancelled or didn't type confirmation correctly
+          }
+        }
+
         const modal = document.createElement('dialog');
         modal.style.maxWidth = '650px';
         modal.innerHTML = `
@@ -176,12 +187,19 @@ async function loadInterfaces() {
                   </div>
                 </label>
               </div>
+              ${isCritical.critical ? `
+              <div style="margin: 1rem 0; padding: 1rem; background: #fff3cd; border: 2px solid #ffc107; border-radius: var(--border-radius);">
+                <strong>⚠️ CRITICAL INTERFACE WARNING:</strong> You are modifying a critical interface that ${isCritical.reasons.join(' and ')}.
+                <br><small>Changes may affect network connectivity. Ensure you have alternative access before proceeding.</small>
+              </div>
+              ` : `
               <div style="margin: 1rem 0; padding: 1rem; background: #fff3cd; border-radius: var(--border-radius); border: 1px solid #ffeaa7;">
                 <strong>⚠️ Note:</strong> This will replace any existing IP configuration for this interface.
               </div>
+              `}
               <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
                 <button type="button" class="btn" id="cancel-ip-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">❌ Cancel</button>
-                <button type="button" class="btn primary" id="apply-ip-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">⚡ Apply Configuration</button>
+                <button type="button" class="btn ${isCritical.critical ? 'btn-warning' : 'primary'}" id="apply-ip-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">⚡ Apply Configuration</button>
               </div>
             </form>
           </div>
@@ -442,6 +460,192 @@ async function loadInterfaces() {
     tbody.appendChild(row);
     setStatus('Error loading interfaces');
   }
+}
+
+// Helper function to check if interface is critical (imported from advanced-actions.js logic)
+function checkIfInterfaceCritical(iface) {
+  const reasons = [];
+  let critical = false;
+
+  // Check for public IP (not private ranges)
+  if (iface.ipv4) {
+    const ip = iface.ipv4.split('/')[0]; // Remove CIDR notation
+    if (!isPrivateIP(ip)) {
+      reasons.push(`has public IP address ${iface.ipv4}`);
+      critical = true;
+    }
+  }
+
+  // Check if it has a gateway configured (might be default route)
+  if (iface.ipv4 && (iface.ipv4.includes('192.168.1.') || iface.ipv4.includes('10.0.0.') || iface.ipv4.includes('172.'))) {
+    reasons.push('may be used for default gateway');
+    critical = true;
+  }
+
+  // Check for specific critical interface names
+  const criticalNames = ['br0', 'bond0', 'eth0', 'eno1', 'enp0s3'];
+  if (criticalNames.some(name => iface.dev.toLowerCase().includes(name.toLowerCase()))) {
+    reasons.push('is a primary network interface');
+    critical = true;
+  }
+
+  // Check if interface is UP and has traffic (high usage interfaces)
+  if (iface.state === 'UP' && iface.ipv4) {
+    reasons.push('is currently active with IP configuration');
+    critical = true;
+  }
+
+  return { critical, reasons };
+}
+
+// Helper function to check if IP is private
+function isPrivateIP(ip) {
+  const parts = ip.split('.').map(Number);
+  
+  // 10.0.0.0/8
+  if (parts[0] === 10) return true;
+  
+  // 172.16.0.0/12
+  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+  
+  // 192.168.0.0/16
+  if (parts[0] === 192 && parts[1] === 168) return true;
+  
+  // 127.0.0.0/8 (loopback)
+  if (parts[0] === 127) return true;
+  
+  // 169.254.0.0/16 (link-local)
+  if (parts[0] === 169 && parts[1] === 254) return true;
+  
+  return false;
+}
+
+// Critical IP change confirmation dialog
+async function showCriticalIPChangeConfirmation(iface, criticalInfo) {
+  return new Promise((resolve) => {
+    const modal = document.createElement('dialog');
+    modal.style.maxWidth = '700px';
+    modal.innerHTML = `
+      <div class="modal-content">
+        <h2>⚠️ Change IP Address on Critical Interface</h2>
+        <div style="margin: 1.5rem 0; padding: 1rem; background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px;">
+          <div style="display: flex; align-items: center; margin-bottom: 1rem;">
+            <span style="font-size: 2rem; margin-right: 0.5rem;">🚨</span>
+            <strong style="color: #856404;">WARNING: You are about to modify a critical network interface!</strong>
+          </div>
+          <div style="color: #856404;">
+            <p><strong>Interface:</strong> <code>${iface.dev}</code></p>
+            <p><strong>Current IP:</strong> <code>${iface.ipv4 || 'None'}</code></p>
+            <p><strong>Status:</strong> <code>${iface.state}</code></p>
+            <p><strong>Critical because it:</strong></p>
+            <ul style="margin: 0.5rem 0; padding-left: 2rem;">
+              ${criticalInfo.reasons.map(reason => `<li>${reason}</li>`).join('')}
+            </ul>
+          </div>
+        </div>
+        
+        <div style="margin: 1rem 0; padding: 1rem; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px;">
+          <strong style="color: #721c24;">⚠️ Changing the IP address on this interface may:</strong>
+          <ul style="color: #721c24; margin: 0.5rem 0; padding-left: 2rem;">
+            <li>Cause immediate loss of network connectivity</li>
+            <li>Make the system unreachable via current IP address</li>
+            <li>Disrupt SSH sessions and remote management</li>
+            <li>Affect services depending on this interface</li>
+            <li>Require console/physical access to restore connectivity</li>
+          </ul>
+        </div>
+
+        <div style="margin: 1.5rem 0; padding: 1rem; border: 2px dashed #dc3545; border-radius: 4px;">
+          <label style="font-weight: 600; color: #dc3545; display: block; margin-bottom: 0.5rem;">
+            🔒 Type "CHANGE IP" to confirm you understand the risks:
+          </label>
+          <input 
+            type="text" 
+            id="ip-change-confirmation-input" 
+            placeholder="Enter: CHANGE IP" 
+            style="width: 100%; padding: 0.75rem; font-family: monospace; font-size: 1rem; border: 2px solid #dc3545; border-radius: 4px; text-transform: uppercase;"
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <small style="color: #6c757d; display: block; margin-top: 0.25rem;">
+            You must type exactly: <code>CHANGE IP</code>
+          </small>
+        </div>
+
+        <div style="margin: 1rem 0; padding: 1rem; background: #d1ecf1; border: 1px solid #bee5eb; border-radius: 4px;">
+          <strong style="color: #0c5460;">💡 Safety Recommendations:</strong>
+          <ul style="color: #0c5460; margin: 0.5rem 0; padding-left: 2rem;">
+            <li><strong>Have console/KVM access</strong> available before proceeding</li>
+            <li><strong>Verify the new IP</strong> is correct and reachable</li>
+            <li><strong>Check gateway settings</strong> match your network</li>
+            <li><strong>Consider temporary changes first</strong> (uncheck persist option)</li>
+            <li><strong>Have a rollback plan</strong> ready</li>
+          </ul>
+        </div>
+
+        <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
+          <button type="button" class="btn" id="cancel-critical-ip-change" style="min-width: 120px; padding: 0.75rem 1.25rem;">
+            ❌ Cancel
+          </button>
+          <button type="button" class="btn btn-warning" id="confirm-critical-ip-change" style="min-width: 120px; padding: 0.75rem 1.25rem;" disabled>
+            ⚠️ Proceed with IP Change
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+    setupModal(modal);
+
+    const confirmInput = modal.querySelector('#ip-change-confirmation-input');
+    const confirmButton = modal.querySelector('#confirm-critical-ip-change');
+    const cancelButton = modal.querySelector('#cancel-critical-ip-change');
+
+    // Enable/disable confirm button based on input
+    confirmInput.addEventListener('input', () => {
+      const inputValue = confirmInput.value.trim().toUpperCase();
+      const isValid = inputValue === 'CHANGE IP';
+      confirmButton.disabled = !isValid;
+      
+      if (isValid) {
+        confirmButton.style.backgroundColor = '#ffc107';
+        confirmButton.style.borderColor = '#ffc107';
+        confirmButton.style.color = '#212529';
+      } else {
+        confirmButton.style.backgroundColor = '#6c757d';
+        confirmButton.style.borderColor = '#6c757d';
+        confirmButton.style.color = '#ffffff';
+      }
+    });
+
+    // Handle Enter key in input
+    confirmInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !confirmButton.disabled) {
+        confirmButton.click();
+      }
+    });
+
+    cancelButton.addEventListener('click', () => {
+      modal.close();
+      resolve(false);
+    });
+
+    confirmButton.addEventListener('click', () => {
+      if (confirmInput.value.trim().toUpperCase() === 'CHANGE IP') {
+        modal.close();
+        resolve(true);
+      }
+    });
+
+    modal.addEventListener('close', () => {
+      if (modal.parentNode) {
+        document.body.removeChild(modal);
+      }
+    });
+
+    modal.showModal();
+    confirmInput.focus();
+  });
 }
 
 // expose
