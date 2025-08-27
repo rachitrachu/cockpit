@@ -611,3 +611,250 @@ dialog + .modal-backdrop {
 .mt-1 { margin-top: 0.5rem; }
 .mt-2 { margin-top: 1rem; }
 .mt-3 { margin-top: 1.5rem; }
+
+/* Interface Relationship Visualization */
+.interface-row {
+  position: relative;
+  transition: var(--transition);
+}
+
+.interface-row:hover {
+  background: rgba(0, 102, 204, 0.02) !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Relationship indicators */
+.relationship-indicator {
+  position: absolute;
+  left: -15px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: 2px;
+  transition: var(--transition);
+}
+
+.relationship-indicator.parent {
+  background: linear-gradient(to bottom, var(--primary-color), rgba(0, 102, 204, 0.3));
+}
+
+.relationship-indicator.child {
+  background: linear-gradient(to bottom, rgba(0, 102, 204, 0.3), var(--primary-color));
+}
+
+.relationship-indicator.member {
+  background: linear-gradient(to bottom, var(--warning-color), rgba(255, 193, 7, 0.3));
+}
+
+.relationship-indicator.master {
+  background: linear-gradient(to bottom, var(--info-color), rgba(23, 162, 184, 0.3));
+}
+
+/* Visual connection lines */
+.connection-line {
+  position: absolute;
+  left: -12px;
+  width: 2px;
+  background: rgba(0, 102, 204, 0.4);
+  z-index: 1;
+}
+
+.connection-line.vlan-connection {
+  background: linear-gradient(to bottom, 
+    rgba(0, 102, 204, 0.6) 0%, 
+    rgba(0, 102, 204, 0.3) 50%, 
+    rgba(0, 102, 204, 0.6) 100%);
+}
+
+.connection-line.bond-connection {
+  background: linear-gradient(to bottom, 
+    rgba(255, 193, 7, 0.6) 0%, 
+    rgba(255, 193, 7, 0.3) 50%, 
+    rgba(255, 193, 7, 0.6) 100%);
+}
+
+.connection-line.bridge-connection {
+  background: linear-gradient(to bottom, 
+    rgba(23, 162, 184, 0.6) 0%, 
+    rgba(23, 162, 184, 0.3) 50%, 
+    rgba(23, 162, 184, 0.6) 100%);
+}
+
+/* Interface grouping */
+.interface-group {
+  position: relative;
+  border-left: 3px solid transparent;
+  margin-left: 5px;
+  padding-left: 10px;
+}
+
+.interface-group.vlan-group {
+  border-left-color: var(--primary-color);
+  background: linear-gradient(90deg, rgba(0, 102, 204, 0.03) 0%, transparent 100%);
+}
+
+.interface-group.bond-group {
+  border-left-color: var(--warning-color);
+  background: linear-gradient(90deg, rgba(255, 193, 7, 0.03) 0%, transparent 100%);
+}
+
+.interface-group.bridge-group {
+  border-left-color: var(--info-color);
+  background: linear-gradient(90deg, rgba(23, 162, 184, 0.03) 0%, transparent 100%);
+}
+
+/* Group headers */
+.group-header {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted-color);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.5rem 1rem;
+  background: rgba(0, 0, 0, 0.02);
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: var(--transition);
+  user-select: none;
+}
+
+.group-header:hover {
+  background: rgba(0, 102, 204, 0.05);
+  color: var(--primary-color);
+}
+
+.group-header.collapsed::before {
+  content: '▶';
+  margin-right: 0.5rem;
+  transition: var(--transition);
+}
+
+.group-header.expanded::before {
+  content: '▼';
+  margin-right: 0.5rem;
+  transition: var(--transition);
+}
+
+/* Relationship icons */
+.relationship-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.7rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--muted-color);
+  margin-left: 0.5rem;
+}
+
+.relationship-icon.parent-icon {
+  background: rgba(0, 102, 204, 0.1);
+  color: var(--primary-color);
+}
+
+.relationship-icon.child-icon {
+  background: rgba(0, 102, 204, 0.15);
+  color: var(--primary-color);
+}
+
+.relationship-icon.member-icon {
+  background: rgba(255, 193, 7, 0.1);
+  color: var(--warning-color);
+}
+
+.relationship-icon.master-icon {
+  background: rgba(23, 162, 184, 0.1);
+  color: var(--info-color);
+}
+
+/* Indent levels for nested relationships */
+.interface-row.level-1 {
+  padding-left: 1rem;
+}
+
+.interface-row.level-2 {
+  padding-left: 2rem;
+}
+
+.interface-row.level-3 {
+  padding-left: 3rem;
+}
+
+/* Enhanced device cell with relationship visualization */
+.device-cell-with-relationships {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.device-name-container {
+  flex: 1;
+  min-width: 0; /* Allow text truncation */
+}
+
+.relationship-badges {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.relationship-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.relationship-badge.vlan-child {
+  background: rgba(0, 102, 204, 0.1);
+  color: var(--primary-color);
+  border: 1px solid rgba(0, 102, 204, 0.2);
+}
+
+.relationship-badge.bond-member {
+  background: rgba(255, 193, 7, 0.1);
+  color: #856404;
+  border: 1px solid rgba(255, 193, 7, 0.3);
+}
+
+.relationship-badge.bridge-port {
+  background: rgba(23, 162, 184, 0.1);
+  color: var(--info-color);
+  border: 1px solid rgba(23, 162, 184, 0.3);
+}
+
+.relationship-badge.has-children {
+  background: rgba(40, 167, 69, 0.1);
+  color: var(--success-color);
+  border: 1px solid rgba(40, 167, 69, 0.3);
+}
+
+/* Animation for relationship visualization */
+@keyframes relationshipHighlight {
+  0% { background: rgba(0, 102, 204, 0.1); }
+  50% { background: rgba(0, 102, 204, 0.2); }
+  100% { background: rgba(0, 102, 204, 0.1); }
+}
+
+.interface-row.highlight-relationship {
+  animation: relationshipHighlight 1s ease-in-out;
+}
+
+/* Collapsible groups */
+.collapsible-group {
+  overflow: hidden;
+  transition: max-height 0.3s ease-out;
+}
+
+.collapsible-group.collapsed {
+  max-height: 0;
+}
+
+.collapsible-group.expanded {
+  max-height: 1000px; /* Adjust based on expected content */
+}
