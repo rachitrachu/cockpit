@@ -283,10 +283,22 @@ async function saveBondEdits(modal, iface) {
 
 async function deleteConstructedInterface(iface) {
   const interfaceType = iface.dev.includes('.') ? 'VLAN' : iface.dev.startsWith('br') ? 'bridge' : 'bond';
-  const confirmMessage = `🗑️ Delete ${iface.dev}?\n\nThis will permanently remove the ${interfaceType} interface and its configuration.\n\nThis action cannot be undone.`;
   
-  if (!confirm(confirmMessage)) {
-    return;
+  // Check if interface is critical (has public IP, gateway, or is in use)
+  const isCritical = checkIfInterfaceCritical(iface);
+  
+  if (isCritical.critical) {
+    // Show enhanced confirmation dialog for critical interfaces
+    const confirmationResult = await showCriticalInterfaceConfirmation(iface, interfaceType, isCritical);
+    if (!confirmationResult) {
+      return; // User cancelled or didn't type confirmation correctly
+    }
+  } else {
+    // Standard confirmation for non-critical interfaces
+    const confirmMessage = `🗑️ Delete ${iface.dev}?\n\nThis will permanently remove the ${interfaceType} interface and its configuration.\n\nThis action cannot be undone.`;
+    if (!confirm(confirmMessage)) {
+      return;
+    }
   }
 
   let operationSuccess = false;
@@ -469,5 +481,184 @@ async function deleteConstructedInterface(iface) {
   }
 }
 
-// Expose globally
-window.addAdvancedInterfaceActions = addAdvancedInterfaceActions;
+// Helper function to check if interface is critical
+function checkIfInterfaceCritical(iface) {
+  const reasons = [];
+  let critical = false;
+
+  // Check for public IP (not private ranges)
+  if (iface.ipv4) {
+    const ip = iface.ipv4.split('/')[0]; // Remove CIDR notation
+    if (!isPrivateIP(ip)) {
+      reasons.push(`has public IP address ${iface.ipv4}`);
+      critical = true;
+    }
+  }
+
+  // Check if it has a gateway configured (might be default route)
+  if (iface.ipv4 && (iface.ipv4.includes('192.168.1.') || iface.ipv4.includes('10.0.0.') || iface.ipv4.includes('172.'))) {
+    reasons.push('may be used for default gateway');
+    critical = true;
+  }
+
+  // Check for specific critical interface names
+  const criticalNames = ['br0', 'bond0', 'eth0', 'eno1', 'enp0s3'];
+  if (criticalNames.some(name => iface.dev.toLowerCase().includes(name.toLowerCase()))) {
+    reasons.push('is a primary network interface');
+    critical = true;
+  }
+
+  // Check if interface is UP and has traffic (high usage interfaces)
+  if (iface.state === 'UP' && iface.ipv4) {
+    reasons.push('is currently active with IP configuration');
+    critical = true;
+  }
+
+  return { critical, reasons };
+}
+
+// Helper function to check if IP is private
+function isPrivateIP(ip) {
+  const parts = ip.split('.').map(Number);
+  
+  // 10.0.0.0/8
+  if (parts[0] === 10) return true;
+  
+  // 172.16.0.0/12
+  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+  
+  // 192.168.0.0/16
+  if (parts[0] === 192 && parts[1] === 168) return true;
+  
+  // 127.0.0.0/8 (loopback)
+  if (parts[0] === 127) return true;
+  
+  // 169.254.0.0/16 (link-local)
+  if (parts[0] === 169 && parts[1] === 254) return true;
+  
+  return false;
+}
+
+// Enhanced confirmation dialog for critical interfaces
+async function showCriticalInterfaceConfirmation(iface, interfaceType, criticalInfo) {
+  return new Promise((resolve) => {
+    const modal = document.createElement('dialog');
+    modal.style.maxWidth = '600px';
+    modal.innerHTML = `
+      <div class="modal-content">
+        <h2>⚠️ Delete Critical ${interfaceType} Interface</h2>
+        <div style="margin: 1.5rem 0; padding: 1rem; background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px;">
+          <div style="display: flex; align-items: center; margin-bottom: 1rem;">
+            <span style="font-size: 2rem; margin-right: 0.5rem;">🚨</span>
+            <strong style="color: #856404;">WARNING: This interface appears to be critical!</strong>
+          </div>
+          <div style="color: #856404;">
+            <p><strong>Interface:</strong> <code>${iface.dev}</code></p>
+            <p><strong>IP Address:</strong> <code>${iface.ipv4 || 'None'}</code></p>
+            <p><strong>Status:</strong> <code>${iface.state}</code></p>
+            <p><strong>Critical because it:</strong></p>
+            <ul style="margin: 0.5rem 0; padding-left: 2rem;">
+              ${criticalInfo.reasons.map(reason => `<li>${reason}</li>`).join('')}
+            </ul>
+          </div>
+        </div>
+        
+        <div style="margin: 1rem 0; padding: 1rem; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px;">
+          <strong style="color: #721c24;">⚠️ Deleting this interface may:</strong>
+          <ul style="color: #721c24; margin: 0.5rem 0; padding-left: 2rem;">
+            <li>Cause loss of network connectivity</li>
+            <li>Make the system unreachable remotely</li>
+            <li>Disrupt running services and applications</li>
+            <li>Require physical access to restore connectivity</li>
+          </ul>
+        </div>
+
+        <div style="margin: 1.5rem 0; padding: 1rem; border: 2px dashed #dc3545; border-radius: 4px;">
+          <label style="font-weight: 600; color: #dc3545; display: block; margin-bottom: 0.5rem;">
+            🔒 Type the interface name to confirm deletion:
+          </label>
+          <input 
+            type="text" 
+            id="delete-confirmation-input" 
+            placeholder="Enter: ${iface.dev}" 
+            style="width: 100%; padding: 0.75rem; font-family: monospace; font-size: 1rem; border: 2px solid #dc3545; border-radius: 4px;"
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <small style="color: #6c757d; display: block; margin-top: 0.25rem;">
+            You must type the exact interface name: <code>${iface.dev}</code>
+          </small>
+        </div>
+
+        <div style="margin: 1rem 0; padding: 1rem; background: #d1ecf1; border: 1px solid #bee5eb; border-radius: 4px;">
+          <strong style="color: #0c5460;">💡 Alternative Options:</strong>
+          <ul style="color: #0c5460; margin: 0.5rem 0; padding-left: 2rem;">
+            <li>Consider editing the interface instead of deleting it</li>
+            <li>Remove the IP address first, then delete if still needed</li>
+            <li>Create a backup of the current configuration</li>
+            <li>Ensure you have alternative network access before proceeding</li>
+          </ul>
+        </div>
+
+        <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
+          <button type="button" class="btn" id="cancel-critical-delete" style="min-width: 120px; padding: 0.75rem 1.25rem;">
+            ❌ Cancel
+          </button>
+          <button type="button" class="btn btn-danger" id="confirm-critical-delete" style="min-width: 120px; padding: 0.75rem 1.25rem;" disabled>
+            🗑️ Delete Interface
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+    setupModal(modal);
+
+    const confirmInput = modal.querySelector('#delete-confirmation-input');
+    const confirmButton = modal.querySelector('#confirm-critical-delete');
+    const cancelButton = modal.querySelector('#cancel-critical-delete');
+
+    // Enable/disable confirm button based on input
+    confirmInput.addEventListener('input', () => {
+      const inputValue = confirmInput.value.trim();
+      const isValid = inputValue === iface.dev;
+      confirmButton.disabled = !isValid;
+      
+      if (isValid) {
+        confirmButton.style.backgroundColor = '#dc3545';
+        confirmButton.style.borderColor = '#dc3545';
+      } else {
+        confirmButton.style.backgroundColor = '#6c757d';
+        confirmButton.style.borderColor = '#6c757d';
+      }
+    });
+
+    // Handle Enter key in input
+    confirmInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !confirmButton.disabled) {
+        confirmButton.click();
+      }
+    });
+
+    cancelButton.addEventListener('click', () => {
+      modal.close();
+      resolve(false);
+    });
+
+    confirmButton.addEventListener('click', () => {
+      if (confirmInput.value.trim() === iface.dev) {
+        modal.close();
+        resolve(true);
+      }
+    });
+
+    modal.addEventListener('close', () => {
+      if (modal.parentNode) {
+        document.body.removeChild(modal);
+      }
+    });
+
+    modal.showModal();
+    confirmInput.focus();
+  });
+}
