@@ -223,6 +223,9 @@ async function loadInterfaces() {
                 <strong>⚠️ Note:</strong> This will replace any existing IP configuration for this interface.
               </div>
               `}
+              <div style="margin: 1rem 0; padding: 1rem; background: #d4edda; border-radius: var(--border-radius); border: 1px solid #c3e6cb;">
+                <strong>🔍 Debugging:</strong> Check browser console (F12) for detailed logging during IP configuration process.
+              </div>
               <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
                 <button type="button" class="btn" id="cancel-ip-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">❌ Cancel</button>
                 <button type="button" class="btn ${isCritical.critical ? 'btn-warning' : 'primary'}" id="apply-ip-config" style="min-width: 120px; padding: 0.75rem 1.25rem;">⚡ Apply Configuration</button>
@@ -265,35 +268,86 @@ async function loadInterfaces() {
 
           try {
             setStatus('Configuring IP address...');
-
+            
+            // Step 1: Ensure interface is UP before configuring IP
+            console.log(`🔍 Checking interface ${iface.dev} status before IP configuration`);
             try {
-              if (iface.ipv4) {
-                try {
-                  await run('ip', ['addr', 'del', iface.ipv4, 'dev', iface.dev], { superuser: 'require' });
-                  console.log(`Removed old IP ${iface.ipv4} from ${iface.dev}`);
-                } catch (e) {
-                  console.warn('Could not remove old IP (may not exist):', e);
-                }
+              if (iface.state !== 'UP') {
+                console.log(`📈 Interface ${iface.dev} is ${iface.state}, bringing it UP first`);
+                await run('ip', ['link', 'set', iface.dev, 'up'], { superuser: 'require' });
+                console.log(`✅ Interface ${iface.dev} brought UP successfully`);
+                
+                // Wait a moment for interface to come up
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              } else {
+                console.log(`✅ Interface ${iface.dev} is already UP`);
               }
+            } catch (upError) {
+              console.warn(`⚠️ Could not bring interface UP: ${upError}`);
+              // Continue anyway, might still work
+            }
 
+            // Step 2: Remove old IP if exists
+            if (iface.ipv4) {
+              try {
+                console.log(`🗑️ Removing old IP ${iface.ipv4} from ${iface.dev}`);
+                await run('ip', ['addr', 'del', iface.ipv4, 'dev', iface.dev], { superuser: 'require' });
+                console.log(`✅ Removed old IP ${iface.ipv4} from ${iface.dev}`);
+              } catch (e) {
+                console.warn('⚠️ Could not remove old IP (may not exist):', e);
+                // Continue anyway, might not exist
+              }
+            }
+
+            // Step 3: Add new IP address
+            try {
+              console.log(`➕ Adding new IP ${newIp} to ${iface.dev}`);
               await run('ip', ['addr', 'add', newIp, 'dev', iface.dev], { superuser: 'require' });
-              console.log(`Added new IP ${newIp} to ${iface.dev}`);
+              console.log(`✅ Added new IP ${newIp} to ${iface.dev}`);
+            } catch (ipError) {
+              console.error('❌ Failed to add IP address:', ipError);
+              throw new Error(`Failed to add IP address ${newIp}: ${ipError.message || ipError}`);
+            }
 
-              if (gateway) {
+            // Step 4: Configure gateway if provided
+            if (gateway) {
+              try {
+                console.log(`🚪 Configuring gateway ${gateway} for ${iface.dev}`);
+                
+                // Try to remove any existing default route for this interface
                 try {
                   await run('ip', ['route', 'del', 'default', 'dev', iface.dev], { superuser: 'require' });
+                  console.log(`🗑️ Removed existing default route for ${iface.dev}`);
                 } catch (e) {
+                  console.log('ℹ️ No existing default route to remove (this is fine)');
                 }
+                
+                // Add new default route
                 await run('ip', ['route', 'add', 'default', 'via', gateway, 'dev', iface.dev], { superuser: 'require' });
-                console.log(`Added gateway ${gateway} for ${iface.dev}`);
+                console.log(`✅ Added gateway ${gateway} for ${iface.dev}`);
+              } catch (gwError) {
+                console.warn('⚠️ Failed to configure gateway:', gwError);
+                // Don't fail the entire operation for gateway issues
               }
+            }
 
-            } catch (error) {
-              throw new Error(`Failed to apply IP configuration: ${error}`);
+            // Step 5: Verify the IP was actually set
+            try {
+              console.log(`🔍 Verifying IP configuration was applied`);
+              const verifyResult = await run('ip', ['addr', 'show', iface.dev], { superuser: 'try' });
+              console.log(`📋 Current interface status:\n${verifyResult}`);
+              
+              if (!verifyResult.includes(newIp.split('/')[0])) {
+                throw new Error(`IP address ${newIp} does not appear to be configured on ${iface.dev}`);
+              }
+              console.log(`✅ Verified IP ${newIp} is configured on ${iface.dev}`);
+            } catch (verifyError) {
+              console.warn('⚠️ Could not verify IP configuration:', verifyError);
+              // Continue anyway, the set might have worked
             }
 
             if (persist) {
-              console.log('Persisting IP configuration to netplan...');
+              console.log('💾 Persisting IP configuration to netplan...');
               try {
                 const netplanConfig = {
                   name: iface.dev,
@@ -308,17 +362,19 @@ async function loadInterfaces() {
                   netplanConfig.dns = dns;
                 }
 
+                console.log('📤 Sending netplan config:', netplanConfig);
                 const result = await netplanAction('set_ip', netplanConfig);
+                console.log('📥 Netplan result:', result);
 
                 if (result.error) {
-                  console.warn('Netplan persistence failed:', result.error);
+                  console.warn('❌ Netplan persistence failed:', result.error);
                   alert(`⚠️ IP configured successfully, but netplan persistence failed:\n${result.error}\n\nThe IP is set but may not survive a reboot.`);
                 } else {
-                  console.log('Successfully persisted to netplan');
+                  console.log('✅ Successfully persisted to netplan');
                   alert(`✅ IP address configured and persisted successfully!\n\n📍 Address: ${newIp}\n${gateway ? `🚪 Gateway: ${gateway}\n` : ''}${dns ? `🌐 DNS: ${dns}\n` : ''}💾 Configuration saved to netplan`);
                 }
               } catch (error) {
-                console.error('Netplan persistence error:', error);
+                console.error('💥 Netplan persistence error:', error);
                 alert(`⚠️ IP configured successfully, but netplan persistence failed:\n${error}\n\nThe IP is set but may not survive a reboot.`);
               }
             } else {
@@ -331,7 +387,7 @@ async function loadInterfaces() {
             await loadInterfaces();
 
           } catch (error) {
-            console.error('IP configuration error:', error);
+            console.error('💥 IP configuration error:', error);
             alert(`❌ Failed to set IP address: ${error.message || error}`);
             setStatus('❌ IP configuration failed');
             setTimeout(() => setStatus('Ready'), 3000);
@@ -400,7 +456,7 @@ async function loadInterfaces() {
           }
 
           try {
-            setStatus('Setting MTU...');
+            setStatus('Setting MTU...' );
 
             await run('ip', ['link', 'set', 'dev', iface.dev, 'mtu', newMtu.toString()], { superuser: 'require' });
             console.log(`Set MTU ${newMtu} on ${iface.dev}`);
