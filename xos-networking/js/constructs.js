@@ -117,8 +117,29 @@ function setupConstructEventHandlers() {
           if (vlanOut) vlanOut.textContent = `❌ Error: ${result.error}\n`;
           alert(`❌ Failed to create VLAN: ${result.error}`);
         } else {
-          if (vlanOut) vlanOut.textContent = `✅ VLAN ${config.name} created successfully!\n`;
-          alert(`✅ VLAN ${config.name} created successfully!`);
+          let successMsg = `✅ VLAN ${config.name} created successfully!`;
+          let outputMsg = successMsg;
+          
+          // Add IP configuration details to the message
+          if (staticIp) {
+            successMsg += `\n\n📍 Static IP: ${staticIp}`;
+            outputMsg += `\nStatic IP: ${staticIp}`;
+            if (gateway) {
+              successMsg += `\n🚪 Gateway: ${gateway}`;
+              outputMsg += `\nGateway: ${gateway}`;
+            }
+          } else {
+            successMsg += '\n\n🌐 IP Configuration: DHCP enabled';
+            outputMsg += '\nIP Configuration: DHCP enabled';
+          }
+          
+          if (vlanMtu) {
+            successMsg += `\n📏 MTU: ${vlanMtu} bytes`;
+            outputMsg += `\nMTU: ${vlanMtu} bytes`;
+          }
+          
+          if (vlanOut) vlanOut.textContent = outputMsg + '\n';
+          alert(successMsg);
           
           // Clear form
           ['#vlan-parent', '#vlan-id', '#vlan-name', '#vlan-mtu', '#vlan-static-ip', '#vlan-gateway'].forEach(sel => {

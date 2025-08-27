@@ -167,11 +167,36 @@ def main():
             if link:
                 add_empty_ethernets(network, [link])
             network.setdefault('vlans', {})
-            network['vlans'][config['name']] = {
+            
+            # Build VLAN configuration
+            vlan_config = {
                 'id': config['id'],
-                'link': link,
-                'dhcp4': True
+                'link': link
             }
+            
+            # Check if static IP is provided
+            static_ip = config.get('static_ip')
+            gateway = config.get('gateway')
+            mtu = config.get('mtu')
+            
+            if static_ip and static_ip.strip():
+                # Configure static IP
+                vlan_config['dhcp4'] = False
+                vlan_config['addresses'] = [static_ip]
+                
+                # Add gateway if provided
+                if gateway and gateway.strip():
+                    vlan_config['gateway4'] = gateway
+            else:
+                # Use DHCP if no static IP provided
+                vlan_config['dhcp4'] = True
+            
+            # Add MTU if provided
+            if mtu and isinstance(mtu, int) and mtu > 0:
+                vlan_config['mtu'] = mtu
+            
+            network['vlans'][config['name']] = vlan_config
+            print(f"DEBUG: Created VLAN {config['name']} with config: {vlan_config}", file=sys.stderr, flush=True)
         elif action == 'add_bridge':
             members = list(config.get('interfaces') or [])
             add_empty_ethernets(network, members)
