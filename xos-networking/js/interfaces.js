@@ -125,6 +125,17 @@ async function loadInterfaces() {
       });
 
       const btnDown = createButton('Down', async () => {
+        // Check if interface is critical before allowing it to be brought down
+        const isCritical = checkIfInterfaceCritical(iface);
+        
+        if (isCritical.critical) {
+          // Show critical interface warning before proceeding
+          const confirmationResult = await showCriticalInterfaceDownConfirmation(iface, isCritical);
+          if (!confirmationResult) {
+            return; // User cancelled or didn't type confirmation correctly
+          }
+        }
+
         await run('ip', ['link', 'set', iface.dev, 'down'], { superuser: 'require' });
         await loadInterfaces();
       });
@@ -632,6 +643,144 @@ async function showCriticalIPChangeConfirmation(iface, criticalInfo) {
 
     confirmButton.addEventListener('click', () => {
       if (confirmInput.value.trim().toUpperCase() === 'CHANGE IP') {
+        modal.close();
+        resolve(true);
+      }
+    });
+
+    modal.addEventListener('close', () => {
+      if (modal.parentNode) {
+        document.body.removeChild(modal);
+      }
+    });
+
+    modal.showModal();
+    confirmInput.focus();
+  });
+}
+
+// Critical interface down confirmation dialog
+async function showCriticalInterfaceDownConfirmation(iface, criticalInfo) {
+  return new Promise((resolve) => {
+    const modal = document.createElement('dialog');
+    modal.style.maxWidth = '650px';
+    modal.innerHTML = `
+      <div class="modal-content">
+        <h2>⚠️ Bring Down Critical Interface</h2>
+        <div style="margin: 1.5rem 0; padding: 1rem; background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px;">
+          <div style="display: flex; align-items: center; margin-bottom: 1rem;">
+            <span style="font-size: 2rem; margin-right: 0.5rem;">🚨</span>
+            <strong style="color: #856404;">WARNING: You are about to disable a critical network interface!</strong>
+          </div>
+          <div style="color: #856404;">
+            <p><strong>Interface:</strong> <code>${iface.dev}</code></p>
+            <p><strong>Current IP:</strong> <code>${iface.ipv4 || 'None'}</code></p>
+            <p><strong>Current Status:</strong> <code>${iface.state}</code></p>
+            <p><strong>Critical because it:</strong></p>
+            <ul style="margin: 0.5rem 0; padding-left: 2rem;">
+              ${criticalInfo.reasons.map(reason => `<li>${reason}</li>`).join('')}
+            </ul>
+          </div>
+        </div>
+        
+        <div style="margin: 1rem 0; padding: 1rem; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px;">
+          <strong style="color: #721c24;">⚠️ Bringing down this interface will:</strong>
+          <ul style="color: #721c24; margin: 0.5rem 0; padding-left: 2rem;">
+            <li>Immediately disconnect all network traffic on this interface</li>
+            <li>Make the system unreachable via this IP address</li>
+            <li>Terminate active SSH sessions and connections</li>
+            <li>Disrupt services and applications using this interface</li>
+            <li>May require console/physical access to bring it back up</li>
+            <li>Could isolate the system if this is the primary network path</li>
+          </ul>
+        </div>
+
+        <div style="margin: 1.5rem 0; padding: 1rem; border: 2px dashed #dc3545; border-radius: 4px;">
+          <label style="font-weight: 600; color: #dc3545; display: block; margin-bottom: 0.5rem;">
+            🔒 Type "BRING DOWN" to confirm you understand the risks:
+          </label>
+          <input 
+            type="text" 
+            id="interface-down-confirmation-input" 
+            placeholder="Enter: BRING DOWN" 
+            style="width: 100%; padding: 0.75rem; font-family: monospace; font-size: 1rem; border: 2px solid #dc3545; border-radius: 4px; text-transform: uppercase;"
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <small style="color: #6c757d; display: block; margin-top: 0.25rem;">
+            You must type exactly: <code>BRING DOWN</code>
+          </small>
+        </div>
+
+        <div style="margin: 1rem 0; padding: 1rem; background: #d1ecf1; border: 1px solid #bee5eb; border-radius: 4px;">
+          <strong style="color: #0c5460;">💡 Before Proceeding:</strong>
+          <ul style="color: #0c5460; margin: 0.5rem 0; padding-left: 2rem;">
+            <li><strong>Ensure console/KVM access</strong> is available</li>
+            <li><strong>Verify alternative network paths</strong> exist</li>
+            <li><strong>Consider the timing</strong> - avoid during critical operations</li>
+            <li><strong>Notify users/services</strong> that may be affected</li>
+            <li><strong>Have a recovery plan</strong> ready</li>
+          </ul>
+        </div>
+
+        <div style="margin: 1rem 0; padding: 1rem; background: #e2e3e5; border: 1px solid #d6d8db; border-radius: 4px;">
+          <strong style="color: #383d41;">ℹ️ Alternative Options:</strong>
+          <ul style="color: #383d41; margin: 0.5rem 0; padding-left: 2rem;">
+            <li>Consider temporarily removing IP addresses instead</li>
+            <li>Check if you can modify interface settings without bringing it down</li>
+            <li>Test the operation during a maintenance window</li>
+          </ul>
+        </div>
+
+        <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
+          <button type="button" class="btn" id="cancel-critical-interface-down" style="min-width: 120px; padding: 0.75rem 1.25rem;">
+            ❌ Cancel
+          </button>
+          <button type="button" class="btn btn-warning" id="confirm-critical-interface-down" style="min-width: 120px; padding: 0.75rem 1.25rem;" disabled>
+            📉 Bring Interface Down
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+    setupModal(modal);
+
+    const confirmInput = modal.querySelector('#interface-down-confirmation-input');
+    const confirmButton = modal.querySelector('#confirm-critical-interface-down');
+    const cancelButton = modal.querySelector('#cancel-critical-interface-down');
+
+    // Enable/disable confirm button based on input
+    confirmInput.addEventListener('input', () => {
+      const inputValue = confirmInput.value.trim().toUpperCase();
+      const isValid = inputValue === 'BRING DOWN';
+      confirmButton.disabled = !isValid;
+      
+      if (isValid) {
+        confirmButton.style.backgroundColor = '#ffc107';
+        confirmButton.style.borderColor = '#ffc107';
+        confirmButton.style.color = '#212529';
+      } else {
+        confirmButton.style.backgroundColor = '#6c757d';
+        confirmButton.style.borderColor = '#6c757d';
+        confirmButton.style.color = '#ffffff';
+      }
+    });
+
+    // Handle Enter key in input
+    confirmInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !confirmButton.disabled) {
+        confirmButton.click();
+      }
+    });
+
+    cancelButton.addEventListener('click', () => {
+      modal.close();
+      resolve(false);
+    });
+
+    confirmButton.addEventListener('click', () => {
+      if (confirmInput.value.trim().toUpperCase() === 'BRING DOWN') {
         modal.close();
         resolve(true);
       }
