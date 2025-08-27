@@ -284,7 +284,25 @@ async function saveBondEdits(modal, iface) {
 async function deleteConstructedInterface(iface) {
   const interfaceType = iface.dev.includes('.') ? 'VLAN' : iface.dev.startsWith('br') ? 'bridge' : 'bond';
   
-  // Check if interface is critical (has public IP, gateway, or is in use)
+  // Step 1: Check dependencies first
+  console.log(`🔍 Checking dependencies for ${iface.dev} before deletion`);
+  const dependencies = await checkInterfaceDependencies(iface.dev);
+  
+  if (dependencies.hasDependencies) {
+    // Show dependency confirmation dialog
+    const dependencyConfirmed = await showDependencyConfirmationDialog(iface.dev, dependencies);
+    if (!dependencyConfirmed) {
+      console.log('User cancelled deletion due to dependencies');
+      return;
+    }
+    
+    if (!dependencies.canDelete) {
+      alert('❌ Cannot proceed with deletion due to critical dependencies. Please resolve dependencies first.');
+      return;
+    }
+  }
+  
+  // Step 2: Check if interface is critical (has public IP, gateway, or is in use)
   const isCritical = checkIfInterfaceCritical(iface);
   
   if (isCritical.critical) {
@@ -294,7 +312,7 @@ async function deleteConstructedInterface(iface) {
       return; // User cancelled or didn't type confirmation correctly
     }
   } else {
-    // Standard confirmation for non-critical interfaces
+    // Standard confirmation for non-critical interfaces with no dependencies
     const confirmMessage = `🗑️ Delete ${iface.dev}?\n\nThis will permanently remove the ${interfaceType} interface and its configuration.\n\nThis action cannot be undone.`;
     if (!confirm(confirmMessage)) {
       return;
@@ -671,5 +689,104 @@ async function showCriticalInterfaceConfirmation(iface, interfaceType, criticalI
 
     modal.showModal();
     confirmInput.focus();
+  });
+}
+
+// New function to check for interface dependencies
+async function checkInterfaceDependencies(ifaceName) {
+  // Initial dummy implementation - replace with real checks
+  // For example, check if interface is used as a default route, has active connections, etc.
+  const dependencies = {
+    hasDependencies: false,
+    canDelete: true,
+    details: []
+  };
+
+  // Check if interface has any active connections
+  const activeConnections = await run('ss', ['-In'], { superuser: 'try' });
+  if (activeConnections && activeConnections.includes(`dev ${ifaceName}`)) {
+    dependencies.hasDependencies = true;
+    dependencies.canDelete = false;
+    dependencies.details.push('Interface has active network connections');
+  }
+
+  // Check if interface is configured as a default route
+  const ipRoute = await run('ip', ['route', 'show', 'default'], { superuser: 'try' });
+  if (ipRoute && ipRoute.includes(`dev ${ifaceName}`)) {
+    dependencies.hasDependencies = true;
+    dependencies.canDelete = false;
+    dependencies.details.push('Interface is configured as the default route');
+  }
+
+  // Here you can add more checks as needed...
+
+  return dependencies;
+}
+
+// Show a confirmation dialog if there are dependencies blocking the deletion
+async function showDependencyConfirmationDialog(ifaceName, dependencies) {
+  return new Promise((resolve) => {
+    const modal = document.createElement('dialog');
+    modal.style.maxWidth = '600px';
+    modal.innerHTML = `
+      <div class="modal-content">
+        <h2>⚠️ Delete Interface Dependencies Detected</h2>
+        <div style="margin: 1.5rem 0; padding: 1rem; background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px;">
+          <div style="display: flex; align-items: center; margin-bottom: 1rem;">
+            <span style="font-size: 2rem; margin-right: 0.5rem;">🚨</span>
+            <strong style="color: #856404;">WARNING: This interface has dependencies!</strong>
+          </div>
+          <div style="color: #856404;">
+            <p><strong>Interface:</strong> <code>${ifaceName}</code></p>
+            <p><strong>Dependencies:</strong></p>
+            <ul style="margin: 0.5rem 0; padding-left: 2rem;">
+              ${dependencies.details.map(detail => `<li>${detail}</li>`).join('')}
+            </ul>
+          </div>
+        </div>
+
+        <div style="margin: 1rem 0; padding: 1rem; background: #d1ecf1; border: 1px solid #bee5eb; border-radius: 4px;">
+          <strong style="color: #0c5460;">💡 Consider the following before proceeding:</strong>
+          <ul style="color: #0c5460; margin: 0.5rem 0; padding-left: 2rem;">
+            <li>Resolve any active connections using this interface</li>
+            <li>Reconfigure or remove the default route if applicable</li>
+            <li>Check for any running services that might be using this interface</li>
+          </ul>
+        </div>
+
+        <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
+          <button type="button" class="btn" id="cancel-dependency-delete" style="min-width: 120px; padding: 0.75rem 1.25rem;">
+            ❌ Cancel
+          </button>
+          <button type="button" class="btn btn-danger" id="confirm-dependency-delete" style="min-width: 120px; padding: 0.75rem 1.25rem;">
+            🗑️ Force Delete Interface
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+    setupModal(modal);
+
+    const cancelButton = modal.querySelector('#cancel-dependency-delete');
+    const confirmButton = modal.querySelector('#confirm-dependency-delete');
+
+    cancelButton.addEventListener('click', () => {
+      modal.close();
+      resolve(false);
+    });
+
+    confirmButton.addEventListener('click', () => {
+      modal.close();
+      resolve(true);
+    });
+
+    modal.addEventListener('close', () => {
+      if (modal.parentNode) {
+        document.body.removeChild(modal);
+      }
+    });
+
+    modal.showModal();
   });
 }
