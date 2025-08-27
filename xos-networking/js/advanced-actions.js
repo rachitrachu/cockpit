@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 /* global $, $$, run, setStatus, netplanAction, setupModal, createButton, loadInterfaces */
 
 async function addAdvancedInterfaceActions(iface, actionsCell) {
@@ -36,23 +36,23 @@ async function editConstructedInterface(iface) {
     
     modalContent = `
       <div class="modal-content">
-        <h2>??? Edit VLAN ${iface.dev}</h2>
+        <h2>🏷️ Edit VLAN ${iface.dev}</h2>
         <form id="edit-vlan-form">
-          <label>?? Parent Interface
+          <label>🔌 Parent Interface
             <input type="text" id="edit-vlan-parent" value="${parent}" readonly style="background: #f5f5f5;">
           </label>
-          <label>?? VLAN ID
+          <label>🔢 VLAN ID
             <input type="number" id="edit-vlan-id" value="${vlanId}" readonly style="background: #f5f5f5;">
           </label>
-          <label>?? MTU
+          <label>📏 MTU
             <input type="number" id="edit-vlan-mtu" value="${iface.mtu}" min="68" max="9000">
           </label>
-          <label>?? IPv4 Address
+          <label>🌐 IPv4 Address
             <input type="text" id="edit-vlan-ip" value="${iface.ipv4 || ''}" placeholder="192.168.1.100/24">
           </label>
           <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
-            <button type="button" class="btn" id="cancel-edit-vlan">? Cancel</button>
-            <button type="button" class="btn primary" id="save-edit-vlan">?? Save Changes</button>
+            <button type="button" class="btn" id="cancel-edit-vlan">❌ Cancel</button>
+            <button type="button" class="btn primary" id="save-edit-vlan">💾 Save Changes</button>
           </div>
         </form>
       </div>
@@ -61,23 +61,23 @@ async function editConstructedInterface(iface) {
     // Bridge interface
     modalContent = `
       <div class="modal-content">
-        <h2>?? Edit Bridge ${iface.dev}</h2>
+        <h2>🌉 Edit Bridge ${iface.dev}</h2>
         <form id="edit-bridge-form">
-          <label>?? Bridge Name
+          <label>🏷️ Bridge Name
             <input type="text" id="edit-bridge-name" value="${iface.dev}" readonly style="background: #f5f5f5;">
           </label>
-          <label>?? MTU
+          <label>📏 MTU
             <input type="number" id="edit-bridge-mtu" value="${iface.mtu}" min="68" max="9000">
           </label>
-          <label>?? IPv4 Address
+          <label>🌐 IPv4 Address
             <input type="text" id="edit-bridge-ip" value="${iface.ipv4 || ''}" placeholder="192.168.1.100/24">
           </label>
           <div style="margin: 1rem 0; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
-            <strong>?? Note:</strong> To modify bridge ports, delete and recreate the bridge.
+            <strong>ℹ️ Note:</strong> To modify bridge ports, delete and recreate the bridge.
           </div>
           <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
-            <button type="button" class="btn" id="cancel-edit-bridge">? Cancel</button>
-            <button type="button" class="btn primary" id="save-edit-bridge">?? Save Changes</button>
+            <button type="button" class="btn" id="cancel-edit-bridge">❌ Cancel</button>
+            <button type="button" class="btn primary" id="save-edit-bridge">💾 Save Changes</button>
           </div>
         </form>
       </div>
@@ -86,23 +86,23 @@ async function editConstructedInterface(iface) {
     // Bond interface
     modalContent = `
       <div class="modal-content">
-        <h2>?? Edit Bond ${iface.dev}</h2>
+        <h2>🔗 Edit Bond ${iface.dev}</h2>
         <form id="edit-bond-form">
-          <label>?? Bond Name
+          <label>🏷️ Bond Name
             <input type="text" id="edit-bond-name" value="${iface.dev}" readonly style="background: #f5f5f5;">
           </label>
-          <label>?? MTU
+          <label>📏 MTU
             <input type="number" id="edit-bond-mtu" value="${iface.mtu}" min="68" max="9000">
           </label>
-          <label>?? IPv4 Address
+          <label>🌐 IPv4 Address
             <input type="text" id="edit-bond-ip" value="${iface.ipv4 || ''}" placeholder="192.168.1.100/24">
           </label>
           <div style="margin: 1rem 0; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
-            <strong>?? Note:</strong> To modify bond mode or slave interfaces, delete and recreate the bond.
+            <strong>ℹ️ Note:</strong> To modify bond mode or slave interfaces, delete and recreate the bond.
           </div>
           <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
-            <button type="button" class="btn" id="cancel-edit-bond">? Cancel</button>
-            <button type="button" class="btn primary" id="save-edit-bond">?? Save Changes</button>
+            <button type="button" class="btn" id="cancel-edit-bond">❌ Cancel</button>
+            <button type="button" class="btn primary" id="save-edit-bond">💾 Save Changes</button>
           </div>
         </form>
       </div>
@@ -172,12 +172,12 @@ async function saveVlanEdits(modal, iface) {
     }
 
     modal.close();
-    alert('? VLAN configuration updated successfully!');
+    alert('✅ VLAN configuration updated successfully!');
     await loadInterfaces();
 
   } catch (error) {
     console.error('Failed to save VLAN edits:', error);
-    alert(`? Failed to save changes: ${error}`);
+    alert(`❌ Failed to save changes: ${error}`);
   } finally {
     setStatus('Ready');
   }
@@ -221,12 +221,12 @@ async function saveBridgeEdits(modal, iface) {
     }
 
     modal.close();
-    alert('? Bridge configuration updated successfully!');
+    alert('✅ Bridge configuration updated successfully!');
     await loadInterfaces();
 
   } catch (error) {
     console.error('Failed to save bridge edits:', error);
-    alert(`? Failed to save changes: ${error}`);
+    alert(`❌ Failed to save changes: ${error}`);
   } finally {
     setStatus('Ready');
   }
@@ -270,19 +270,20 @@ async function saveBondEdits(modal, iface) {
     }
 
     modal.close();
-    alert('? Bond configuration updated successfully!');
+    alert('✅ Bond configuration updated successfully!');
     await loadInterfaces();
 
   } catch (error) {
     console.error('Failed to save bond edits:', error);
-    alert(`? Failed to save changes: ${error}`);
+    alert(`❌ Failed to save changes: ${error}`);
   } finally {
     setStatus('Ready');
   }
 }
 
 async function deleteConstructedInterface(iface) {
-  const confirmMessage = `??? Delete ${iface.dev}?\n\nThis will permanently remove the ${iface.dev.includes('.') ? 'VLAN' : iface.dev.startsWith('br') ? 'bridge' : 'bond'} interface and its configuration.\n\nThis action cannot be undone.`;
+  const interfaceType = iface.dev.includes('.') ? 'VLAN' : iface.dev.startsWith('br') ? 'bridge' : 'bond';
+  const confirmMessage = `🗑️ Delete ${iface.dev}?\n\nThis will permanently remove the ${interfaceType} interface and its configuration.\n\nThis action cannot be undone.`;
   
   if (!confirm(confirmMessage)) {
     return;
@@ -291,34 +292,62 @@ async function deleteConstructedInterface(iface) {
   try {
     setStatus(`Deleting ${iface.dev}...`);
 
-    // Remove from netplan first
-    const result = await netplanAction('remove_interface', { name: iface.dev });
+    // Determine the correct type for the delete action
+    let deleteType;
+    if (iface.dev.includes('.')) {
+      deleteType = 'vlans';
+    } else if (iface.dev.startsWith('br')) {
+      deleteType = 'bridges';
+    } else if (iface.dev.startsWith('bond')) {
+      deleteType = 'bonds';
+    }
+
+    // Remove from netplan first using the correct delete action
+    console.log(`Attempting to delete ${deleteType} interface ${iface.dev}`);
+    const result = await netplanAction('delete', { 
+      type: deleteType, 
+      name: iface.dev 
+    });
+    
     if (result.error) {
       console.warn('Failed to remove from netplan:', result.error);
+      // Continue with the deletion even if netplan removal fails
+    } else {
+      console.log('Successfully removed from netplan configuration');
     }
 
-    // Bring interface down
+    // Bring interface down first
     try {
       await run('ip', ['link', 'set', iface.dev, 'down'], { superuser: 'require' });
+      console.log(`Interface ${iface.dev} brought down`);
     } catch (e) {
       console.warn('Could not bring interface down:', e);
+      // Continue even if we can't bring it down
     }
 
-    // Delete interface
+    // Delete interface using ip command
     try {
       await run('ip', ['link', 'delete', iface.dev], { superuser: 'require' });
+      console.log(`Interface ${iface.dev} deleted via ip command`);
     } catch (e) {
       console.warn('Could not delete interface via ip command:', e);
+      // This might fail if the interface was already removed or doesn't exist
     }
 
-    alert(`? ${iface.dev} deleted successfully!`);
+    alert(`✅ ${interfaceType} ${iface.dev} deleted successfully!`);
+    setStatus(`${interfaceType} deleted successfully`);
+    
+    // Reload interfaces to reflect the change
     await loadInterfaces();
 
   } catch (error) {
     console.error('Failed to delete interface:', error);
-    alert(`? Failed to delete ${iface.dev}: ${error}`);
+    const errorMsg = `❌ Failed to delete ${iface.dev}: ${error.message || error}`;
+    alert(errorMsg);
+    setStatus('Delete operation failed');
   } finally {
-    setStatus('Ready');
+    // Always ensure we end with a clean state
+    setTimeout(() => setStatus('Ready'), 3000);
   }
 }
 
