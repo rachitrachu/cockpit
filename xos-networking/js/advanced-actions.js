@@ -289,55 +289,136 @@ async function deleteConstructedInterface(iface) {
     return;
   }
 
+  let operationSuccess = false;
+  let errorMessages = [];
+
   try {
     setStatus(`Deleting ${iface.dev}...`);
 
-    // Determine the correct type for the delete action
-    let deleteType;
-    if (iface.dev.includes('.')) {
-      deleteType = 'vlans';
-    } else if (iface.dev.startsWith('br')) {
-      deleteType = 'bridges';
-    } else if (iface.dev.startsWith('bond')) {
-      deleteType = 'bonds';
+    // Step 1: Remove any IP addresses first
+    if (iface.ipv4) {
+      try {
+        console.log(`Removing IP address ${iface.ipv4} from ${iface.dev}`);
+        await run('ip', ['addr', 'del', iface.ipv4, 'dev', iface.dev], { superuser: 'require' });
+        console.log(`IP address removed successfully`);
+      } catch (e) {
+        console.warn('Could not remove IP address:', e);
+        errorMessages.push(`Failed to remove IP address: ${e}`);
+      }
     }
 
-    // Remove from netplan first using the correct delete action
-    console.log(`Attempting to delete ${deleteType} interface ${iface.dev}`);
-    const result = await netplanAction('delete', { 
-      type: deleteType, 
-      name: iface.dev 
-    });
-    
-    if (result.error) {
-      console.warn('Failed to remove from netplan:', result.error);
-      // Continue with the deletion even if netplan removal fails
-    } else {
-      console.log('Successfully removed from netplan configuration');
-    }
-
-    // Bring interface down first
+    // Step 2: Bring interface down
     try {
+      console.log(`Bringing interface ${iface.dev} down`);
       await run('ip', ['link', 'set', iface.dev, 'down'], { superuser: 'require' });
-      console.log(`Interface ${iface.dev} brought down`);
+      console.log(`Interface ${iface.dev} brought down successfully`);
     } catch (e) {
       console.warn('Could not bring interface down:', e);
-      // Continue even if we can't bring it down
+      errorMessages.push(`Failed to bring interface down: ${e}`);
     }
 
-    // Delete interface using ip command
+    // Step 3: Delete the interface using the correct method
     try {
-      await run('ip', ['link', 'delete', iface.dev], { superuser: 'require' });
-      console.log(`Interface ${iface.dev} deleted via ip command`);
+      if (iface.dev.includes('.')) {
+        // For VLAN interfaces, use 'ip link delete' (this should work for VLANs)
+        console.log(`Deleting VLAN interface ${iface.dev}`);
+        await run('ip', ['link', 'delete', iface.dev], { superuser: 'require' });
+        console.log(`VLAN interface ${iface.dev} deleted successfully`);
+      } else if (iface.dev.startsWith('br')) {
+        // For bridge interfaces
+        console.log(`Deleting bridge interface ${iface.dev}`);
+        await run('ip', ['link', 'delete', iface.dev, 'type', 'bridge'], { superuser: 'require' });
+        console.log(`Bridge interface ${iface.dev} deleted successfully`);
+      } else if (iface.dev.startsWith('bond')) {
+        // For bond interfaces
+        console.log(`Deleting bond interface ${iface.dev}`);
+        await run('ip', ['link', 'delete', iface.dev], { superuser: 'require' });
+        console.log(`Bond interface ${iface.dev} deleted successfully`);
+      }
+      
+      operationSuccess = true;
+      
     } catch (e) {
-      console.warn('Could not delete interface via ip command:', e);
-      // This might fail if the interface was already removed or doesn't exist
+      console.error('Failed to delete interface via ip command:', e);
+      errorMessages.push(`Failed to delete interface: ${e}`);
+      
+      // Try alternative method for VLAN deletion
+      if (iface.dev.includes('.')) {
+        try {
+          console.log(`Trying alternative VLAN deletion method for ${iface.dev}`);
+          const parts = iface.dev.split('.');
+          const parent = parts[0];
+          const vlanId = parts[1];
+          
+          // Try using vconfig if available (fallback method)
+          await run('bash', ['-c', `if command -v vconfig >/dev/null 2>&1; then vconfig rem ${iface.dev}; else echo "vconfig not available"; fi`], { superuser: 'require' });
+          console.log(`Alternative VLAN deletion attempted`);
+          operationSuccess = true;
+        } catch (altError) {
+          console.error('Alternative VLAN deletion also failed:', altError);
+          errorMessages.push(`Alternative deletion method failed: ${altError}`);
+        }
+      }
     }
 
-    alert(`✅ ${interfaceType} ${iface.dev} deleted successfully!`);
-    setStatus(`${interfaceType} deleted successfully`);
+    // Step 4: Remove from netplan configuration
+    try {
+      let deleteType;
+      if (iface.dev.includes('.')) {
+        deleteType = 'vlans';
+      } else if (iface.dev.startsWith('br')) {
+        deleteType = 'bridges';
+      } else if (iface.dev.startsWith('bond')) {
+        deleteType = 'bonds';
+      }
+
+      console.log(`Removing ${deleteType} interface ${iface.dev} from netplan`);
+      const result = await netplanAction('delete', { 
+        type: deleteType, 
+        name: iface.dev 
+      });
+      
+      if (result.error) {
+        console.warn('Failed to remove from netplan:', result.error);
+        errorMessages.push(`Netplan removal failed: ${result.error}`);
+      } else {
+        console.log('Successfully removed from netplan configuration');
+      }
+    } catch (netplanError) {
+      console.error('Netplan deletion failed:', netplanError);
+      errorMessages.push(`Netplan operation failed: ${netplanError}`);
+    }
+
+    // Step 5: Verify deletion by checking if interface still exists
+    try {
+      console.log(`Verifying deletion of ${iface.dev}`);
+      const checkResult = await run('ip', ['link', 'show', iface.dev], { superuser: 'try' });
+      if (checkResult && checkResult.trim()) {
+        console.warn(`Interface ${iface.dev} still exists after deletion attempt`);
+        operationSuccess = false;
+        errorMessages.push(`Interface still exists after deletion`);
+      } else {
+        console.log(`Interface ${iface.dev} successfully deleted - no longer exists`);
+        operationSuccess = true;
+      }
+    } catch (e) {
+      // If 'ip link show' fails, it means the interface doesn't exist (good!)
+      console.log(`Interface ${iface.dev} verified as deleted (ip link show failed as expected)`);
+      operationSuccess = true;
+    }
+
+    // Show result to user
+    if (operationSuccess) {
+      alert(`✅ ${interfaceType} ${iface.dev} deleted successfully!`);
+      setStatus(`${interfaceType} deleted successfully`);
+    } else {
+      const errorSummary = errorMessages.length > 0 ? `\n\nErrors encountered:\n${errorMessages.join('\n')}` : '';
+      alert(`⚠️ ${interfaceType} ${iface.dev} may not have been completely deleted.${errorSummary}\n\nCheck the console for detailed logs.`);
+      setStatus('Delete operation completed with warnings');
+    }
     
-    // Reload interfaces to reflect the change
+    // Always reload interfaces to reflect the actual current state
+    console.log('Reloading interfaces to reflect current state');
     await loadInterfaces();
 
   } catch (error) {
