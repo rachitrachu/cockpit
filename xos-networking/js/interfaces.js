@@ -3,9 +3,10 @@
 
 // Helper function to determine user-friendly interface type names
 function getInterfaceTypeFriendlyName(interfaceName, rawType, fullLine) {
-  // VLAN interfaces
+  // VLAN interfaces - Enhanced with detailed info
   if (interfaceName.includes('.') || interfaceName.includes('@')) {
-    return 'VLAN';
+    const vlanInfo = parseVlanInfo(interfaceName);
+    return `VLAN ${vlanInfo.id}`;
   }
   
   // Bridge interfaces
@@ -75,6 +76,64 @@ function getInterfaceTypeFriendlyName(interfaceName, rawType, fullLine) {
   };
   
   return typeMap[rawType] || rawType.charAt(0).toUpperCase() + rawType.slice(1);
+}
+
+// Enhanced VLAN information parser
+function parseVlanInfo(interfaceName) {
+  const vlanInfo = {
+    id: null,
+    parent: null,
+    fullName: interfaceName,
+    isVlan: false
+  };
+
+  // Handle different VLAN naming conventions
+  if (interfaceName.includes('.')) {
+    // Standard VLAN notation: eth0.100, eno1.1117
+    const parts = interfaceName.split('.');
+    if (parts.length >= 2) {
+      vlanInfo.parent = parts[0];
+      vlanInfo.id = parts[1].split('@')[0]; // Remove any @parent suffix
+      vlanInfo.isVlan = true;
+    }
+  } else if (interfaceName.includes('@')) {
+    // Alternative VLAN notation: vlan100@eth0
+    const parts = interfaceName.split('@');
+    if (parts.length >= 2) {
+      const nameWithId = parts[0];
+      vlanInfo.parent = parts[1];
+      
+      // Extract VLAN ID from the name part
+      const idMatch = nameWithId.match(/(\d+)/);
+      if (idMatch) {
+        vlanInfo.id = idMatch[1];
+      }
+      vlanInfo.isVlan = true;
+    }
+  }
+
+  return vlanInfo;
+}
+
+// Enhanced device name display with VLAN information
+function createDeviceDisplayName(interfaceName) {
+  const vlanInfo = parseVlanInfo(interfaceName);
+  
+  if (vlanInfo.isVlan) {
+    return {
+      displayName: interfaceName,
+      subtitle: `🏷️ VLAN ${vlanInfo.id} on ${vlanInfo.parent}`,
+      isVlan: true,
+      vlanId: vlanInfo.id,
+      parentInterface: vlanInfo.parent
+    };
+  }
+  
+  return {
+    displayName: interfaceName,
+    subtitle: null,
+    isVlan: false
+  };
 }
 
 async function getPhysicalInterfaces() {
@@ -196,6 +255,23 @@ async function loadInterfaces() {
     for (const iface of interfaces) {
       const row = document.createElement('tr');
 
+      // Enhanced device name display
+      const deviceInfo = createDeviceDisplayName(iface.dev);
+      const deviceCell = document.createElement('td');
+      
+      if (deviceInfo.isVlan) {
+        // Enhanced VLAN display
+        deviceCell.innerHTML = `
+          <div style="font-weight: 600; color: var(--primary-color);">${deviceInfo.displayName}</div>
+          <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
+            ${deviceInfo.subtitle}
+          </div>
+        `;
+        row.style.background = 'linear-gradient(90deg, rgba(0,102,204,0.05) 0%, rgba(255,255,255,0) 100%)';
+      } else {
+        deviceCell.textContent = deviceInfo.displayName;
+      }
+
       const actionsCell = document.createElement('td');
       actionsCell.className = 'actions';
 
@@ -238,7 +314,20 @@ async function loadInterfaces() {
       const btnInfo = createButton('Info', async () => {
         try {
           const info = await run('ip', ['addr', 'show', iface.dev]);
-          alert(`Interface ${iface.dev} details:\n\n${info}`);
+          
+          // Enhanced info display with VLAN details
+          const deviceInfo = createDeviceDisplayName(iface.dev);
+          let enhancedInfo = `Interface ${iface.dev} Details:\n\n`;
+          
+          if (deviceInfo.isVlan) {
+            enhancedInfo += `🏷️ VLAN Information:\n`;
+            enhancedInfo += `   VLAN ID: ${deviceInfo.vlanId}\n`;
+            enhancedInfo += `   Parent Interface: ${deviceInfo.parentInterface}\n`;
+            enhancedInfo += `   Type: ${iface.type}\n\n`;
+          }
+          
+          enhancedInfo += `📊 Technical Details:\n${info}`;
+          alert(enhancedInfo);
         } catch (e) {
           alert(`Failed to get info for ${iface.dev}: ${e}`);
         }
@@ -651,7 +740,7 @@ async function loadInterfaces() {
       }
 
       const cells = [
-        iface.dev,
+        deviceCell, // Already created with enhanced VLAN info
         iface.type,
         createStatusBadge(iface.state),
         iface.mac,
@@ -661,7 +750,8 @@ async function loadInterfaces() {
         actionsCell
       ];
 
-      cells.forEach(content => {
+      // Skip the first cell since we already created deviceCell
+      cells.slice(1).forEach(content => {
         const cell = document.createElement('td');
         if (typeof content === 'string') {
           cell.textContent = content;
@@ -670,6 +760,9 @@ async function loadInterfaces() {
         }
         row.appendChild(cell);
       });
+      
+      // Add the deviceCell as the first cell
+      row.insertBefore(deviceCell, row.firstChild);
 
       tbody.appendChild(row);
     }
@@ -755,7 +848,7 @@ async function showCriticalIPChangeConfirmation(iface, criticalInfo) {
         <div style="margin: 1.5rem 0; padding: 1rem; background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px;">
           <div style="display: flex; align-items: center; margin-bottom: 1rem;">
             <span style="font-size: 2rem; margin-right: 0.5rem;">🚨</span>
-            <strong style="color: #856404;">WARNING: You are about to modify a critical network interface!</strong>
+            <strong style="color: #856404;">WARNING: You are modifying a critical network interface!</strong>
           </div>
           <div style="color: #856404;">
             <p><strong>Interface:</strong> <code>${iface.dev}</code></p>
@@ -904,7 +997,6 @@ async function showCriticalInterfaceDownConfirmation(iface, criticalInfo) {
             <li>Terminate active SSH sessions and connections</li>
             <li>Disrupt services and applications using this interface</li>
             <li>May require console/physical access to bring it back up</li>
-            <li>Could isolate the system if this is the primary network path</li>
           </ul>
         </div>
 
