@@ -1,6 +1,82 @@
 ﻿'use strict';
 /* global createButton, createStatusBadge, netplanAction, run, setStatus, setupModal, addAdvancedInterfaceActions, $, $$ */
 
+// Helper function to determine user-friendly interface type names
+function getInterfaceTypeFriendlyName(interfaceName, rawType, fullLine) {
+  // VLAN interfaces
+  if (interfaceName.includes('.') || interfaceName.includes('@')) {
+    return 'VLAN';
+  }
+  
+  // Bridge interfaces
+  if (interfaceName.startsWith('br') || rawType === 'bridge') {
+    return 'Bridge';
+  }
+  
+  // Bond interfaces
+  if (interfaceName.startsWith('bond')) {
+    return 'Bond';
+  }
+  
+  // Loopback
+  if (interfaceName === 'lo' || rawType === 'loopback') {
+    return 'Loopback';
+  }
+  
+  // Virtual interfaces
+  if (interfaceName.startsWith('virbr') || interfaceName.startsWith('veth')) {
+    return 'Virtual';
+  }
+  
+  // Docker interfaces
+  if (interfaceName.startsWith('docker')) {
+    return 'Docker';
+  }
+  
+  // Open vSwitch
+  if (interfaceName.includes('ovs') || interfaceName.startsWith('br-')) {
+    return 'OVS';
+  }
+  
+  // Wireless interfaces
+  if (interfaceName.startsWith('wl') || interfaceName.startsWith('wifi') || interfaceName.startsWith('wlan')) {
+    return 'Wireless';
+  }
+  
+  // Tunnel interfaces
+  if (interfaceName.startsWith('tun') || interfaceName.startsWith('tap')) {
+    return 'Tunnel';
+  }
+  
+  // Physical Ethernet (common naming patterns)
+  if (interfaceName.startsWith('eth') || 
+      interfaceName.startsWith('eno') || 
+      interfaceName.startsWith('ens') || 
+      interfaceName.startsWith('enp') || 
+      interfaceName.startsWith('em')) {
+    return 'Ethernet';
+  }
+  
+  // PPP interfaces
+  if (interfaceName.startsWith('ppp')) {
+    return 'PPP';
+  }
+  
+  // Default mapping based on raw type
+  const typeMap = {
+    'ether': 'Ethernet',
+    'loopback': 'Loopback', 
+    'bridge': 'Bridge',
+    'vlan': 'VLAN',
+    'bond': 'Bond',
+    'wifi': 'Wireless',
+    'ppp': 'PPP',
+    'tunnel': 'Tunnel'
+  };
+  
+  return typeMap[rawType] || rawType.charAt(0).toUpperCase() + rawType.slice(1);
+}
+
 async function getPhysicalInterfaces() {
   try {
     const output = await run('ip', ['-o', 'link', 'show']);
@@ -79,7 +155,11 @@ async function loadInterfaces() {
             const macMatch = line.match(/link\/\w+ ([0-9a-fA-F:]+)/);
             if (macMatch) mac = macMatch[1];
             const typeMatch = line.match(/link\/(\w+)/);
-            if (typeMatch) type = typeMatch[1];
+            if (typeMatch) {
+              const rawType = typeMatch[1];
+              // Enhanced type detection with user-friendly names
+              type = getInterfaceTypeFriendlyName(dev, rawType, line);
+            }
           }
           if (line.includes('state')) {
             const stateMatch = line.match(/state (\w+)/);
