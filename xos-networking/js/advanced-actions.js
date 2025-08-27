@@ -372,20 +372,24 @@ async function deleteConstructedInterface(iface) {
         deleteType = 'bonds';
       }
 
-      console.log(`Removing ${deleteType} interface ${iface.dev} from netplan`);
+      console.log(`🔧 Removing ${deleteType} interface ${iface.dev} from netplan`);
+      console.log(`📤 Sending to netplan_manager: action='delete', config={type: '${deleteType}', name: '${iface.dev}'}`);
+      
       const result = await netplanAction('delete', { 
         type: deleteType, 
         name: iface.dev 
       });
       
+      console.log(`📥 Netplan response:`, result);
+      
       if (result.error) {
-        console.warn('Failed to remove from netplan:', result.error);
+        console.warn('❌ Failed to remove from netplan:', result.error);
         errorMessages.push(`Netplan removal failed: ${result.error}`);
       } else {
-        console.log('Successfully removed from netplan configuration');
+        console.log('✅ Successfully removed from netplan configuration');
       }
     } catch (netplanError) {
-      console.error('Netplan deletion failed:', netplanError);
+      console.error('💥 Netplan deletion failed:', netplanError);
       errorMessages.push(`Netplan operation failed: ${netplanError}`);
     }
 
@@ -405,6 +409,24 @@ async function deleteConstructedInterface(iface) {
       // If 'ip link show' fails, it means the interface doesn't exist (good!)
       console.log(`Interface ${iface.dev} verified as deleted (ip link show failed as expected)`);
       operationSuccess = true;
+    }
+
+    // Step 6: Double-check netplan file was actually updated
+    try {
+      console.log(`🔍 Verifying netplan configuration was updated`);
+      const showConfigResult = await run('cat', ['/etc/netplan/99-cockpit.yaml'], { superuser: 'try' });
+      console.log(`📋 Current netplan config after deletion:`);
+      console.log(showConfigResult);
+      
+      // Check if the interface name still appears in the config
+      if (showConfigResult && showConfigResult.includes(iface.dev)) {
+        console.warn(`⚠️ Interface ${iface.dev} still appears in netplan config after deletion`);
+        errorMessages.push(`Interface still appears in netplan configuration`);
+      } else {
+        console.log(`✅ Interface ${iface.dev} successfully removed from netplan config`);
+      }
+    } catch (configCheckError) {
+      console.warn('Could not verify netplan config:', configCheckError);
     }
 
     // Show result to user

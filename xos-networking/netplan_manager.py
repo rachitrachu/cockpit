@@ -207,21 +207,58 @@ def main():
             }
         elif action == 'delete':
             # config: {type, name}
-            print(f"Attempting to delete {config.get('type')} named {config.get('name')}", file=sys.stderr)
-            if config and config.get('type') in network and config.get('name') in network[config['type']]:
-                del network[config['type']][config['name']]
-                print(f"Deleted {config.get('type')} named {config.get('name')}", file=sys.stderr)
-                # Also delete the bond interface using ip link (best-effort)
-                if config.get('type') == 'bonds':
-                    try:
-                        subprocess.run(['ip', 'link', 'delete', config.get('name')], 
-                                     stdout=subprocess.PIPE, 
-                                     stderr=subprocess.PIPE, 
-                                     check=True)
-                    except:
-                        pass  # Ignore errors if interface doesn't exist
+            interface_type = config.get('type')
+            interface_name = config.get('name')
+            
+            print(f"DEBUG: Delete action - type='{interface_type}', name='{interface_name}'", file=sys.stderr, flush=True)
+            print(f"DEBUG: Current network sections: {list(network.keys())}", file=sys.stderr, flush=True)
+            
+            if interface_type and interface_name:
+                if interface_type in network:
+                    print(f"DEBUG: Found section '{interface_type}' in network config", file=sys.stderr, flush=True)
+                    print(f"DEBUG: Interfaces in '{interface_type}': {list(network[interface_type].keys()) if isinstance(network[interface_type], dict) else 'Not a dict'}", file=sys.stderr, flush=True)
+                    
+                    if isinstance(network[interface_type], dict) and interface_name in network[interface_type]:
+                        # Remove the interface from the configuration
+                        print(f"DEBUG: Removing '{interface_name}' from '{interface_type}' section", file=sys.stderr, flush=True)
+                        del network[interface_type][interface_name]
+                        print(f"DEBUG: Successfully deleted {interface_type}/{interface_name} from netplan config", file=sys.stderr, flush=True)
+                        
+                        # If the section is now empty, optionally remove it
+                        if not network[interface_type]:
+                            print(f"DEBUG: Section '{interface_type}' is now empty, removing it", file=sys.stderr, flush=True)
+                            del network[interface_type]
+                        
+                        # Try to delete the actual interface using ip link (best-effort)
+                        try:
+                            print(f"DEBUG: Attempting to delete interface '{interface_name}' using ip command", file=sys.stderr, flush=True)
+                            result = subprocess.run(['ip', 'link', 'delete', interface_name], 
+                                                   stdout=subprocess.PIPE, 
+                                                   stderr=subprocess.PIPE, 
+                                                   text=True,
+                                                   check=True)
+                            print(f"DEBUG: Successfully deleted interface '{interface_name}' via ip command", file=sys.stderr, flush=True)
+                        except subprocess.CalledProcessError as e:
+                            print(f"DEBUG: Failed to delete interface '{interface_name}' via ip command: {e.stderr}", file=sys.stderr, flush=True)
+                            # This is expected to fail sometimes, continue anyway
+                        except Exception as e:
+                            print(f"DEBUG: Exception during ip link delete: {e}", file=sys.stderr, flush=True)
+                            
+                    else:
+                        error_msg = f"Interface '{interface_name}' not found in '{interface_type}' section"
+                        print(f"DEBUG: {error_msg}", file=sys.stderr, flush=True)
+                        print(json.dumps({'error': error_msg}), file=sys.stdout, flush=True)
+                        sys.exit(1)
+                else:
+                    error_msg = f"Section '{interface_type}' not found in network configuration"
+                    print(f"DEBUG: {error_msg}", file=sys.stderr, flush=True)
+                    print(json.dumps({'error': error_msg}), file=sys.stdout, flush=True)
+                    sys.exit(1)
             else:
-                print(f"No matching {config.get('type')} named {config.get('name')} found for deletion.", file=sys.stderr)
+                error_msg = "Missing 'type' or 'name' in delete configuration"
+                print(f"DEBUG: {error_msg}", file=sys.stderr, flush=True)
+                print(json.dumps({'error': error_msg}), file=sys.stdout, flush=True)
+                sys.exit(1)
         elif action == 'set_ip':
             # Set IP address configuration for an interface
             iface_name = config.get('name')
