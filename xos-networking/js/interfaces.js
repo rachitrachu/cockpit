@@ -136,6 +136,157 @@ function createDeviceDisplayName(interfaceName) {
   };
 }
 
+// Enhanced bonding/bridging member information parser
+async function getBondBridgeDetails(interfaceName) {
+  const details = {
+    isBond: false,
+    isBridge: false,
+    members: [],
+    memberOf: null,
+    role: null,
+    bondMode: null,
+    bridgeInfo: null
+  };
+
+  try {
+    // Check if this is a bond interface
+    if (interfaceName.startsWith('bond')) {
+      details.isBond = true;
+      
+      // Get bond information
+      try {
+        const bondInfo = await run('cat', [`/proc/net/bonding/${interfaceName}`], { superuser: 'try' });
+        if (bondInfo) {
+          // Parse bond mode
+          const modeMatch = bondInfo.match(/Bonding Mode: ([^\n]+)/);
+          if (modeMatch) {
+            details.bondMode = modeMatch[1];
+          }
+          
+          // Parse slave interfaces
+          const slaveMatches = bondInfo.match(/Slave Interface: (\w+)/g);
+          if (slaveMatches) {
+            details.members = slaveMatches.map(match => match.replace('Slave Interface: ', ''));
+          }
+        }
+      } catch (e) {
+        console.warn('Could not read bond info from /proc/net/bonding/', e);
+      }
+    }
+
+    // Check if this is a bridge interface  
+    if (interfaceName.startsWith('br')) {
+      details.isBridge = true;
+      
+      try {
+        // Get bridge information using brctl or ip bridge
+        const bridgeInfo = await run('ip', ['link', 'show', 'master', interfaceName], { superuser: 'try' });
+        if (bridgeInfo) {
+          // Parse bridge members from ip output
+          const lines = bridgeInfo.split('\n');
+          details.members = lines
+            .filter(line => line.includes('master ' + interfaceName))
+            .map(line => {
+              const match = line.match(/^\d+:\s+([^:@]+)/);
+              return match ? match[1].trim() : null;
+            })
+            .filter(Boolean);
+        }
+        
+        // Try alternative method with bridge command
+        try {
+          const bridgeMembers = await run('bridge', ['link', 'show'], { superuser: 'try' });
+          if (bridgeMembers) {
+            const lines = bridgeMembers.split('\n');
+            const bridgeLines = lines.filter(line => line.includes(`master ${interfaceName}`));
+            bridgeLines.forEach(line => {
+              const match = line.match(/^\d+:\s+([^:@\s]+)/);
+              if (match && !details.members.includes(match[1])) {
+                details.members.push(match[1]);
+              }
+            });
+          }
+        } catch (e) {
+          console.warn('Bridge command not available:', e);
+        }
+      } catch (e) {
+        console.warn('Could not get bridge member info:', e);
+      }
+    }
+
+    // Check if this interface is a member of a bond or bridge
+    try {
+      const linkInfo = await run('ip', ['link', 'show', interfaceName], { superuser: 'try' });
+      if (linkInfo) {
+        // Check for master relationship
+        const masterMatch = linkInfo.match(/master (\w+)/);
+        if (masterMatch) {
+          details.memberOf = masterMatch[1];
+          
+          // Determine role based on master type
+          if (masterMatch[1].startsWith('bond')) {
+            details.role = 'Bond Member';
+          } else if (masterMatch[1].startsWith('br')) {
+            details.role = 'Bridge Port';
+          } else {
+            details.role = 'Member';
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Could not get interface master info:', e);
+    }
+
+  } catch (error) {
+    console.warn('Error getting bond/bridge details for', interfaceName, ':', error);
+  }
+
+  return details;
+}
+
+// Enhanced device name display with bonding/bridging information
+async function createEnhancedDeviceDisplayName(interfaceName, interfaceType) {
+  const vlanInfo = parseVlanInfo(interfaceName);
+  const bondBridgeInfo = await getBondBridgeDetails(interfaceName);
+  
+  let displayInfo = {
+    displayName: interfaceName,
+    subtitle: null,
+    isVlan: vlanInfo.isVlan,
+    isBond: bondBridgeInfo.isBond,
+    isBridge: bondBridgeInfo.isBridge,
+    memberOf: bondBridgeInfo.memberOf,
+    members: bondBridgeInfo.members,
+    role: bondBridgeInfo.role,
+    bondMode: bondBridgeInfo.bondMode
+  };
+  
+  // Build subtitle with all relevant information
+  const subtitleParts = [];
+  
+  if (vlanInfo.isVlan) {
+    subtitleParts.push(`🏷️ VLAN ${vlanInfo.id} on ${vlanInfo.parent}`);
+  }
+  
+  if (bondBridgeInfo.isBond && bondBridgeInfo.members.length > 0) {
+    subtitleParts.push(`🔗 Bond: ${bondBridgeInfo.members.length} members (${bondBridgeInfo.bondMode || 'unknown mode'})`);
+  }
+  
+  if (bondBridgeInfo.isBridge && bondBridgeInfo.members.length > 0) {
+    subtitleParts.push(`🌉 Bridge: ${bondBridgeInfo.members.length} ports`);
+  }
+  
+  if (bondBridgeInfo.memberOf) {
+    subtitleParts.push(`👥 ${bondBridgeInfo.role} of ${bondBridgeInfo.memberOf}`);
+  }
+  
+  if (subtitleParts.length > 0) {
+    displayInfo.subtitle = subtitleParts.join(' • ');
+  }
+  
+  return displayInfo;
+}
+
 async function getPhysicalInterfaces() {
   try {
     const output = await run('ip', ['-o', 'link', 'show']);
@@ -255,12 +406,12 @@ async function loadInterfaces() {
     for (const iface of interfaces) {
       const row = document.createElement('tr');
 
-      // Enhanced device name display
-      const deviceInfo = createDeviceDisplayName(iface.dev);
+      // Enhanced device name display with bonding/bridging info
+      const deviceInfo = await createEnhancedDeviceDisplayName(iface.dev, iface.type);
       const deviceCell = document.createElement('td');
       
+      // Apply styling based on interface type
       if (deviceInfo.isVlan) {
-        // Enhanced VLAN display
         deviceCell.innerHTML = `
           <div style="font-weight: 600; color: var(--primary-color);">${deviceInfo.displayName}</div>
           <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
@@ -268,6 +419,37 @@ async function loadInterfaces() {
           </div>
         `;
         row.style.background = 'linear-gradient(90deg, rgba(0,102,204,0.05) 0%, rgba(255,255,255,0) 100%)';
+      } else if (deviceInfo.isBond) {
+        deviceCell.innerHTML = `
+          <div style="font-weight: 600; color: var(--warning-color);">${deviceInfo.displayName}</div>
+          <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
+            ${deviceInfo.subtitle}
+          </div>
+        `;
+        row.style.background = 'linear-gradient(90deg, rgba(255,193,7,0.05) 0%, rgba(255,255,255,0) 100%)';
+      } else if (deviceInfo.isBridge) {
+        deviceCell.innerHTML = `
+          <div style="font-weight: 600; color: var(--info-color);">${deviceInfo.displayName}</div>
+          <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
+            ${deviceInfo.subtitle}
+          </div>
+        `;
+        row.style.background = 'linear-gradient(90deg, rgba(23,162,184,0.05) 0%, rgba(255,255,255,0) 100%)';
+      } else if (deviceInfo.memberOf) {
+        deviceCell.innerHTML = `
+          <div style="font-weight: 600;">${deviceInfo.displayName}</div>
+          <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
+            ${deviceInfo.subtitle}
+          </div>
+        `;
+        row.style.background = 'linear-gradient(90deg, rgba(108,117,125,0.03) 0%, rgba(255,255,255,0) 100%)';
+      } else if (deviceInfo.subtitle) {
+        deviceCell.innerHTML = `
+          <div style="font-weight: 600;">${deviceInfo.displayName}</div>
+          <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
+            ${deviceInfo.subtitle}
+          </div>
+        `;
       } else {
         deviceCell.textContent = deviceInfo.displayName;
       }
@@ -315,15 +497,32 @@ async function loadInterfaces() {
         try {
           const info = await run('ip', ['addr', 'show', iface.dev]);
           
-          // Enhanced info display with VLAN details
-          const deviceInfo = createDeviceDisplayName(iface.dev);
+          // Enhanced info display with VLAN and bonding/bridging details
           let enhancedInfo = `Interface ${iface.dev} Details:\n\n`;
           
           if (deviceInfo.isVlan) {
             enhancedInfo += `🏷️ VLAN Information:\n`;
-            enhancedInfo += `   VLAN ID: ${deviceInfo.vlanId}\n`;
-            enhancedInfo += `   Parent Interface: ${deviceInfo.parentInterface}\n`;
-            enhancedInfo += `   Type: ${iface.type}\n\n`;
+            enhancedInfo += `   VLAN ID: ${parseVlanInfo(iface.dev).id}\n`;
+            enhancedInfo += `   Parent Interface: ${parseVlanInfo(iface.dev).parent}\n\n`;
+          }
+          
+          if (deviceInfo.isBond) {
+            enhancedInfo += `🔗 Bond Information:\n`;
+            enhancedInfo += `   Bond Mode: ${deviceInfo.bondMode || 'Unknown'}\n`;
+            enhancedInfo += `   Member Interfaces: ${deviceInfo.members.join(', ') || 'None'}\n`;
+            enhancedInfo += `   Member Count: ${deviceInfo.members.length}\n\n`;
+          }
+          
+          if (deviceInfo.isBridge) {
+            enhancedInfo += `🌉 Bridge Information:\n`;
+            enhancedInfo += `   Bridge Ports: ${deviceInfo.members.join(', ') || 'None'}\n`;
+            enhancedInfo += `   Port Count: ${deviceInfo.members.length}\n\n`;
+          }
+          
+          if (deviceInfo.memberOf) {
+            enhancedInfo += `👥 Membership Information:\n`;
+            enhancedInfo += `   Role: ${deviceInfo.role}\n`;
+            enhancedInfo += `   Master Interface: ${deviceInfo.memberOf}\n\n`;
           }
           
           enhancedInfo += `📊 Technical Details:\n${info}`;
