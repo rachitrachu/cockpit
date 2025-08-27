@@ -1,5 +1,5 @@
 ﻿'use strict';
-/* global $, $$, run, setStatus, setupModal, netplanAction, loadInterfaces */
+/* global $, $$, run, setStatus, setupModal, netplanAction, loadInterfaces hi */
 
 async function loadConnections() {
   console.log('Loading connections...');
