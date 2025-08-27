@@ -183,25 +183,86 @@ function setupEventHandlers() {
         console.log('📥 Starting backup process...');
         setStatus('Creating netplan backup...');
 
+        // First, check if netplan directory exists
+        console.log('🔍 Checking if /etc/netplan exists...');
+        try {
+          const netplanCheck = await run('ls', ['-la', '/etc/netplan'], { superuser: 'try' });
+          console.log('✅ /etc/netplan directory exists:', netplanCheck);
+        } catch (e) {
+          console.error('❌ /etc/netplan directory not found:', e);
+          alert('❌ Failed to create backup:\n/etc/netplan directory not found. This system may not use netplan for network configuration.');
+          return;
+        }
+
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const backupDir = `/etc/netplan/backups`;
+        const backupDir = `/tmp/netplan-backups`;  // Changed to /tmp for better compatibility
         const backupFile = `${backupDir}/netplan-backup-${timestamp}.tar.gz`;
 
         console.log('📁 Creating backup directory:', backupDir);
         try {
-          await run('mkdir', ['-p', backupDir], { superuser: 'require' });
+          await run('mkdir', ['-p', backupDir], { superuser: 'try' });
           console.log('✅ Backup directory created/exists');
         } catch (e) {
-          console.warn('Backup directory might already exist:', e);
+          console.error('❌ Failed to create backup directory:', e);
+          alert(`❌ Failed to create backup directory:\n${e}`);
+          return;
+        }
+
+        // Check what's actually in the netplan directory
+        console.log('📋 Listing netplan directory contents...');
+        try {
+          const netplanContents = await run('find', ['/etc/netplan', '-type', 'f', '-name', '*.yaml'], { superuser: 'try' });
+          console.log('📄 Netplan files found:', netplanContents);
+          
+          if (!netplanContents.trim()) {
+            console.log('⚠️ No .yaml files found in /etc/netplan');
+            // Create a simple backup anyway
+            const emptyConfig = `# No netplan configuration files found
+# Backup created on ${new Date().toISOString()}
+# Location: /etc/netplan/
+# This backup contains directory structure only
+`;
+            await run('bash', ['-c', `echo '${emptyConfig}' > ${backupDir}/netplan-empty-backup-${timestamp}.txt`], { superuser: 'try' });
+            
+            alert(`⚠️ Backup created with warning!\n\nNo netplan .yaml files were found, but a backup record was created at:\n${backupDir}/netplan-empty-backup-${timestamp}.txt`);
+            return;
+          }
+        } catch (e) {
+          console.warn('⚠️ Could not list netplan contents, proceeding with backup attempt:', e);
         }
 
         console.log('📦 Creating tar archive:', backupFile);
-        await run('tar', ['-czf', backupFile, '-C', '/etc', 'netplan/'], { superuser: 'require' });
-        console.log('✅ Tar archive created successfully');
+        try {
+          // More robust tar command with better error handling
+          await run('tar', ['-czf', backupFile, '-C', '/etc', 'netplan'], { superuser: 'require' });
+          console.log('✅ Tar archive created successfully');
+        } catch (e) {
+          console.error('❌ Tar command failed:', e);
+          
+          // Try alternative backup method
+          console.log('🔄 Trying alternative backup method...');
+          try {
+            await run('bash', ['-c', `cp -r /etc/netplan ${backupDir}/netplan-${timestamp}`], { superuser: 'require' });
+            const altBackupPath = `${backupDir}/netplan-${timestamp}`;
+            
+            alert(`✅ Backup created using alternative method!\n\n📁 Backup Location:\n${altBackupPath}\n\n💡 The netplan directory has been copied to the backup location.`);
+            return;
+          } catch (e2) {
+            console.error('❌ Alternative backup method also failed:', e2);
+            throw new Error(`Both tar and cp backup methods failed. Tar error: ${e}. Copy error: ${e2}`);
+          }
+        }
 
         console.log('📊 Getting file info...');
-        const backupInfo = await run('ls', ['-lh', backupFile], { superuser: 'try' });
+        let backupInfo;
+        try {
+          backupInfo = await run('ls', ['-lh', backupFile], { superuser: 'try' });
+        } catch (e) {
+          backupInfo = 'File info unavailable';
+          console.warn('Could not get backup file info:', e);
+        }
 
+        console.log('📋 Getting backup list...');
         let backupList = '';
         try {
           backupList = await run('bash', ['-c', `ls -lht ${backupDir}/*.tar.gz 2>/dev/null | head -10 || echo "This is the first backup."`], { superuser: 'try' });
@@ -209,7 +270,7 @@ function setupEventHandlers() {
           backupList = 'This is the first backup.';
         }
 
-        console.log('🎨 Creating modal dialog...');
+        console.log('🎨 Creating success modal dialog...');
         const modal = document.createElement('dialog');
         modal.style.maxWidth = '600px';
         modal.innerHTML = `
@@ -223,6 +284,7 @@ function setupEventHandlers() {
                 <pre style="background: #f8f9fa; padding: 1rem; border-radius: 4px; font-size: 0.875rem;">${backupList}</pre>
               </details>
               <p><strong>💡 Tip:</strong> To restore from backup, extract the tar.gz file to /etc/</p>
+              <p><strong>📍 Access:</strong> You can access backup files at <code>${backupDir}</code></p>
             </div>
             <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1rem;">
               <button type="button" class="btn primary" id="close-backup-modal">✅ OK</button>
@@ -245,7 +307,18 @@ function setupEventHandlers() {
 
       } catch (error) {
         console.error('💥 Backup failed with error:', error);
-        alert(`❌ Failed to create backup:\n${error.message || error}`);
+        
+        // Provide detailed error information
+        let errorMessage = '❌ Failed to create backup:\n\n';
+        errorMessage += `Error: ${error.message || error}\n\n`;
+        errorMessage += 'Possible causes:\n';
+        errorMessage += '• Insufficient permissions (try running with sudo)\n';
+        errorMessage += '• /etc/netplan directory does not exist\n';
+        errorMessage += '• Disk space issues\n';
+        errorMessage += '• tar command not available\n\n';
+        errorMessage += 'Check the browser console for detailed logs.';
+        
+        alert(errorMessage);
       } finally {
         setStatus('Ready');
       }
