@@ -271,6 +271,27 @@ async function loadInterfaces() {
             
             // Step 1: Ensure interface is UP before configuring IP
             console.log(`🔍 Checking interface ${iface.dev} status before IP configuration`);
+            
+            // First, let's get detailed info about the interface
+            try {
+              const interfaceInfo = await run('ip', ['addr', 'show', iface.dev], { superuser: 'try' });
+              console.log(`📋 Current interface info:\n${interfaceInfo}`);
+              
+              // Check if the requested IP already exists
+              if (interfaceInfo.includes(newIp.split('/')[0])) {
+                console.log(`ℹ️ IP ${newIp} already configured on ${iface.dev}`);
+                const confirmed = confirm(`The IP address ${newIp} appears to already be configured on ${iface.dev}.\n\nDo you want to continue anyway? This will remove and re-add the IP address.`);
+                if (!confirmed) {
+                  modal.close();
+                  setStatus('Operation cancelled');
+                  setTimeout(() => setStatus('Ready'), 2000);
+                  return;
+                }
+              }
+            } catch (infoError) {
+              console.warn('Could not get interface info:', infoError);
+            }
+            
             try {
               if (iface.state !== 'UP') {
                 console.log(`📈 Interface ${iface.dev} is ${iface.state}, bringing it UP first`);
@@ -302,11 +323,52 @@ async function loadInterfaces() {
             // Step 3: Add new IP address
             try {
               console.log(`➕ Adding new IP ${newIp} to ${iface.dev}`);
-              await run('ip', ['addr', 'add', newIp, 'dev', iface.dev], { superuser: 'require' });
+              const ipResult = await run('ip', ['addr', 'add', newIp, 'dev', iface.dev], { superuser: 'require' });
               console.log(`✅ Added new IP ${newIp} to ${iface.dev}`);
+              console.log(`📋 IP command output:`, ipResult);
             } catch (ipError) {
               console.error('❌ Failed to add IP address:', ipError);
-              throw new Error(`Failed to add IP address ${newIp}: ${ipError.message || ipError}`);
+              console.error('❌ IP command error details:', {
+                message: ipError.message,
+                problem: ipError.problem,
+                exit_status: ipError.exit_status,
+                exit_signal: ipError.exit_signal
+              });
+              
+              // Try alternative method for VLAN interfaces
+              if (iface.dev.includes('@') || iface.dev.includes('.')) {
+                console.log(`🔄 Trying alternative method for VLAN interface ${iface.dev}`);
+                try {
+                  // Get the real interface name (remove @parent suffix)
+                  const realIfaceName = iface.dev.split('@')[0];
+                  console.log(`🔄 Using interface name: ${realIfaceName}`);
+                  
+                  const altResult = await run('ip', ['addr', 'add', newIp, 'dev', realIfaceName], { superuser: 'require' });
+                  console.log(`✅ Alternative method succeeded for ${realIfaceName}`);
+                  console.log(`📋 Alternative command output:`, altResult);
+                } catch (altError) {
+                  console.error('❌ Alternative method also failed:', altError);
+                  
+                  // Check if IP already exists
+                  try {
+                    const checkResult = await run('ip', ['addr', 'show', iface.dev], { superuser: 'try' });
+                    if (checkResult.includes(newIp.split('/')[0])) {
+                      console.log(`ℹ️ IP ${newIp} already exists on ${iface.dev}`);
+                      alert(`ℹ️ IP address ${newIp} is already configured on ${iface.dev}.\n\nNo changes were made.`);
+                      modal.close();
+                      setStatus('IP already configured');
+                      setTimeout(() => setStatus('Ready'), 2000);
+                      return;
+                    }
+                  } catch (e) {
+                    console.warn('Could not check existing IP addresses:', e);
+                  }
+                  
+                  throw new Error(`Failed to add IP address ${newIp} to ${iface.dev}. Error: ${ipError.message || ipError}. Alternative method also failed: ${altError.message || altError}`);
+                }
+              } else {
+                throw new Error(`Failed to add IP address ${newIp} to ${iface.dev}. Error: ${ipError.message || ipError}`);
+              }
             }
 
             // Step 4: Configure gateway if provided
