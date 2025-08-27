@@ -101,9 +101,9 @@ function setupConstructEventHandlers() {
         setStatus('Creating VLAN...');
 
         const config = {
-          parent_interface: parent,
-          vlan_id: vlanIdNum,
-          interface_name: vlanName || `${parent}.${vlanId}`,
+          name: vlanName || `${parent}.${vlanId}`,    // VLAN interface name
+          id: vlanIdNum,                               // VLAN ID (expected by Python script)
+          link: parent,                                // Parent interface (expected by Python script)
           mtu: vlanMtu ? parseInt(vlanMtu) : undefined,
           static_ip: staticIp || undefined,
           gateway: gateway || undefined
@@ -166,8 +166,8 @@ function setupConstructEventHandlers() {
         setStatus('Creating bridge...');
 
         const config = {
-          bridge_name: brName,
-          interfaces: brPorts,
+          name: brName,                                // Bridge name
+          interfaces: brPorts,                         // Port interfaces
           stp: brStp,
           forward_delay: brForwardDelay ? parseInt(brForwardDelay) : undefined,
           hello_time: brHelloTime ? parseInt(brHelloTime) : undefined
@@ -237,9 +237,9 @@ function setupConstructEventHandlers() {
         setStatus('Creating bond...');
 
         const config = {
-          bond_name: bondName,
-          mode: bondMode,
-          interfaces: bondSlaves,
+          name: bondName,                              // Bond name
+          mode: bondMode,                              // Bonding mode
+          interfaces: bondSlaves,                      // Slave interfaces
           miimon: bondMiimon ? parseInt(bondMiimon) : undefined,
           primary: bondPrimary || undefined
         };
