@@ -364,8 +364,15 @@ async function deleteConstructedInterface(iface) {
     // Step 4: Remove from netplan configuration
     try {
       let deleteType;
+      let normalizedName = iface.dev;
+      
       if (iface.dev.includes('.')) {
         deleteType = 'vlans';
+        // Normalize VLAN name: remove @parent suffix if present
+        // e.g., "eno3.1166@eno3" -> "eno3.1166"
+        if (normalizedName.includes('@')) {
+          normalizedName = normalizedName.split('@')[0];
+        }
       } else if (iface.dev.startsWith('br')) {
         deleteType = 'bridges';
       } else if (iface.dev.startsWith('bond')) {
@@ -373,11 +380,13 @@ async function deleteConstructedInterface(iface) {
       }
 
       console.log(`🔧 Removing ${deleteType} interface ${iface.dev} from netplan`);
-      console.log(`📤 Sending to netplan_manager: action='delete', config={type: '${deleteType}', name: '${iface.dev}'}`);
+      console.log(`📝 Original interface name: ${iface.dev}`);
+      console.log(`📝 Normalized name for netplan: ${normalizedName}`);
+      console.log(`📤 Sending to netplan_manager: action='delete', config={type: '${deleteType}', name: '${normalizedName}'}`);
       
       const result = await netplanAction('delete', { 
         type: deleteType, 
-        name: iface.dev 
+        name: normalizedName  // Use normalized name
       });
       
       console.log(`📥 Netplan response:`, result);
@@ -418,12 +427,18 @@ async function deleteConstructedInterface(iface) {
       console.log(`📋 Current netplan config after deletion:`);
       console.log(showConfigResult);
       
-      // Check if the interface name still appears in the config
-      if (showConfigResult && showConfigResult.includes(iface.dev)) {
-        console.warn(`⚠️ Interface ${iface.dev} still appears in netplan config after deletion`);
+      // Normalize the interface name for checking (remove @parent suffix)
+      let checkName = iface.dev;
+      if (checkName.includes('@')) {
+        checkName = checkName.split('@')[0];
+      }
+      
+      // Check if the normalized interface name still appears in the config
+      if (showConfigResult && showConfigResult.includes(checkName + ':')) {
+        console.warn(`⚠️ Interface ${checkName} still appears in netplan config after deletion`);
         errorMessages.push(`Interface still appears in netplan configuration`);
       } else {
-        console.log(`✅ Interface ${iface.dev} successfully removed from netplan config`);
+        console.log(`✅ Interface ${checkName} successfully removed from netplan config`);
       }
     } catch (configCheckError) {
       console.warn('Could not verify netplan config:', configCheckError);
