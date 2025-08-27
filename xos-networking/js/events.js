@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 /* global $, $$, run, setStatus, setupModal, netplanAction, loadInterfaces */
 
 async function loadConnections() {
@@ -18,13 +18,13 @@ async function loadConnections() {
         const row = document.createElement('tr');
         row.innerHTML = `
           <td>${parts[1] || ''}</td>
-          <td>�</td>
+          <td>—</td>
           <td>${parts[2] || ''}</td>
           <td>${parts[3] || ''}</td>
-          <td>�</td>
-          <td>�</td>
-          <td>�</td>
-          <td class="actions">�</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td class="actions">—</td>
         `;
         tbody.appendChild(row);
       }
@@ -138,13 +138,13 @@ function setupEventHandlers() {
         modal.style.maxHeight = '80vh';
         modal.innerHTML = `
           <div class="modal-content">
-            <h2>?? ${filename}</h2>
+            <h2>📋 ${filename}</h2>
             <div style="margin: 1rem 0;">
               <label style="font-weight: 500;">Configuration Content:</label>
               <textarea readonly style="width: 100%; height: 400px; font-family: monospace; font-size: 0.875rem; padding: 1rem; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;">${config}</textarea>
             </div>
             <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1rem;">
-              <button type="button" class="btn primary" id="close-config-modal">? Close</button>
+              <button type="button" class="btn primary" id="close-config-modal">✅ Close</button>
             </div>
           </div>
         `;
@@ -163,7 +163,7 @@ function setupEventHandlers() {
 
       } catch (error) {
         console.error('Show config failed:', error);
-        alert(`? Failed to show netplan configuration:\n${error.message || error}`);
+        alert(`❌ Failed to show netplan configuration:\n${error.message || error}`);
       } finally {
         setStatus('Ready');
       }
@@ -202,18 +202,18 @@ function setupEventHandlers() {
         modal.style.maxWidth = '600px';
         modal.innerHTML = `
           <div class="modal-content">
-            <h2>? Backup Created Successfully</h2>
+            <h2>✅ Backup Created Successfully</h2>
             <div style="margin: 1rem 0;">
-              <p><strong>?? Backup File:</strong><br><code>${backupFile}</code></p>
-              <p><strong>?? File Details:</strong><br><code>${backupInfo}</code></p>
+              <p><strong>📁 Backup File:</strong><br><code>${backupFile}</code></p>
+              <p><strong>📊 File Details:</strong><br><code>${backupInfo}</code></p>
               <details>
-                <summary><strong>?? Recent Backups</strong></summary>
+                <summary><strong>📋 Recent Backups</strong></summary>
                 <pre style="background: #f8f9fa; padding: 1rem; border-radius: 4px; font-size: 0.875rem;">${backupList}</pre>
               </details>
-              <p><strong>?? Tip:</strong> To restore from backup, extract the tar.gz file to /etc/</p>
+              <p><strong>💡 Tip:</strong> To restore from backup, extract the tar.gz file to /etc/</p>
             </div>
             <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1rem;">
-              <button type="button" class="btn primary" id="close-backup-modal">? OK</button>
+              <button type="button" class="btn primary" id="close-backup-modal">✅ OK</button>
             </div>
           </div>
         `;
@@ -232,7 +232,7 @@ function setupEventHandlers() {
 
       } catch (error) {
         console.error('Backup failed:', error);
-        alert(`? Failed to create backup:\n${error.message || error}`);
+        alert(`❌ Failed to create backup:\n${error.message || error}`);
       } finally {
         setStatus('Ready');
       }
@@ -242,15 +242,15 @@ function setupEventHandlers() {
   const btnApplyNetplan = $('#btn-apply-netplan');
   if (btnApplyNetplan) {
     btnApplyNetplan.addEventListener('click', async () => {
-      if (!confirm('? Apply Netplan configuration?\n\nThis may temporarily disrupt network connectivity while the configuration is applied.')) return;
+      if (!confirm('⚡ Apply Netplan configuration?\n\nThis may temporarily disrupt network connectivity while the configuration is applied.')) return;
 
       try {
         setStatus('Applying Netplan configuration...');
         await run('netplan', ['apply'], { superuser: 'require' });
-        alert('? Netplan configuration applied successfully!\n\nNetwork interfaces have been reconfigured.');
+        alert('✅ Netplan configuration applied successfully!\n\nNetwork interfaces have been reconfigured.');
         await loadInterfaces();
       } catch (e) {
-        alert(`? Failed to apply Netplan configuration:\n${e}`);
+        alert(`❌ Failed to apply Netplan configuration:\n${e}`);
       } finally {
         setStatus('Ready');
       }
@@ -276,9 +276,9 @@ function setupEventHandlers() {
         console.log('Netplan test result:', result);
 
         if (result.error) {
-          alert(`? Netplan test failed:\n${result.error}\n\nCheck console for details.`);
+          alert(`❌ Netplan test failed:\n${result.error}\n\nCheck console for details.`);
         } else {
-          alert('? Netplan test successful!\n\nCheck /etc/netplan/99-cockpit.yaml for changes.');
+          alert('✅ Netplan test successful!\n\nCheck /etc/netplan/99-cockpit.yaml for changes.');
 
           try {
             const netplanContent = await run('cat', ['/etc/netplan/99-cockpit.yaml'], { superuser: 'try' });
@@ -289,7 +289,7 @@ function setupEventHandlers() {
         }
       } catch (error) {
         console.error('Netplan test error:', error);
-        alert(`? Netplan test failed: ${error}`);
+        alert(`❌ Netplan test failed: ${error}`);
       } finally {
         setStatus('Ready');
       }
@@ -314,9 +314,9 @@ function setupEventHandlers() {
 
         let message = '';
         if (fileExists) {
-          message = `? Netplan file exists at /etc/netplan/99-cockpit.yaml\n\n?? Current contents:\n${fileContent}`;
+          message = `✅ Netplan file exists at /etc/netplan/99-cockpit.yaml\n\n📄 Current contents:\n${fileContent}`;
         } else {
-          message = '? Netplan file does not exist at /etc/netplan/99-cockpit.yaml\n\nThe file will be created when you first configure an IP address.';
+          message = '❌ Netplan file does not exist at /etc/netplan/99-cockpit.yaml\n\nThe file will be created when you first configure an IP address.';
         }
 
         alert(message);
@@ -329,7 +329,7 @@ function setupEventHandlers() {
         }
 
       } catch (error) {
-        alert(`? Failed to check netplan file: ${error}`);
+        alert(`❌ Failed to check netplan file: ${error}`);
       } finally {
         setStatus('Ready');
       }
@@ -344,15 +344,15 @@ function setupEventHandlers() {
       const pingOut = $('#ping-out');
       
       if (pingOut) {
-        pingOut.textContent = `?? Pinging ${host}...\n`;
+        pingOut.textContent = `📡 Pinging ${host}...\n`;
         setStatus(`Pinging ${host}...`);
         
         try {
           const result = await run('ping', ['-c', '4', host]);
-          pingOut.textContent = `?? Ping Results for ${host}:\n\n${result}`;
+          pingOut.textContent = `📡 Ping Results for ${host}:\n\n${result}`;
           setStatus('Ping completed');
         } catch (e) {
-          pingOut.textContent = `? Ping failed:\n${e}`;
+          pingOut.textContent = `❌ Ping failed:\n${e}`;
           setStatus('Ping failed');
         }
       }
@@ -366,15 +366,15 @@ function setupEventHandlers() {
       const pingOut = $('#ping-out');
       
       if (pingOut) {
-        pingOut.textContent = `??? Tracing route to ${host}...\n`;
+        pingOut.textContent = `🗺️ Tracing route to ${host}...\n`;
         setStatus(`Tracing route to ${host}...`);
         
         try {
           const result = await run('traceroute', [host]);
-          pingOut.textContent = `??? Traceroute to ${host}:\n\n${result}`;
+          pingOut.textContent = `🗺️ Traceroute to ${host}:\n\n${result}`;
           setStatus('Traceroute completed');
         } catch (e) {
-          pingOut.textContent = `? Traceroute failed:\n${e}`;
+          pingOut.textContent = `❌ Traceroute failed:\n${e}`;
           setStatus('Traceroute failed');
         }
       }
@@ -409,7 +409,7 @@ function setupEventHandlers() {
               }
             } else {
               if (!content.includes('network:') && !content.includes('version:')) {
-                const addHeader = confirm('?? This file doesn\'t appear to be a standard netplan configuration.\n\nWould you like to add a basic netplan header?');
+                const addHeader = confirm('⚠️ This file doesn\'t appear to be a standard netplan configuration.\n\nWould you like to add a basic netplan header?');
                 if (addHeader) {
                   config = 'network:\n  version: 2\n  renderer: networkd\n\n' + content;
                 } else {
@@ -423,7 +423,7 @@ function setupEventHandlers() {
             throw new Error(`Failed to parse config file: ${parseError.message}`);
           }
 
-          const proceed = confirm(`?? Import Network Configuration?\n\nFile: ${file.name}\nSize: ${file.size} bytes\n\n?? This will replace the current netplan configuration.\n\nProceed with import?`);
+          const proceed = confirm(`📤 Import Network Configuration?\n\nFile: ${file.name}\nSize: ${file.size} bytes\n\n⚠️ This will replace the current netplan configuration.\n\nProceed with import?`);
 
           if (!proceed) {
             setStatus('Import cancelled');
@@ -433,19 +433,19 @@ function setupEventHandlers() {
           if (typeof config === 'string') {
             await run('bash', ['-c', `echo '${config.replace(/'/g, "'\\''")}' > /etc/netplan/99-cockpit.yaml`], { superuser: 'require' });
           } else {
-            alert('?? JSON import not fully implemented yet. Please use YAML format.');
+            alert('⚠️ JSON import not fully implemented yet. Please use YAML format.');
             setStatus('Ready');
             return;
           }
 
           await run('netplan', ['apply'], { superuser: 'require' });
 
-          alert('? Configuration imported and applied successfully!\n\nReloading interfaces...');
+          alert('✅ Configuration imported and applied successfully!\n\nReloading interfaces...');
           await loadInterfaces();
 
         } catch (error) {
           console.error('Import failed:', error);
-          alert(`? Failed to import configuration:\n${error.message || error}`);
+          alert(`❌ Failed to import configuration:\n${error.message || error}`);
         } finally {
           setStatus('Ready');
           document.body.removeChild(input);
@@ -467,25 +467,25 @@ function setupEventHandlers() {
           const modal = document.createElement('dialog');
           modal.innerHTML = `
             <div class="modal-content">
-              <h2>?? Export Network Configuration</h2>
+              <h2>📥 Export Network Configuration</h2>
               <p>Choose what to export:</p>
               <div style="margin: 1rem 0;">
                 <label style="display: block; margin: 0.5rem 0;">
                   <input type="radio" name="export-type" value="cockpit" checked>
-                  ?? <strong>XOS Networking Config</strong> (99-cockpit.yaml only)
+                  🎯 <strong>XOS Networking Config</strong> (99-cockpit.yaml only)
                 </label>
                 <label style="display: block; margin: 0.5rem 0;">
                   <input type="radio" name="export-type" value="all">
-                  ?? <strong>All Netplan Files</strong> (entire /etc/netplan/ directory)
+                  📋 <strong>All Netplan Files</strong> (entire /etc/netplan/ directory)
                 </label>
                 <label style="display: block; margin: 0.5rem 0;">
                   <input type="radio" name="export-type" value="current">
-                  ?? <strong>Current Network State</strong> (live interface configuration)
+                  📊 <strong>Current Network State</strong> (live interface configuration)
                 </label>
               </div>
               <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
-                <button type="button" class="btn" id="export-cancel">? Cancel</button>
-                <button type="button" class="btn primary" id="export-confirm">?? Export</button>
+                <button type="button" class="btn" id="export-cancel">❌ Cancel</button>
+                <button type="button" class="btn primary" id="export-confirm">📥 Export</button>
               </div>
             </div>
           `;
@@ -580,11 +580,11 @@ ${dns}`;
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        alert(`? Configuration exported successfully!\n\n?? File: ${filename}\n?? Size: ${config.length} bytes\n?? Type: ${exportType}`);
+        alert(`✅ Configuration exported successfully!\n\n📄 File: ${filename}\n📊 Size: ${config.length} bytes\n📋 Type: ${exportType}`);
 
       } catch (error) {
         console.error('Export failed:', error);
-        alert(`? Failed to export configuration:\n${error.message || error}`);
+        alert(`❌ Failed to export configuration:\n${error.message || error}`);
       } finally {
         setStatus('Ready');
       }
@@ -616,7 +616,7 @@ ${dns}`;
         }
       });
 
-      alert('? All forms have been reset!');
+      alert('✅ All forms have been reset!');
     });
   }
 }
