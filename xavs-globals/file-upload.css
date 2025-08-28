@@ -1,0 +1,77 @@
+/* File Upload Styling for XAVS Globals */
+.file-upload-container {
+  position: relative;
+}
+
+.file-upload-container input[type="file"] {
+  border: 2px dashed #ddd;
+  padding: 20px;
+  text-align: center;
+  background-color: #fafafa;
+  transition: all 0.3s ease;
+}
+
+.file-upload-container input[type="file"]:hover {
+  border-color: #007bff;
+  background-color: #f8f9fa;
+}
+
+.file-upload-container input[type="file"]:focus {
+  border-color: #007bff;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.file-status {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  background-color: #f8f9fa;
+  border: 1px solid #e9ecef;
+}
+
+.file-info {
+  font-size: 13px;
+}
+
+.upload-progress {
+  margin-top: 8px;
+}
+
+.progress {
+  height: 8px;
+  background-color: #e9ecef;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background-color: #007bff;
+  transition: width 0.3s ease;
+  border-radius: 4px;
+}
+
+/* Certificate upload specific styling */
+.file-status .text-success {
+  color: #28a745 !important;
+}
+
+.file-status .text-danger {
+  color: #dc3545 !important;
+}
+
+.file-status .text-warning {
+  color: #ffc107 !important;
+}
+
+.file-status .text-info {
+  color: #17a2b8 !important;
+}
+
+.file-status code {
+  background-color: #f1f3f4;
+  color: #333;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 12px;
+}

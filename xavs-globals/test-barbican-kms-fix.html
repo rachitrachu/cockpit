@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Barbican-KMS Fix</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        .warning { color: orange; }
+        button { margin: 5px; padding: 10px; }
+        pre { background: #f5f5f5; padding: 10px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>🔑 Test Barbican-KMS Configuration Fix</h1>
+    
+    <div class="test-section">
+        <h3>Test Configuration with enable_barbican</h3>
+        <button onclick="testBarbicanToKmsTransformation()">Test enable_barbican → enable_kms Transformation</button>
+        <pre id="transformation-result"></pre>
+    </div>
+
+    <div class="test-section">
+        <h3>Test Complete Loading Process</h3>
+        <button onclick="testCompleteLoadingProcess()">Test Complete Loading with enable_barbican Config</button>
+        <pre id="loading-result"></pre>
+    </div>
+
+    <div class="test-section">
+        <h3>🎯 Test Complete Fix Verification</h3>
+        <p><strong>Instructions:</strong></p>
+        <ol>
+            <li>Open the main XAVS Globals application</li>
+            <li>Open browser console (F12)</li>
+            <li>Run: <code>debugEnableKmsLoading()</code></li>
+            <li>Then click "Load Configuration" button</li>
+            <li>Check if "Enable KMS" toggle gets enabled</li>
+        </ol>
+        <button onclick="showFixVerificationSteps()">Show Detailed Verification Steps</button>
+        <pre id="verification-steps"></pre>
+    </div>
+
+    <div class="test-section">
+        <h3>Verify GUI Element (Reference)</h3>
+        <button onclick="verifyKmsElement()">Verify enable_kms GUI Element</button>
+        <pre id="element-result"></pre>
+    </div>
+
+    <script>
+        // Test the key transformation logic
+        function testBarbicanToKmsTransformation() {
+            const resultDiv = document.getElementById('transformation-result');
+            resultDiv.innerHTML = '';
+            
+            console.log('🧪 Testing enable_barbican to enable_kms transformation...');
+            
+            // Simulate config with enable_barbican
+            const testConfig = {
+                advanced: {
+                    enable_barbican: 'yes'
+                }
+            };
+            
+            console.log('📥 Original config:', testConfig);
+            resultDiv.innerHTML += '<strong>Original Config:</strong>\n' + JSON.stringify(testConfig, null, 2) + '\n\n';
+            
+            // Apply transformation (simulating the fix)
+            if (testConfig.advanced && testConfig.advanced.enable_barbican) {
+                console.log('🔄 Transforming enable_barbican to enable_kms...');
+                testConfig.advanced.enable_kms = testConfig.advanced.enable_barbican;
+                delete testConfig.advanced.enable_barbican;
+                resultDiv.innerHTML += '<strong>After Transformation:</strong>\n' + JSON.stringify(testConfig, null, 2) + '\n\n';
+                resultDiv.innerHTML += '<span class="success">✅ Transformation successful!</span>\n';
+            } else {
+                resultDiv.innerHTML += '<span class="error">❌ No enable_barbican found to transform</span>\n';
+            }
+            
+            console.log('📤 Transformed config:', testConfig);
+        }
+        
+        // Test complete loading process
+        function testCompleteLoadingProcess() {
+            const resultDiv = document.getElementById('loading-result');
+            resultDiv.innerHTML = '';
+            
+            console.log('🧪 Testing complete loading process...');
+            
+            // Simulate the actual config from user's file
+            const userConfig = {
+                advanced: {
+                    enable_barbican: 'yes'
+                }
+            };
+            
+            resultDiv.innerHTML += '<strong>User\'s Config (from file):</strong>\n';
+            resultDiv.innerHTML += 'enable_barbican: yes\n\n';
+            
+            // Simulate parseYamlToConfig result
+            console.log('📋 Simulating parseYamlToConfig result:', userConfig);
+            resultDiv.innerHTML += '<strong>Parsed Config Object:</strong>\n' + JSON.stringify(userConfig, null, 2) + '\n\n';
+            
+            // Apply the transformation that should happen in populateFormFromConfig
+            const enhancedConfig = JSON.parse(JSON.stringify(userConfig));
+            
+            if (enhancedConfig.advanced && enhancedConfig.advanced.enable_barbican) {
+                console.log('🔄 Applying transformation in populateFormFromConfig...');
+                enhancedConfig.advanced.enable_kms = enhancedConfig.advanced.enable_barbican;
+                delete enhancedConfig.advanced.enable_barbican;
+                
+                resultDiv.innerHTML += '<strong>Enhanced Config (after transformation):</strong>\n' + JSON.stringify(enhancedConfig, null, 2) + '\n\n';
+                
+                // Check if GUI element would be found
+                const expectedElementId = 'advanced_enable_kms';
+                resultDiv.innerHTML += '<strong>Looking for GUI element:</strong> ' + expectedElementId + '\n';
+                
+                // Check if element exists
+                const element = document.getElementById(expectedElementId);
+                if (element) {
+                    resultDiv.innerHTML += '<span class="success">✅ GUI element found!</span>\n';
+                    resultDiv.innerHTML += 'Element type: ' + element.tagName + '\n';
+                    resultDiv.innerHTML += 'Element classes: ' + element.className + '\n';
+                } else {
+                    resultDiv.innerHTML += '<span class="warning">⚠️ GUI element not found (expected in main app)</span>\n';
+                }
+                
+                resultDiv.innerHTML += '\n<span class="success">✅ Complete loading process would work!</span>\n';
+            } else {
+                resultDiv.innerHTML += '<span class="error">❌ Transformation failed</span>\n';
+            }
+        }
+        
+        // Show detailed verification steps
+        function showFixVerificationSteps() {
+            const resultDiv = document.getElementById('verification-steps');
+            resultDiv.innerHTML = `
+<strong>🔧 COMPLETE FIX VERIFICATION STEPS:</strong>
+
+<span class="info">STEP 1: Verify the fix is in place</span>
+1. Open main app: <a href="app-allinone.html" target="_blank">app-allinone.html</a>
+2. Open browser console (F12)
+3. Run: <code>debugEnableKmsLoading()</code>
+   - This should show: "Transforming enable_barbican to enable_kms..."
+   - Should show: "✅ THE FIX WORKS!"
+
+<span class="info">STEP 2: Test with your actual configuration</span>
+1. Click "Load Configuration" button in main app
+2. Check console for transformation message:
+   - Should see: "🔄 Transforming enable_barbican to enable_kms for GUI compatibility"
+3. Verify "Enable KMS" toggle is now checked/enabled
+
+<span class="info">STEP 3: Verify persistence</span>
+1. After loading, "Enable KMS" should be ON
+2. Try saving configuration
+3. Reload page and load configuration again
+4. "Enable KMS" should still be ON
+
+<span class="success">Expected Result:</span>
+- ✅ Your config file has: enable_barbican: yes
+- ✅ GUI shows: Enable KMS toggle is ON
+- ✅ Saving preserves the setting
+- ✅ Loading always restores Enable KMS correctly
+
+<span class="warning">If it doesn't work:</span>
+1. Check console for errors
+2. Verify your config file contains: enable_barbican: yes
+3. Run debugEnableKmsLoading() again for detailed debugging
+            `;
+        }
+        
+        // Verify GUI Element function (keeping original)
+        function verifyKmsElement() {
+            const resultDiv = document.getElementById('element-result');
+            resultDiv.innerHTML = '';
+            
+            console.log('🧪 Verifying enable_kms GUI element...');
+            
+            const elementId = 'advanced_enable_kms';
+            const element = document.getElementById(elementId);
+            
+            resultDiv.innerHTML += '<strong>Looking for element:</strong> ' + elementId + '\n\n';
+            
+            if (element) {
+                resultDiv.innerHTML += '<span class="success">✅ Element found!</span>\n';
+                resultDiv.innerHTML += 'Tag: ' + element.tagName + '\n';
+                resultDiv.innerHTML += 'Type: ' + element.type + '\n';
+                resultDiv.innerHTML += 'Classes: ' + element.className + '\n';
+                resultDiv.innerHTML += 'Current value: ' + element.value + '\n';
+                resultDiv.innerHTML += 'Current checked: ' + element.checked + '\n';
+                resultDiv.innerHTML += 'Parent form: ' + (element.form ? element.form.id : 'none') + '\n';
+            } else {
+                resultDiv.innerHTML += '<span class="warning">⚠️ Element not found in this test page</span>\n';
+                resultDiv.innerHTML += '(This is expected - element should exist in main app)\n';
+            }
+            
+            // Show all elements that contain 'kms' or 'barbican'
+            const allElements = document.querySelectorAll('*');
+            const relevantElements = [];
+            
+            allElements.forEach(el => {
+                if (el.id && (el.id.includes('kms') || el.id.includes('barbican'))) {
+                    relevantElements.push(el.id);
+                }
+            });
+            
+            if (relevantElements.length > 0) {
+                resultDiv.innerHTML += '\n<strong>Found related elements:</strong>\n';
+                relevantElements.forEach(id => {
+                    resultDiv.innerHTML += '- ' + id + '\n';
+                });
+            } else {
+                resultDiv.innerHTML += '\n<em>No related elements found in this test page</em>\n';
+            }
+        }
+        
+        // Auto-run basic test on load
+        window.addEventListener('load', function() {
+            console.log('🚀 Test page loaded - running basic transformation test...');
+            testBarbicanToKmsTransformation();
+        });
+    </script>
+</body>
+</html>

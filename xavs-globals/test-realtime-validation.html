@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XAVS Globals - Real-Time Validation Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .alert {
+            padding: 12px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .alert-info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .alert-success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .form-group {
+            margin: 20px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        input.is-invalid {
+            border-color: #dc3545;
+        }
+        .real-time-validation-error {
+            color: #dc3545;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 XAVS Globals Real-Time Validation Test</h1>
+    
+    <div class="alert alert-info">
+        <strong>📋 Test Instructions:</strong>
+        <ul style="margin: 10px 0; padding-left: 20px;">
+            <li>Type in the fields below to test real-time validation</li>
+            <li>Invalid entries will show red borders and error messages immediately</li>
+            <li>Valid entries will show green borders</li>
+            <li>Test both IP addresses and FQDNs with various formats</li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h3>🌐 IP Address Fields</h3>
+        
+        <div class="form-group">
+            <label for="test_kolla_internal_vip_address">Internal VIP Address</label>
+            <input type="text" id="test_kolla_internal_vip_address" name="test_kolla_internal_vip_address" 
+                   placeholder="e.g., 192.168.1.100">
+        </div>
+        
+        <div class="form-group">
+            <label for="test_kolla_external_vip_address">External VIP Address</label>
+            <input type="text" id="test_kolla_external_vip_address" name="test_kolla_external_vip_address" 
+                   placeholder="e.g., 203.0.113.10">
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h3>🏷️ FQDN Fields</h3>
+        
+        <div class="form-group">
+            <label for="test_kolla_internal_fqdn">Internal FQDN</label>
+            <input type="text" id="test_kolla_internal_fqdn" name="test_kolla_internal_fqdn" 
+                   placeholder="e.g., xavs-int.example.com">
+        </div>
+        
+        <div class="form-group">
+            <label for="test_kolla_external_fqdn">External FQDN</label>
+            <input type="text" id="test_kolla_external_fqdn" name="test_kolla_external_fqdn" 
+                   placeholder="e.g., xavs.example.com">
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h3>📝 Test Cases to Try</h3>
+        
+        <div class="alert alert-info">
+            <strong>🧪 IP Address Test Cases:</strong>
+            <ul style="margin: 5px 0; padding-left: 20px;">
+                <li><strong>Valid:</strong> 192.168.1.100, 10.0.0.1, 255.255.255.255</li>
+                <li><strong>Invalid:</strong> 256.1.1.1, 192.168.1, 192.168.1.a</li>
+            </ul>
+        </div>
+        
+        <div class="alert alert-info">
+            <strong>🏷️ FQDN Test Cases:</strong>
+            <ul style="margin: 5px 0; padding-left: 20px;">
+                <li><strong>Valid:</strong> example.com, sub.example.com, api.v1.example.com</li>
+                <li><strong>Invalid:</strong> localhost, hostname, -example.com, example-.com</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // Validation patterns (same as XAVS Globals)
+        const ipPattern = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+        const fqdnPattern = /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+
+        // Mock schema (simplified version of XAVS Globals schema)
+        const schema = {
+            'kolla_internal_vip_address': {
+                validation: ipPattern
+            },
+            'kolla_external_vip_address': {
+                validation: ipPattern  
+            },
+            'kolla_internal_fqdn': {
+                validation: fqdnPattern
+            },
+            'kolla_external_fqdn': {
+                validation: fqdnPattern
+            }
+        };
+
+        function validateFieldRealTime(input, fieldDef, fieldName) {
+            const value = input.value.trim();
+            const labelElement = input.closest('.form-group')?.querySelector('label');
+            const label = labelElement ? labelElement.textContent : fieldName;
+            
+            // Clear previous validation state
+            input.classList.remove('is-invalid');
+            input.style.borderColor = '#ddd';
+            
+            // Remove any existing error messages for this field
+            const existingError = input.parentNode?.querySelector('.real-time-validation-error');
+            if (existingError) {
+                existingError.remove();
+            }
+            
+            // Only validate if field has content
+            if (value && fieldDef.validation) {
+                try {
+                    const re = fieldDef.validation;
+                    if (!re.test(value)) {
+                        // Add validation error styling
+                        input.classList.add('is-invalid');
+                        input.style.borderColor = '#dc3545';
+                        
+                        // Generate specific error message
+                        let errorMsg = `${label.trim()} has invalid format`;
+                        if (fieldName.includes('vip_address') || fieldName.includes('_address')) {
+                            errorMsg = `Must be a valid IPv4 address (e.g., 192.168.1.100)`;
+                        } else if (fieldName.includes('fqdn')) {
+                            errorMsg = `Must be a valid domain name with at least one dot (e.g., example.com)`;
+                        }
+                        
+                        // Create and show error message
+                        const errorDiv = document.createElement('div');
+                        errorDiv.className = 'real-time-validation-error';
+                        errorDiv.textContent = errorMsg;
+                        input.parentNode.appendChild(errorDiv);
+                        
+                    } else {
+                        // Valid input
+                        input.style.borderColor = '#28a745';
+                    }
+                } catch (e) {
+                    console.warn('Validation error:', e);
+                }
+            }
+        }
+
+        function setupRealTimeValidation() {
+            // Add real-time validation for input fields with validation patterns
+            const inputs = document.querySelectorAll('input[type="text"]');
+            inputs.forEach(input => {
+                const fieldName = input.name ? input.name.replace('test_', '') : '';
+                const fieldDef = schema[fieldName];
+                
+                if (fieldDef && fieldDef.validation) {
+                    // Add input event listener for real-time validation
+                    input.addEventListener('input', (e) => {
+                        validateFieldRealTime(e.target, fieldDef, fieldName);
+                    });
+                    
+                    // Also validate on blur for more thorough checking
+                    input.addEventListener('blur', (e) => {
+                        validateFieldRealTime(e.target, fieldDef, fieldName);
+                    });
+                }
+            });
+        }
+
+        // Initialize real-time validation when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🧪 Real-Time Validation Test Page Loaded');
+            setupRealTimeValidation();
+        });
+    </script>
+</body>
+</html>

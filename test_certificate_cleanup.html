@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Certificate Cleanup - XAVS Globals</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .log { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 3px; font-family: monospace; }
+        button { margin: 5px; padding: 8px 15px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .success { background: #d4edda; border: 1px solid #c3e6cb; }
+        .info { background: #d1ecf1; border: 1px solid #b6d4ea; }
+        .warning { background: #fff3cd; border: 1px solid #ffeaa7; }
+    </style>
+</head>
+<body>
+    <h1>Certificate Cleanup Testing - XAVS Globals</h1>
+    
+    <div class="test-section">
+        <h2>Certificate Domain Cleanup Feature</h2>
+        <p>This feature automatically cleans up certificate files and related configuration when the domain setup is disabled.</p>
+        
+        <h3>What gets cleaned up:</h3>
+        <ul>
+            <li>🗑️ Certificate files from <code>/etc/xavs/certificates/</code></li>
+            <li>🧽 Certificate file input fields and status displays</li>
+            <li>🧽 Internal and external FQDN fields</li>
+            <li>🔒 TLS toggle switches (internal and external)</li>
+            <li>👁️ Triggers visibility update to hide certificate fields</li>
+        </ul>
+        
+        <h3>How it works:</h3>
+        <ol>
+            <li>User disables the "Domain Setup" toggle</li>
+            <li>System detects the toggle change</li>
+            <li>Cleanup function automatically removes certificate files</li>
+            <li>Form fields are cleared and TLS toggles disabled</li>
+            <li>User gets status notification of cleanup completion</li>
+        </ol>
+    </div>
+    
+    <div class="test-section">
+        <h2>Enhanced TLS Certificate Validation</h2>
+        <p>The system now enforces comprehensive TLS validation requirements:</p>
+        
+        <h3>Internal TLS Requirements:</h3>
+        <ul>
+            <li>✅ Internal FQDN must be provided (e.g., internal.example.com)</li>
+            <li>✅ Internal FQDN must be valid domain format</li>
+            <li>🔒 Internal TLS Certificate file must be uploaded</li>
+            <li>🎯 Certificate must match the Internal FQDN (proper pairing)</li>
+        </ul>
+        
+        <h3>External TLS Requirements:</h3>
+        <ul>
+            <li>✅ External FQDN must be provided (e.g., external.example.com)</li>
+            <li>✅ External FQDN must be valid domain format</li>
+            <li>🔒 External TLS Certificate file must be uploaded</li>
+            <li>🎯 Certificate must match the External FQDN (proper pairing)</li>
+        </ul>
+        
+        <h3>Validation Behavior:</h3>
+        <ul>
+            <li>❌ Cannot save with TLS enabled but missing certificates</li>
+            <li>❌ Cannot save with TLS enabled but missing FQDNs</li>
+            <li>❌ Cannot save with invalid FQDN formats</li>
+            <li>❌ Cannot save with certificate-FQDN mismatches</li>
+            <li>🔴 Invalid fields are highlighted in red</li>
+            <li>🔴 Tabs containing errors are highlighted</li>
+        </ul>
+    </div>
+    
+    <div class="test-section">
+        <h2>Available Debug Functions</h2>
+        <button onclick="testComprehensive()">🧪 Comprehensive Test</button>
+        <button onclick="testTLSValidation()">Test TLS Validation</button>
+        <button onclick="testCertCleanup()">Test Certificate Cleanup</button>
+        <button onclick="testVolumeGroup()">Test Volume Group Loading</button>
+        <button onclick="manualCleanup()">Manual Certificate Cleanup</button>
+        <button onclick="showConsoleHelp()">Show Console Commands</button>
+        
+        <div id="testOutput" class="log" style="display:none;"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>🔧 Enable KMS Loading Debug</h2>
+        <p><strong>Current Issue:</strong> The enable_kms toggle is not loading correctly from configuration files.</p>
+        
+        <h3>Debug Tools:</h3>
+        <button onclick="debugEnableKmsState()">🔍 Debug enable_kms State</button>
+        <button onclick="debugKmsConfigLoading()">🧪 Debug KMS Config Loading</button>
+        <button onclick="testKmsAndVipFixes()">🔑 Test KMS & VIP Address Fixes</button>
+        
+        <div id="kmsTestOutput" class="log" style="display:none;"></div>
+        
+        <h3>Expected Results:</h3>
+        <ul>
+            <li>✅ advanced_enable_kms element should exist in DOM</li>
+            <li>✅ Configuration loading should set checked=true when config has enable_kms: 'yes'</li>
+            <li>✅ Values should persist and not get overridden</li>
+        </ul>
+    </div>
+    
+    <div class="test-section">
+        <h2>Manual Testing Steps</h2>
+        <ol>
+            <li><strong>Enable Domain Setup:</strong> Toggle on "Domain Setup" in the XAVS interface</li>
+            <li><strong>Add Certificates:</strong> Upload internal/external certificate files</li>
+            <li><strong>Add FQDNs:</strong> Enter internal and external FQDN values</li>
+            <li><strong>Enable TLS:</strong> Turn on TLS toggles (should auto-enable)</li>
+            <li><strong>Disable Domain Setup:</strong> Toggle off "Domain Setup"</li>
+            <li><strong>Verify Cleanup:</strong> Check that all certificate-related fields are cleared</li>
+        </ol>
+    </div>
+    
+    <div class="test-section">
+        <h2>Console Commands for Testing</h2>
+        <div class="log">
+# Test the full certificate cleanup process
+debugTestCertificateCleanup()
+
+# Test volume group loading independently  
+debugTestVolumeGroupLoading()
+
+# Manual cleanup (if needed)
+cleanupCertificatesOnDomainDisable()
+
+# Debug toggle states
+debugToggleStates()
+
+# Load test configuration
+debugLoadTestConfig()
+        </div>
+    </div>
+
+    <script>
+        function testComprehensive() {
+            const output = document.getElementById('testOutput');
+            output.style.display = 'block';
+            output.innerHTML = 'Running comprehensive validation test...\n';
+            
+            if (typeof debugTestComprehensiveValidation === 'function') {
+                debugTestComprehensiveValidation();
+                output.innerHTML += `Comprehensive test started. This will test:
+1. ✅ Real-time TLS validation (errors appear immediately)
+2. 🔒 Save validation (prevents saving with missing certificates) 
+3. 📋 Configuration loading persistence (values don't get cleared)
+4. 📁 Certificate status display after loading
+
+Check console for detailed test results.\n`;
+            } else {
+                output.innerHTML += 'Error: debugTestComprehensiveValidation function not available. Please load the XAVS Globals interface first.\n';
+            }
+        }
+        
+        function testTLSValidation() {
+            const output = document.getElementById('testOutput');
+            output.style.display = 'block';
+            output.innerHTML = 'Running comprehensive TLS validation test...\n';
+            
+            if (typeof debugTestTLSValidation === 'function') {
+                debugTestTLSValidation();
+                output.innerHTML += `Comprehensive TLS validation test started. This will test:
+1. TLS enabled without certificates or FQDNs (should show 4 errors)
+2. TLS with FQDNs but no certificates (should show 2 certificate errors)
+3. TLS with both FQDNs and certificates (should pass validation)
+
+Check console for detailed test results.\n`;
+            } else {
+                output.innerHTML += 'Error: debugTestTLSValidation function not available. Please load the XAVS Globals interface first.\n';
+            }
+        }
+        
+        function testCertCleanup() {
+            const output = document.getElementById('testOutput');
+            output.style.display = 'block';
+            output.innerHTML = 'Running certificate cleanup test...\n';
+            
+            if (typeof debugTestCertificateCleanup === 'function') {
+                debugTestCertificateCleanup();
+                output.innerHTML += 'Certificate cleanup test started. Check console for details.\n';
+            } else {
+                output.innerHTML += 'Error: debugTestCertificateCleanup function not available. Please load the XAVS Globals interface first.\n';
+            }
+        }
+        
+        function testVolumeGroup() {
+            const output = document.getElementById('testOutput');
+            output.style.display = 'block';
+            output.innerHTML = 'Running volume group test...\n';
+            
+            if (typeof debugTestVolumeGroupLoading === 'function') {
+                debugTestVolumeGroupLoading();
+                output.innerHTML += 'Volume group test started. Check console for details.\n';
+            } else {
+                output.innerHTML += 'Error: debugTestVolumeGroupLoading function not available. Please load the XAVS Globals interface first.\n';
+            }
+        }
+        
+        function manualCleanup() {
+            const output = document.getElementById('testOutput');
+            output.style.display = 'block';
+            output.innerHTML = 'Running manual cleanup...\n';
+            
+            if (typeof cleanupCertificatesOnDomainDisable === 'function') {
+                cleanupCertificatesOnDomainDisable();
+                output.innerHTML += 'Manual cleanup started. Check console for details.\n';
+            } else {
+                output.innerHTML += 'Error: cleanupCertificatesOnDomainDisable function not available. Please load the XAVS Globals interface first.\n';
+            }
+        }
+        
+        // ===== ENABLE KMS DEBUGGING FUNCTIONS =====
+        
+        // Debug function to trace enable_kms state - ENHANCED
+        function debugEnableKmsState() {
+            console.log('\n🔍 COMPREHENSIVE enable_kms DEBUGGING...');
+            
+            const output = document.getElementById('kmsTestOutput');
+            output.style.display = 'block';
+            output.innerHTML = 'Running enable_kms state debug...\n';
+            
+            // Check if formGenerator exists
+            if (!window.formGenerator) {
+                console.error('❌ formGenerator not found in window object!');
+                output.innerHTML += 'ERROR: formGenerator not found!\n';
+                return;
+            }
+            
+            console.log('✅ formGenerator exists');
+            output.innerHTML += '✅ formGenerator exists\n';
+            
+            // Check if advanced section exists in schema
+            const schema = window.formGenerator.schema;
+            if (!schema || !schema.advanced) {
+                console.error('❌ Advanced section not found in schema!');
+                console.log('Available sections:', Object.keys(schema || {}));
+                output.innerHTML += 'ERROR: Advanced section not found in schema!\n';
+                output.innerHTML += 'Available sections: ' + Object.keys(schema || {}).join(', ') + '\n';
+                return;
+            }
+            
+            console.log('✅ Advanced section exists in schema');
+            output.innerHTML += '✅ Advanced section exists in schema\n';
+            
+            // Check if enable_kms field exists in schema
+            if (!schema.advanced.fields || !schema.advanced.fields.enable_kms) {
+                console.error('❌ enable_kms field not found in advanced section schema!');
+                console.log('Available advanced fields:', Object.keys(schema.advanced.fields || {}));
+                output.innerHTML += 'ERROR: enable_kms field not found in advanced section!\n';
+                output.innerHTML += 'Available advanced fields: ' + Object.keys(schema.advanced.fields || {}).join(', ') + '\n';
+                return;
+            }
+            
+            console.log('✅ enable_kms field exists in schema');
+            output.innerHTML += '✅ enable_kms field exists in schema\n';
+            
+            // Check if advanced tab exists
+            const advancedTab = document.getElementById('advanced-tab');
+            if (!advancedTab) {
+                console.error('❌ Advanced tab not found in DOM!');
+                const allTabs = document.querySelectorAll('[id$="-tab"]');
+                console.log('Available tabs:', Array.from(allTabs).map(tab => tab.id));
+                output.innerHTML += 'ERROR: Advanced tab not found in DOM!\n';
+                output.innerHTML += 'Available tabs: ' + Array.from(allTabs).map(tab => tab.id).join(', ') + '\n';
+                return;
+            }
+            
+            console.log('✅ Advanced tab exists in DOM');
+            output.innerHTML += '✅ Advanced tab exists in DOM\n';
+            
+            // Now check for the specific enable_kms element
+            const element = document.getElementById('advanced_enable_kms');
+            
+            if (!element) {
+                console.error('❌ advanced_enable_kms element NOT FOUND in DOM!');
+                output.innerHTML += 'ERROR: advanced_enable_kms element NOT FOUND!\n';
+                
+                // Check if any enable_kms elements exist with different IDs
+                const allInputs = document.querySelectorAll('input');
+                const kmsInputs = Array.from(allInputs).filter(input => 
+                    input.id.includes('kms') || input.name.includes('kms')
+                );
+                
+                console.log('🔍 Searching for any KMS-related inputs:');
+                output.innerHTML += 'Searching for any KMS-related inputs:\n';
+                if (kmsInputs.length === 0) {
+                    console.log('   No KMS-related inputs found anywhere in the form!');
+                    output.innerHTML += '   No KMS-related inputs found anywhere!\n';
+                } else {
+                    kmsInputs.forEach(input => {
+                        console.log(`   Found: ${input.id}, type: ${input.type}, class: ${input.className}`);
+                        output.innerHTML += `   Found: ${input.id} (${input.type})\n`;
+                    });
+                }
+                return;
+            }
+            
+            console.log('✅ advanced_enable_kms element found!');
+            output.innerHTML += '✅ advanced_enable_kms element found!\n';
+            output.innerHTML += `   Checked: ${element.checked}\n`;
+            output.innerHTML += `   Value: ${element.value}\n`;
+            
+            console.log(`   ID: ${element.id}`);
+            console.log(`   Type: ${element.type}`);
+            console.log(`   Classes: ${element.className}`);
+            console.log(`   Checked: ${element.checked}`);
+            console.log(`   Value: ${element.value}`);
+        }
+        
+        // Debug configuration loading specifically for enable_kms
+        function debugKmsConfigLoading() {
+            console.log('\n🧪 DEBUGGING enable_kms configuration loading process...');
+            
+            const output = document.getElementById('kmsTestOutput');
+            output.style.display = 'block';
+            output.innerHTML = 'Running enable_kms config loading debug...\n';
+            
+            // First check if element exists
+            const element = document.getElementById('advanced_enable_kms');
+            if (!element) {
+                console.error('❌ advanced_enable_kms element not found! Run debugEnableKmsState() first.');
+                output.innerHTML += 'ERROR: advanced_enable_kms element not found!\n';
+                output.innerHTML += 'Run debugEnableKmsState() first.\n';
+                return;
+            }
+            
+            console.log('✅ advanced_enable_kms element found');
+            output.innerHTML += '✅ advanced_enable_kms element found\n';
+            
+            // Clear the element
+            element.checked = false;
+            element.value = 'no';
+            console.log('🔄 Cleared element to: checked=false, value=no');
+            output.innerHTML += '🔄 Cleared element to: checked=false, value=no\n';
+            
+            // Create test config with enable_kms
+            const testConfig = {
+                advanced: {
+                    enable_kms: 'yes'
+                }
+            };
+            
+            console.log('🎯 Test config:', testConfig);
+            output.innerHTML += '🎯 Test config: advanced.enable_kms = yes\n';
+            
+            // Test mapKeyToSection function
+            console.log('\n🔍 Testing mapKeyToSection...');
+            output.innerHTML += '\n🔍 Testing mapKeyToSection...\n';
+            if (typeof window.mapKeyToSection === 'function') {
+                const section = window.mapKeyToSection('enable_kms');
+                console.log(`mapKeyToSection('enable_kms') = '${section}'`);
+                output.innerHTML += `mapKeyToSection('enable_kms') = '${section}'\n`;
+                if (section !== 'advanced') {
+                    console.error(`❌ Wrong section! Expected 'advanced', got '${section}'`);
+                    output.innerHTML += `ERROR: Expected 'advanced', got '${section}'\n`;
+                } else {
+                    console.log('✅ Correct section mapping');
+                    output.innerHTML += '✅ Correct section mapping\n';
+                }
+            } else {
+                console.error('❌ mapKeyToSection function not found');
+                output.innerHTML += 'ERROR: mapKeyToSection function not found\n';
+            }
+            
+            // Call the population function
+            try {
+                console.log('\n🔄 Starting configuration loading...');
+                output.innerHTML += '\n🔄 Starting configuration loading...\n';
+                window.populateFormFromConfig(testConfig);
+                console.log('✅ populateFormFromConfig called successfully');
+                output.innerHTML += '✅ populateFormFromConfig called successfully\n';
+            } catch (error) {
+                console.error('❌ populateFormFromConfig failed:', error);
+                output.innerHTML += 'ERROR: populateFormFromConfig failed: ' + error.message + '\n';
+            }
+            
+            // Final check after all timeouts should complete
+            setTimeout(() => {
+                console.log('\n🎯 FINAL RESULT:');
+                output.innerHTML += '\n🎯 FINAL RESULT:\n';
+                console.log(`   Element checked: ${element.checked} (expected: true)`);
+                console.log(`   Element value: ${element.value} (expected: yes)`);
+                output.innerHTML += `   Element checked: ${element.checked} (expected: true)\n`;
+                output.innerHTML += `   Element value: ${element.value} (expected: yes)\n`;
+                
+                const success = element.checked === true && element.value === 'yes';
+                console.log(`   Result: ${success ? '✅ SUCCESS' : '❌ FAILED'}`);
+                output.innerHTML += `   Result: ${success ? '✅ SUCCESS' : '❌ FAILED'}\n`;
+                
+                if (!success) {
+                    console.log('\n🔧 DEBUGGING SUGGESTIONS:');
+                    console.log('1. Check if element is being found in populateFormFromConfig');
+                    console.log('2. Check if wireFlatSwitches is overriding the value');
+                    console.log('3. Check if centralized triggering is working correctly');
+                    output.innerHTML += '\n🔧 DEBUGGING SUGGESTIONS:\n';
+                    output.innerHTML += '1. Check if element is being found in populateFormFromConfig\n';
+                    output.innerHTML += '2. Check if wireFlatSwitches is overriding the value\n';
+                    output.innerHTML += '3. Check if centralized triggering is working correctly\n';
+                }
+            }, 4000);
+        }
+        
+        // Test KMS and VIP Address fixes specifically
+        function testKmsAndVipFixes() {
+            console.log('\n🧪 Testing enable_kms loading and VIP address persistence...');
+            
+            const output = document.getElementById('kmsTestOutput');
+            output.style.display = 'block';
+            output.innerHTML = 'Testing enable_kms and VIP address fixes...\n';
+            
+            // Test configuration with enable_kms and VIP address
+            const testConfig = {
+                basics: {
+                    network_interface: 'eth0',
+                    kolla_internal_vip_address: '192.168.1.100',
+                    domain_setup: 'yes'
+                },
+                advanced: {
+                    enable_kms: 'yes'
+                }
+            };
+            
+            console.log('🎯 Test configuration:', testConfig);
+            output.innerHTML += '🎯 Test configuration includes enable_kms and VIP address\n';
+            
+            // Clear the enable_kms switch and VIP field
+            const enableKmsSwitch = document.getElementById('advanced_enable_kms');
+            const vipField = document.getElementById('basics_kolla_internal_vip_address');
+            
+            if (enableKmsSwitch) {
+                enableKmsSwitch.checked = false;
+                enableKmsSwitch.value = 'no';
+                console.log('🔄 Cleared enable_kms switch');
+                output.innerHTML += '🔄 Cleared enable_kms switch\n';
+            } else {
+                console.error('❌ enable_kms switch not found!');
+                output.innerHTML += 'ERROR: enable_kms switch not found!\n';
+                return;
+            }
+            
+            if (vipField) {
+                vipField.value = '';
+                console.log('🔄 Cleared VIP address field');
+                output.innerHTML += '🔄 Cleared VIP address field\n';
+            }
+            
+            // Test the loading function
+            try {
+                console.log('🚀 Loading configuration...');
+                output.innerHTML += '🚀 Loading configuration...\n';
+                window.populateFormFromConfig(testConfig);
+                
+                // Check results after loading timeouts complete
+                setTimeout(() => {
+                    console.log('\n🔍 Checking results after loading...');
+                    output.innerHTML += '\n🔍 Checking results after loading...\n';
+                    
+                    // Check enable_kms
+                    const kmsWorking = enableKmsSwitch.checked === true && enableKmsSwitch.value === 'yes';
+                    console.log(`🔑 enable_kms result: ${kmsWorking ? '✅ WORKING' : '❌ FAILED'}`);
+                    output.innerHTML += `🔑 enable_kms result: ${kmsWorking ? '✅ WORKING' : '❌ FAILED'}\n`;
+                    output.innerHTML += `   Checked: ${enableKmsSwitch.checked} (expected: true)\n`;
+                    output.innerHTML += `   Value: ${enableKmsSwitch.value} (expected: yes)\n`;
+                    
+                    // Check VIP address persistence
+                    if (vipField) {
+                        const vipWorking = vipField.value === '192.168.1.100';
+                        console.log(`🏠 VIP address result: ${vipWorking ? '✅ WORKING' : '❌ FAILED'}`);
+                        output.innerHTML += `🏠 VIP address result: ${vipWorking ? '✅ WORKING' : '❌ FAILED'}\n`;
+                        output.innerHTML += `   Value: "${vipField.value}" (expected: "192.168.1.100")\n`;
+                    }
+                    
+                    // Final assessment
+                    const bothFixed = kmsWorking && (!vipField || vipField.value === '192.168.1.100');
+                    console.log(`\n🎯 Final Result: ${bothFixed ? '✅ BOTH ISSUES FIXED' : '❌ ISSUES REMAIN'}`);
+                    output.innerHTML += `\n🎯 Final Result: ${bothFixed ? '✅ BOTH ISSUES FIXED' : '❌ ISSUES REMAIN'}\n`;
+                    
+                }, 3500);
+                
+            } catch (error) {
+                console.error('❌ Test failed with error:', error);
+                output.innerHTML += 'ERROR: Test failed - ' + error.message + '\n';
+            }
+        }
+        
+        function showConsoleHelp() {
+            const output = document.getElementById('testOutput');
+            output.style.display = 'block';
+            output.innerHTML = `
+Available Console Commands:
+===========================
+
+� debugTestTLSValidation() - Test TLS certificate requirement validation
+�📋 debugTestCertificateCleanup() - Test full certificate cleanup process
+🎯 debugTestVolumeGroupLoading() - Test volume group loading functionality  
+🧹 cleanupCertificatesOnDomainDisable() - Manual certificate cleanup
+🔍 debugToggleStates() - Show all toggle states
+⚙️ debugLoadTestConfig() - Load test configuration
+🔧 debugForceToggleUpdate('toggleId', 'yes/no') - Force toggle update
+🛠️ debugFixAllToggles() - Fix all toggle states
+
+Usage Examples:
+===============
+debugTestTLSValidation()
+debugTestCertificateCleanup()
+debugTestVolumeGroupLoading()
+cleanupCertificatesOnDomainDisable()
+debugToggleStates()
+            `;
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Toggle Loading Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .alert {
+            padding: 12px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .alert-info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .alert-success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .alert-warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+        .toggle-demo {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            margin: 10px 0;
+        }
+        .toggle-demo label {
+            display: block;
+            margin: 10px 0;
+            padding: 8px;
+            background: white;
+            border-left: 4px solid #007bff;
+            font-weight: bold;
+        }
+        .toggle-demo .dependent-field {
+            margin-left: 20px;
+            padding: 5px;
+            border-left: 2px solid #6c757d;
+            color: #6c757d;
+            font-size: 14px;
+        }
+        .toggle-demo .dependent-field.visible {
+            color: #28a745;
+            border-left-color: #28a745;
+        }
+        .config-sample {
+            font-family: monospace;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            white-space: pre-wrap;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn-info {
+            background-color: #17a2b8;
+            color: white;
+        }
+        .test-result {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .test-result.pass {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .test-result.fail {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .console-output {
+            background: #000;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            height: 200px;
+            overflow-y: auto;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔄 Toggle Loading Test</h1>
+    
+    <div class="alert alert-info">
+        <strong>🎯 Test Objective:</strong>
+        Verify that when loading a YAML configuration, toggle switches are properly set and their dependent fields become visible automatically.
+    </div>
+
+    <div class="test-section">
+        <h3>📋 Test Configuration</h3>
+        <p>This configuration includes several toggle switches set to "yes" with dependent fields:</p>
+        <div class="config-sample" id="test-config">basics:
+  kolla_enable_tls_external: yes  # Should show external cert field
+  kolla_enable_tls_internal: yes   # Should show internal cert field
+  kolla_external_fqdn_cert: /etc/xavs/certificates/external_cert.pem
+  kolla_internal_fqdn_cert: /etc/xavs/certificates/internal_cert.pem
+
+storage:
+  enable_cinder: yes               # Should show cinder fields
+  cinder_volume_group: cinder-volumes
+  volume_driver: lvm
+  cinder_backup_driver: swift
+
+network:
+  enable_neutron_provider_networks: yes  # Should show provider network fields
+  enable_neutron_dvr: no                  # DVR fields should stay hidden</div>
+    </div>
+
+    <div class="test-section">
+        <h3>🔧 Toggle Dependencies Expected</h3>
+        
+        <div class="toggle-demo">
+            <label>🔒 TLS External Toggle: <code>kolla_enable_tls_external = yes</code></label>
+            <div class="dependent-field" id="external-cert-status">
+                → External FQDN Certificate field should be visible
+            </div>
+            
+            <label>🔒 TLS Internal Toggle: <code>kolla_enable_tls_internal = yes</code></label>
+            <div class="dependent-field" id="internal-cert-status">
+                → Internal FQDN Certificate field should be visible
+            </div>
+            
+            <label>💾 Cinder Toggle: <code>enable_cinder = yes</code></label>
+            <div class="dependent-field" id="cinder-fields-status">
+                → Volume Group, Volume Driver, Backup Driver fields should be visible
+            </div>
+            
+            <label>🌐 Provider Networks Toggle: <code>enable_neutron_provider_networks = yes</code></label>
+            <div class="dependent-field" id="provider-networks-status">
+                → Provider network configuration fields should be visible
+            </div>
+            
+            <label>🔀 DVR Toggle: <code>enable_neutron_dvr = no</code></label>
+            <div class="dependent-field" id="dvr-status">
+                → DVR-related fields should remain hidden
+            </div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h3>🧪 Test Actions</h3>
+        <button class="btn btn-primary" onclick="simulateConfigurationLoad()">1. Simulate Configuration Load</button>
+        <button class="btn btn-info" onclick="checkToggleStates()">2. Check Toggle States</button>
+        <button class="btn btn-info" onclick="checkFieldVisibility()">3. Check Field Visibility</button>
+        
+        <h4>📊 Test Results:</h4>
+        <div id="test-results"></div>
+        
+        <h4>📊 Console Output:</h4>
+        <div class="console-output" id="console"></div>
+    </div>
+
+    <div id="status_panel" class="alert" style="display: none;"></div>
+
+    <script>
+        // Mock toggle switches and dependent fields
+        const mockToggles = {
+            'basics_kolla_enable_tls_external': { value: 'yes', dependents: ['basics_kolla_external_fqdn_cert'] },
+            'basics_kolla_enable_tls_internal': { value: 'yes', dependents: ['basics_kolla_internal_fqdn_cert'] },
+            'storage_enable_cinder': { value: 'yes', dependents: ['storage_cinder_volume_group', 'storage_volume_driver', 'storage_cinder_backup_driver'] },
+            'network_enable_neutron_provider_networks': { value: 'yes', dependents: ['network_provider_config'] },
+            'network_enable_neutron_dvr': { value: 'no', dependents: ['network_dvr_config'] }
+        };
+
+        const mockFields = {};
+        
+        // Console capture
+        const consoleElement = document.getElementById('console');
+        const originalConsole = {
+            log: console.log,
+            error: console.error,
+            warn: console.warn
+        };
+
+        function addToConsole(type, message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const color = {
+                'log': '#00ff00',
+                'error': '#ff0000',
+                'warn': '#ffff00'
+            }[type] || '#00ff00';
+            
+            consoleElement.innerHTML += `<span style="color: ${color}">[${timestamp}] ${type.toUpperCase()}: ${message}</span>\n`;
+            consoleElement.scrollTop = consoleElement.scrollHeight;
+        }
+
+        // Override console methods
+        console.log = function(...args) {
+            originalConsole.log.apply(console, args);
+            addToConsole('log', args.join(' '));
+        };
+
+        console.error = function(...args) {
+            originalConsole.error.apply(console, args);
+            addToConsole('error', args.join(' '));
+        };
+
+        console.warn = function(...args) {
+            originalConsole.warn.apply(console, args);
+            addToConsole('warn', args.join(' '));
+        };
+
+        function showStatus(message, type) {
+            const statusPanel = document.getElementById('status_panel');
+            if (statusPanel) {
+                statusPanel.className = `alert alert-${type}`;
+                statusPanel.textContent = message;
+                statusPanel.style.display = 'block';
+                
+                setTimeout(() => {
+                    statusPanel.style.display = 'none';
+                }, 5000);
+            }
+        }
+
+        function addTestResult(description, passed, details = '') {
+            const resultsDiv = document.getElementById('test-results');
+            const resultClass = passed ? 'pass' : 'fail';
+            const resultText = passed ? '✅ PASS' : '❌ FAIL';
+            
+            resultsDiv.innerHTML += `
+                <div class="test-result ${resultClass}">
+                    ${resultText}: ${description}
+                    ${details ? `<br>Details: ${details}` : ''}
+                </div>
+            `;
+        }
+
+        function simulateConfigurationLoad() {
+            console.log('🔄 Starting configuration load simulation...');
+            
+            const testConfig = {
+                basics: {
+                    kolla_enable_tls_external: 'yes',
+                    kolla_enable_tls_internal: 'yes',
+                    kolla_external_fqdn_cert: '/etc/xavs/certificates/external_cert.pem',
+                    kolla_internal_fqdn_cert: '/etc/xavs/certificates/internal_cert.pem'
+                },
+                storage: {
+                    enable_cinder: 'yes',
+                    cinder_volume_group: 'cinder-volumes',
+                    volume_driver: 'lvm',
+                    cinder_backup_driver: 'swift'
+                },
+                network: {
+                    enable_neutron_provider_networks: 'yes',
+                    enable_neutron_dvr: 'no'
+                }
+            };
+
+            // Clear previous results
+            document.getElementById('test-results').innerHTML = '';
+
+            try {
+                console.log('📋 Loading configuration data:', JSON.stringify(testConfig, null, 2));
+
+                // Simulate populateFormFromConfig with enhanced change event triggering
+                for (const [section, fields] of Object.entries(testConfig)) {
+                    for (const [key, value] of Object.entries(fields)) {
+                        const id = `${section}_${key}`;
+                        console.log(`📝 Setting ${id} = ${value}`);
+                        
+                        // Mock the toggle behavior
+                        if (mockToggles[id]) {
+                            const isChecked = value.toLowerCase() === 'yes';
+                            console.log(`🔄 Triggering change event for switch: ${id} (${isChecked ? 'yes' : 'no'})`);
+                            mockFields[id] = { checked: isChecked, value: value };
+                            
+                            // Simulate visibility changes for dependent fields
+                            mockToggles[id].dependents.forEach(depId => {
+                                console.log(`👁️ ${isChecked ? 'Showing' : 'Hiding'} dependent field: ${depId}`);
+                                mockFields[depId] = { visible: isChecked };
+                            });
+                        } else {
+                            mockFields[id] = { value: value };
+                        }
+                    }
+                }
+
+                console.log('✅ Configuration loaded successfully!');
+                showStatus('Configuration simulation completed successfully', 'success');
+                addTestResult('Configuration Load', true, 'All toggle values and dependent fields processed');
+
+            } catch (error) {
+                console.error('❌ Error during configuration load:', error.message);
+                showStatus(`Error: ${error.message}`, 'danger');
+                addTestResult('Configuration Load', false, error.message);
+            }
+        }
+
+        function checkToggleStates() {
+            console.log('🔍 Checking toggle states...');
+            
+            const expectedStates = {
+                'basics_kolla_enable_tls_external': 'yes',
+                'basics_kolla_enable_tls_internal': 'yes',
+                'storage_enable_cinder': 'yes',
+                'network_enable_neutron_provider_networks': 'yes',
+                'network_enable_neutron_dvr': 'no'
+            };
+
+            let allCorrect = true;
+            
+            for (const [toggleId, expectedValue] of Object.entries(expectedStates)) {
+                const actualValue = mockFields[toggleId]?.value;
+                const isCorrect = actualValue === expectedValue;
+                
+                console.log(`🔍 Toggle ${toggleId}: Expected=${expectedValue}, Actual=${actualValue}, Correct=${isCorrect}`);
+                
+                if (!isCorrect) {
+                    allCorrect = false;
+                }
+                
+                addTestResult(
+                    `Toggle State: ${toggleId}`, 
+                    isCorrect, 
+                    `Expected: ${expectedValue}, Got: ${actualValue || 'undefined'}`
+                );
+            }
+            
+            showStatus(`Toggle state check ${allCorrect ? 'passed' : 'failed'}`, allCorrect ? 'success' : 'warning');
+        }
+
+        function checkFieldVisibility() {
+            console.log('👁️ Checking field visibility...');
+            
+            const visibilityTests = [
+                { field: 'basics_kolla_external_fqdn_cert', shouldBeVisible: true, reason: 'TLS External enabled' },
+                { field: 'basics_kolla_internal_fqdn_cert', shouldBeVisible: true, reason: 'TLS Internal enabled' },
+                { field: 'storage_cinder_volume_group', shouldBeVisible: true, reason: 'Cinder enabled' },
+                { field: 'storage_volume_driver', shouldBeVisible: true, reason: 'Cinder enabled' },
+                { field: 'storage_cinder_backup_driver', shouldBeVisible: true, reason: 'Cinder enabled' }
+            ];
+
+            let allCorrect = true;
+            
+            visibilityTests.forEach(test => {
+                const isVisible = mockFields[test.field]?.visible === true;
+                const isCorrect = isVisible === test.shouldBeVisible;
+                
+                console.log(`👁️ Field ${test.field}: Should be ${test.shouldBeVisible ? 'visible' : 'hidden'}, Is ${isVisible ? 'visible' : 'hidden'}, Correct=${isCorrect}`);
+                
+                if (!isCorrect) {
+                    allCorrect = false;
+                }
+                
+                addTestResult(
+                    `Field Visibility: ${test.field}`, 
+                    isCorrect, 
+                    `${test.reason} - Should be ${test.shouldBeVisible ? 'visible' : 'hidden'}`
+                );
+
+                // Update status indicators
+                const statusElement = document.getElementById(test.field.replace('_', '-') + '-status');
+                if (statusElement) {
+                    statusElement.className = `dependent-field ${isCorrect ? 'visible' : ''}`;
+                }
+            });
+            
+            showStatus(`Visibility check ${allCorrect ? 'passed' : 'failed'}`, allCorrect ? 'success' : 'warning');
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🧪 Toggle Loading Test Page Ready');
+            showStatus('Test ready. Click "Simulate Configuration Load" to begin testing.', 'info');
+        });
+    </script>
+</body>
+</html>

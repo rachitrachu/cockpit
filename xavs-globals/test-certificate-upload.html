@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Certificate Upload Test</title>
+    <link href="file-upload.css" rel="stylesheet" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .alert {
+            padding: 12px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .alert-info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .alert-success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .form-group {
+            margin: 20px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        .form-text {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔐 Certificate Upload Test</h1>
+    
+    <div class="alert alert-info">
+        <strong>📋 Test Instructions:</strong>
+        <ul style="margin: 10px 0; padding-left: 20px;">
+            <li>Upload certificate files (.pem, .crt, .cert formats)</li>
+            <li>Files will be uploaded to <code>/etc/xavs/certificates</code></li>
+            <li>Watch the upload progress and status feedback</li>
+            <li>Test with different file types and sizes</li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h3>🔒 Internal FQDN Certificate</h3>
+        
+        <div class="form-group">
+            <label for="basics_kolla_internal_fqdn_cert">Internal FQDN Certificate</label>
+            <div class="file-upload-container">
+                <input type="file" class="form-control" id="basics_kolla_internal_fqdn_cert" 
+                       name="basics_kolla_internal_fqdn_cert" accept=".pem,.crt,.cert">
+                <div class="file-status" id="basics_kolla_internal_fqdn_cert_status" style="display: none;">
+                    <div class="file-info"></div>
+                    <div class="upload-progress" style="display: none;">
+                        <div class="progress">
+                            <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="form-text">Upload certificate file for Internal FQDN (PEM format)</div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h3>🔒 External FQDN Certificate</h3>
+        
+        <div class="form-group">
+            <label for="basics_kolla_external_fqdn_cert">External FQDN Certificate</label>
+            <div class="file-upload-container">
+                <input type="file" class="form-control" id="basics_kolla_external_fqdn_cert" 
+                       name="basics_kolla_external_fqdn_cert" accept=".pem,.crt,.cert">
+                <div class="file-status" id="basics_kolla_external_fqdn_cert_status" style="display: none;">
+                    <div class="file-info"></div>
+                    <div class="upload-progress" style="display: none;">
+                        <div class="progress">
+                            <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="form-text">Upload certificate file for External FQDN (PEM format)</div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h3>📄 Sample Certificate Content</h3>
+        <p>You can create test certificate files with this sample content:</p>
+        <textarea readonly style="width: 100%; height: 150px; font-family: monospace; font-size: 12px; background: #f8f9fa;">
+-----BEGIN CERTIFICATE-----
+MIIEpDCCAowCCQC5L2VKL5PJrTANBgkqhkiG9w0BAQsFADASMRAwDgYDVQQDDAdU
+ZXN0IENBMB4XDTIzMDEwMTAwMDAwMFoXDTI0MDEwMTAwMDAwMFowEjEQMA4GA1UE
+AwwHVGVzdCBDQTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAL...
+[Sample certificate content - this is just for testing]
+...truncated for brevity...
+-----END CERTIFICATE-----
+-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC5L2VKL5PJrT...
+[Sample private key content - this is just for testing]
+...truncated for brevity...
+-----END PRIVATE KEY-----
+        </textarea>
+        <p><small class="text-muted">Save this content as a .pem file to test the upload functionality.</small></p>
+    </div>
+
+    <div id="status_panel" class="alert" style="display: none;"></div>
+
+    <script>
+        // Mock Cockpit API for testing
+        window.cockpit = {
+            spawn: async function(command, options) {
+                console.log('Mock cockpit.spawn:', command, options);
+                await new Promise(resolve => setTimeout(resolve, 500)); // Simulate delay
+                return { exit_status: 0 };
+            },
+            file: function(path, options) {
+                console.log('Mock cockpit.file:', path, options);
+                return {
+                    replace: async function(content) {
+                        console.log('Mock file.replace:', path, content.length + ' bytes');
+                        await new Promise(resolve => setTimeout(resolve, 800)); // Simulate delay
+                        return true;
+                    }
+                };
+            }
+        };
+
+        // Status panel function
+        function showStatus(message, type) {
+            const statusPanel = document.getElementById('status_panel');
+            if (statusPanel) {
+                statusPanel.className = `alert alert-${type}`;
+                statusPanel.textContent = message;
+                statusPanel.style.display = 'block';
+                
+                if (type === 'success' || type === 'info') {
+                    setTimeout(() => {
+                        statusPanel.style.display = 'none';
+                    }, 3000);
+                }
+            }
+        }
+
+        // File upload functions (simplified for testing)
+        async function setupFileUploadHandlers() {
+            const fileInputs = document.querySelectorAll('input[type="file"]');
+            
+            fileInputs.forEach(input => {
+                input.addEventListener('change', async (e) => {
+                    const file = e.target.files[0];
+                    const fieldName = input.name;
+                    const statusDiv = document.getElementById(`${fieldName}_status`);
+                    const fileInfo = statusDiv?.querySelector('.file-info');
+                    
+                    if (!file) {
+                        if (statusDiv) statusDiv.style.display = 'none';
+                        return;
+                    }
+                    
+                    // Show file info
+                    if (statusDiv && fileInfo) {
+                        statusDiv.style.display = 'block';
+                        fileInfo.innerHTML = `
+                            <small class="text-muted">
+                                <strong>Selected:</strong> ${file.name} (${formatFileSize(file.size)})
+                                <br><strong>Status:</strong> <span class="text-warning">Ready to upload</span>
+                            </small>
+                        `;
+                    }
+                    
+                    // Auto-upload on selection
+                    await uploadCertificateFile(input, file);
+                });
+            });
+        }
+
+        async function uploadCertificateFile(input, file) {
+            const fieldName = input.name;
+            const statusDiv = document.getElementById(`${fieldName}_status`);
+            const fileInfo = statusDiv?.querySelector('.file-info');
+            const progressDiv = statusDiv?.querySelector('.upload-progress');
+            const progressBar = progressDiv?.querySelector('.progress-bar');
+            
+            try {
+                // Show progress
+                if (progressDiv && progressBar) {
+                    progressDiv.style.display = 'block';
+                    progressBar.style.width = '10%';
+                }
+                
+                // Update status
+                if (fileInfo) {
+                    fileInfo.innerHTML = `
+                        <small class="text-info">
+                            <strong>Uploading:</strong> ${file.name} (${formatFileSize(file.size)})
+                            <br><strong>Status:</strong> <span class="text-info">Uploading to /etc/xavs/certificates...</span>
+                        </small>
+                    `;
+                }
+                
+                // Read file content
+                const fileContent = await readFileAsText(file);
+                if (progressBar) progressBar.style.width = '50%';
+                
+                // Mock file operations
+                const uploadPath = '/etc/xavs/certificates';
+                const fileName = sanitizeFileName(file.name);
+                const fullPath = `${uploadPath}/${fileName}`;
+                
+                // Mock directory creation
+                await cockpit.spawn(['mkdir', '-p', uploadPath], { superuser: 'require' });
+                if (progressBar) progressBar.style.width = '75%';
+                
+                // Mock file write
+                await cockpit.file(fullPath, { superuser: 'require' }).replace(fileContent);
+                if (progressBar) progressBar.style.width = '100%';
+                
+                // Update field value
+                input.setAttribute('data-file-path', fullPath);
+                
+                // Success status
+                if (fileInfo) {
+                    fileInfo.innerHTML = `
+                        <small class="text-success">
+                            <strong>Uploaded:</strong> ${file.name} (${formatFileSize(file.size)})
+                            <br><strong>Path:</strong> <code>${fullPath}</code>
+                            <br><strong>Status:</strong> <span class="text-success">✅ Upload successful</span>
+                        </small>
+                    `;
+                }
+                
+                // Hide progress after delay
+                setTimeout(() => {
+                    if (progressDiv) progressDiv.style.display = 'none';
+                }, 2000);
+                
+                showStatus(`Certificate uploaded successfully: ${fullPath}`, 'success');
+                
+            } catch (error) {
+                console.error('Certificate upload failed:', error);
+                
+                // Error status
+                if (fileInfo) {
+                    fileInfo.innerHTML = `
+                        <small class="text-danger">
+                            <strong>Upload Failed:</strong> ${file.name}
+                            <br><strong>Error:</strong> ${error.message}
+                            <br><strong>Status:</strong> <span class="text-danger">❌ Upload failed</span>
+                        </small>
+                    `;
+                }
+                
+                if (progressDiv) progressDiv.style.display = 'none';
+                showStatus(`Certificate upload failed: ${error.message}`, 'danger');
+            }
+        }
+
+        function readFileAsText(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = (e) => reject(new Error('Failed to read file'));
+                reader.readAsText(file);
+            });
+        }
+
+        function sanitizeFileName(fileName) {
+            return fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🔐 Certificate Upload Test Page Loaded');
+            setupFileUploadHandlers();
+            showStatus('Certificate upload test ready. Select files to test upload functionality.', 'info');
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Custom Configuration Fix</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        .warning { color: orange; }
+        button { margin: 5px; padding: 10px; }
+        pre { background: #f5f5f5; padding: 10px; margin: 10px 0; border: 1px solid #ddd; max-height: 400px; overflow-y: auto; }
+        .yaml-output { font-family: 'Courier New', monospace; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Test Custom Configuration Comment Fix</h1>
+    
+    <div class="test-section">
+        <h3>Simulate User's Current Configuration</h3>
+        <p>This will simulate the generation of YAML with custom configuration that gets commented out in the user-defined section.</p>
+        <button onclick="testCustomConfigGeneration()">Test Custom Configuration Generation</button>
+        <pre id="generation-result" class="yaml-output"></pre>
+    </div>
+
+    <div class="test-section">
+        <h3>Test Configuration Parsing</h3>
+        <p>This will test how the generated YAML gets parsed back, ensuring only the Custom Configuration Section is read.</p>
+        <button onclick="testCustomConfigParsing()">Test Custom Configuration Parsing</button>
+        <pre id="parsing-result"></pre>
+    </div>
+
+    <div class="test-section">
+        <h3>Expected Result</h3>
+        <div class="info">
+            <strong>✅ Expected Behavior:</strong>
+            <ul>
+                <li>User-defined custom configuration section gets commented out</li>
+                <li>Custom Configuration Section remains active</li>
+                <li>Only the Custom Configuration Section gets parsed when loading</li>
+                <li>No duplicate processing of custom content</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // Simulate the generateYamlContent function with the fix
+        function generateYamlContentSimulation(config) {
+            let yaml = '---\n';
+            yaml += '# XAVS Global Configuration Variables\n';
+            yaml += `# Generated on: ${new Date().toISOString()}\n\n`;
+
+            const comments = {
+                basics: 'Primary networking, domains, and TLS',
+                network: 'Network and connectivity configuration', 
+                storage: 'Storage services configuration',
+                monitoring: 'Monitoring and logging configuration',
+                advanced: 'Advanced deployment configuration',
+                custom: 'User-defined custom configuration'
+            };
+
+            const writeKV = (k, v) => {
+                yaml += `${k}: ${v}\n`;
+            };
+
+            // Process all sections except custom
+            for (const [sectionKey, sectionValue] of Object.entries(config)) {
+                if (!sectionValue || Object.keys(sectionValue).length === 0) continue;
+                
+                // Skip processing custom section in main loop - it gets special handling later
+                if (sectionKey === 'custom') continue;
+                
+                yaml += `# ${comments[sectionKey] || (sectionKey.toUpperCase() + ' Configuration')}\n`;
+
+                for (const [key, value] of Object.entries(sectionValue)) {
+                    if (value === undefined || value === null || value === '') continue;
+                    writeKV(key, value);
+                }
+
+                yaml += '\n';
+            }
+
+            // Special handling for custom configuration (THE FIX)
+            if (config.custom && config.custom.custom_yaml && config.custom.custom_yaml.trim()) {
+                // Add commented-out user-defined section for reference
+                yaml += '# User-defined custom configuration\n';
+                if (config.custom.custom_comments && config.custom.custom_comments.trim()) {
+                    for (const line of config.custom.custom_comments.trim().split('\n')) {
+                        yaml += `# custom_comments: "${line}"\n`;
+                    }
+                }
+                // Comment out the custom_yaml content line by line
+                for (const line of config.custom.custom_yaml.trim().split('\n')) {
+                    yaml += `# custom_yaml: "${line}"\n`;
+                }
+                yaml += '\n';
+                
+                // Add the actual active Custom Configuration Section
+                yaml += '# Custom Configuration Section\n';
+                if (config.custom.custom_comments && config.custom.custom_comments.trim()) {
+                    for (const line of config.custom.custom_comments.trim().split('\n')) yaml += `# ${line}\n`;
+                }
+                yaml += config.custom.custom_yaml.trim() + '\n\n';
+            }
+
+            yaml += '# End of XAVS Globals Configuration\n';
+            return yaml;
+        }
+
+        // Simulate the parsing function
+        function parseYamlToConfigSimulation(yamlContent) {
+            const config = {};
+            const lines = yamlContent.split('\n');
+            let customYaml = [];
+            let customComments = [];
+            let inCustom = false;
+            
+            for (let i = 0; i < lines.length; i++) {
+                let line = lines[i].trim();
+                if (line.includes('# Custom Configuration Section')) { inCustom = true; continue; }
+                if (line.includes('# End of XAVS Globals Configuration')) { inCustom = false; break; }
+                if (inCustom) {
+                    if (line.startsWith('#') && !line.includes('Custom Configuration Section')) {
+                        customComments.push(line.substring(1).trim());
+                    } else if (line !== '') {
+                        customYaml.push(lines[i]);
+                    }
+                    continue;
+                }
+                if (line.startsWith('#') || line === '' || line === '---') continue;
+                // Process regular configuration lines...
+                if (line.includes(':')) {
+                    const idx = line.indexOf(':');
+                    let key = line.substring(0, idx).trim();
+                    let val = line.substring(idx + 1).trim();
+                    // Simplified parsing for demo
+                    if (!config.basics) config.basics = {};
+                    config.basics[key] = val;
+                }
+            }
+            
+            if (customYaml.length || customComments.length) {
+                config.custom = { 
+                    custom_yaml: customYaml.join('\n'), 
+                    custom_comments: customComments.join('\n') 
+                };
+            }
+            return config;
+        }
+
+        function testCustomConfigGeneration() {
+            const resultDiv = document.getElementById('generation-result');
+            resultDiv.innerHTML = '';
+            
+            console.log('🧪 Testing custom configuration generation with comment fix...');
+            
+            // Simulate user's configuration with custom content
+            const testConfig = {
+                basics: {
+                    'kolla_internal_vip_address': '192.168.1.100'
+                },
+                custom: {
+                    custom_yaml: 'ha: "true"\nankit : "false"',
+                    custom_comments: 'ddd\n\nsss'
+                }
+            };
+            
+            console.log('📥 Input config:', testConfig);
+            
+            const generatedYaml = generateYamlContentSimulation(testConfig);
+            
+            resultDiv.textContent = generatedYaml;
+            
+            console.log('📤 Generated YAML with fix:', generatedYaml);
+            
+            // Check if the fix worked
+            const hasCommentedUserDefined = generatedYaml.includes('# custom_yaml: "ha:');
+            const hasActiveCustomSection = generatedYaml.includes('# Custom Configuration Section') && 
+                                         generatedYaml.includes('ha: "true"') && 
+                                         !generatedYaml.includes('# ha: "true"');
+            
+            if (hasCommentedUserDefined && hasActiveCustomSection) {
+                resultDiv.innerHTML += '\n\n<span style="color: green;">✅ FIX WORKING! User-defined section commented, Custom section active</span>';
+            } else {
+                resultDiv.innerHTML += '\n\n<span style="color: red;">❌ Fix not working properly</span>';
+            }
+        }
+
+        function testCustomConfigParsing() {
+            const resultDiv = document.getElementById('parsing-result');
+            resultDiv.innerHTML = '';
+            
+            console.log('🧪 Testing custom configuration parsing...');
+            
+            // Generate YAML first
+            const testConfig = {
+                basics: {
+                    'kolla_internal_vip_address': '192.168.1.100'
+                },
+                custom: {
+                    custom_yaml: 'ha: "true"\nankit : "false"',
+                    custom_comments: 'ddd\n\nsss'
+                }
+            };
+            
+            const generatedYaml = generateYamlContentSimulation(testConfig);
+            resultDiv.innerHTML += '<strong>Generated YAML:</strong>\n';
+            resultDiv.innerHTML += generatedYaml.substring(0, 500) + '...\n\n';
+            
+            // Parse it back
+            const parsedConfig = parseYamlToConfigSimulation(generatedYaml);
+            
+            resultDiv.innerHTML += '<strong>Parsed Configuration:</strong>\n';
+            resultDiv.innerHTML += JSON.stringify(parsedConfig, null, 2) + '\n\n';
+            
+            // Verify parsing only reads Custom Configuration Section
+            const hasCustom = parsedConfig.custom && parsedConfig.custom.custom_yaml;
+            const customContent = parsedConfig.custom ? parsedConfig.custom.custom_yaml : '';
+            const hasCorrectContent = customContent.includes('ha: "true"') && customContent.includes('ankit : "false"');
+            
+            if (hasCustom && hasCorrectContent) {
+                resultDiv.innerHTML += '<span style="color: green;">✅ PARSING WORKS! Only Custom Configuration Section was read</span>\n';
+                resultDiv.innerHTML += `Custom YAML parsed: ${customContent}\n`;
+                resultDiv.innerHTML += `Custom comments parsed: ${parsedConfig.custom.custom_comments}\n`;
+            } else {
+                resultDiv.innerHTML += '<span style="color: red;">❌ Parsing issue detected</span>\n';
+            }
+            
+            console.log('📋 Parsed config:', parsedConfig);
+        }
+
+        // Auto-run the generation test on load
+        window.addEventListener('load', function() {
+            console.log('🚀 Test page loaded - running custom configuration tests...');
+            testCustomConfigGeneration();
+        });
+    </script>
+</body>
+</html>

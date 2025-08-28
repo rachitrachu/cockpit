@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Validation - Working Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
+        .debug { background: #e8f4f8; padding: 15px; margin: 10px 0; border-radius: 4px; font-family: monospace; font-size: 12px; max-height: 200px; overflow-y: auto; }
+        .form-group { margin: 20px 0; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input { width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 4px; font-size: 14px; }
+        input.is-invalid { border-color: #dc3545; background-color: #ffeaea; }
+        .real-time-validation-error { color: #dc3545; font-size: 12px; margin-top: 5px; background: #fff2f2; padding: 5px; border-radius: 3px; }
+        .success { color: #28a745; background: #f0fff4; padding: 10px; border-radius: 4px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>✅ Real-Time Validation Test - XAVS Structure</h1>
+    
+    <div id="debug-log" class="debug">Debug log will appear here...</div>
+    
+    <div class="success">
+        <strong>✅ Test Status:</strong> This test uses the exact same structure as XAVS Globals to verify real-time validation works.
+    </div>
+    
+    <div class="form-group">
+        <label for="basics_kolla_internal_vip_address">Internal VIP Address</label>
+        <input type="text" id="basics_kolla_internal_vip_address" name="basics_kolla_internal_vip_address" 
+               placeholder="Enter IP address (e.g., 192.168.1.100)">
+    </div>
+    
+    <div class="form-group">
+        <label for="basics_kolla_external_vip_address">External VIP Address</label>
+        <input type="text" id="basics_kolla_external_vip_address" name="basics_kolla_external_vip_address" 
+               placeholder="Enter IP address (e.g., 203.0.113.10)">
+    </div>
+    
+    <div class="form-group">
+        <label for="basics_kolla_internal_fqdn">Internal FQDN</label>
+        <input type="text" id="basics_kolla_internal_fqdn" name="basics_kolla_internal_fqdn" 
+               placeholder="Enter FQDN (e.g., xavs-int.example.com)">
+    </div>
+    
+    <div class="form-group">
+        <label for="basics_kolla_external_fqdn">External FQDN</label>
+        <input type="text" id="basics_kolla_external_fqdn" name="basics_kolla_external_fqdn" 
+               placeholder="Enter FQDN (e.g., xavs.example.com)">
+    </div>
+
+    <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; margin: 20px 0;">
+        <h4>🧪 Test Cases:</h4>
+        <p><strong>Valid IPs:</strong> 192.168.1.100, 10.0.0.1, 255.255.255.255</p>
+        <p><strong>Invalid IPs:</strong> 256.1.1.1, 192.168.1, abc.def.ghi.jkl</p>
+        <p><strong>Valid FQDNs:</strong> example.com, sub.example.com, api.v1.example.com</p>
+        <p><strong>Invalid FQDNs:</strong> localhost, hostname, -example.com, example-.com</p>
+    </div>
+
+    <script>
+        const debugLog = document.getElementById('debug-log');
+        
+        function log(message) {
+            console.log(message);
+            const time = new Date().toLocaleTimeString();
+            debugLog.innerHTML += `[${time}] ${message}<br>`;
+            debugLog.scrollTop = debugLog.scrollHeight;
+        }
+        
+        // Schema structure identical to XAVS Globals
+        const schema = {
+            basics: {
+                fields: {
+                    'kolla_internal_vip_address': {
+                        validation: /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/
+                    },
+                    'kolla_external_vip_address': {
+                        validation: /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/
+                    },
+                    'kolla_internal_fqdn': {
+                        validation: /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/
+                    },
+                    'kolla_external_fqdn': {
+                        validation: /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/
+                    }
+                }
+            }
+        };
+
+        function validateFieldRealTime(input, fieldDef, fieldName) {
+            log(`🔍 Real-time validation for ${fieldName}: "${input.value}"`);
+            
+            const value = input.value.trim();
+            const labelElement = input.closest('.form-group')?.querySelector('label');
+            const label = labelElement ? labelElement.textContent : fieldName;
+            
+            // Clear previous validation state
+            input.classList.remove('is-invalid');
+            
+            // Remove any existing error messages for this field
+            const existingError = input.parentNode?.querySelector('.real-time-validation-error');
+            if (existingError) {
+                existingError.remove();
+            }
+            
+            // Only validate if field has content
+            if (value && fieldDef.validation) {
+                try {
+                    const re = fieldDef.validation;
+                    const isValid = re.test(value);
+                    log(`📋 Validation result for ${fieldName}: ${isValid ? 'VALID ✅' : 'INVALID ❌'}`);
+                    
+                    if (!isValid) {
+                        // Add validation error styling
+                        input.classList.add('is-invalid');
+                        
+                        // Generate specific error message
+                        let errorMsg = `${label.trim()} has invalid format`;
+                        if (fieldName.includes('vip_address') || fieldName.includes('_address')) {
+                            errorMsg = `Must be a valid IPv4 address (e.g., 192.168.1.100)`;
+                        } else if (fieldName.includes('fqdn')) {
+                            errorMsg = `Must be a valid domain name with at least one dot (e.g., example.com)`;
+                        }
+                        
+                        // Create and show error message
+                        const errorDiv = document.createElement('div');
+                        errorDiv.className = 'real-time-validation-error';
+                        errorDiv.textContent = errorMsg;
+                        input.parentNode.appendChild(errorDiv);
+                        
+                        log(`❌ Added error message: ${errorMsg}`);
+                    } else {
+                        log(`✅ Valid input - no errors`);
+                    }
+                } catch (e) {
+                    log(`⚠️ Validation error: ${e.message}`);
+                }
+            } else if (!value) {
+                log(`ℹ️ Empty field - no validation needed`);
+            } else {
+                log(`ℹ️ No validation pattern for this field`);
+            }
+        }
+
+        function setupRealTimeValidation() {
+            log('🔧 Setting up real-time validation...');
+            log('📋 Available schema sections: ' + Object.keys(schema).join(', '));
+            
+            // Create a flat lookup of all fields across all sections (same as XAVS Globals)
+            const allFields = {};
+            for (const [sectionKey, section] of Object.entries(schema)) {
+                if (section.fields) {
+                    for (const [fieldKey, fieldDef] of Object.entries(section.fields)) {
+                        allFields[fieldKey] = fieldDef;
+                        log(`📋 Registered field: ${fieldKey} - Has validation: ${!!fieldDef.validation}`);
+                    }
+                }
+            }
+            
+            // Add real-time validation for input fields
+            const inputs = document.querySelectorAll('input[type="text"]');
+            log(`📝 Found ${inputs.length} text inputs for real-time validation`);
+            
+            inputs.forEach(input => {
+                const fullName = input.name || '';
+                const id = input.id || '';
+                log(`🔍 Processing input: name="${fullName}" id="${id}"`);
+                
+                // Extract field name from fieldId format: sectionKey_fieldKey
+                let fieldName = '';
+                if (fullName) {
+                    const parts = fullName.split('_');
+                    fieldName = parts.length > 1 ? parts.slice(1).join('_') : parts[0];
+                } else if (id) {
+                    const parts = id.split('_');
+                    fieldName = parts.length > 1 ? parts.slice(1).join('_') : parts[0];
+                }
+                
+                log(`🔎 Extracted field name: "${fieldName}"`);
+                
+                // Check if this field has validation in our flat lookup
+                const fieldDef = allFields[fieldName];
+                const hasValidation = fieldDef && fieldDef.validation;
+                
+                log(`🔍 Field "${fieldName}": exists=${!!fieldDef}, hasValidation=${hasValidation}`);
+                
+                if (hasValidation) {
+                    log(`✅ Adding real-time validation to: ${fieldName}`);
+                    
+                    // Add input event listener for real-time validation  
+                    const inputHandler = (e) => {
+                        log(`⚡ Input event triggered for: ${fieldName}`);
+                        validateFieldRealTime(e.target, fieldDef, fieldName);
+                    };
+                    
+                    const blurHandler = (e) => {
+                        log(`🎯 Blur event triggered for: ${fieldName}`);
+                        validateFieldRealTime(e.target, fieldDef, fieldName);
+                    };
+                    
+                    input.addEventListener('input', inputHandler);
+                    input.addEventListener('blur', blurHandler);
+                    
+                    log(`🎉 Event listeners added successfully for: ${fieldName}`);
+                } else {
+                    log(`❌ No validation found for field: ${fieldName}`);
+                }
+            });
+            
+            log('✅ Real-time validation setup complete!');
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            log('🚀 Page loaded - starting real-time validation setup...');
+            setupRealTimeValidation();
+            log('🎯 Ready to test! Try typing in the input fields above.');
+        });
+    </script>
+</body>
+</html>

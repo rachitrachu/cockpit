@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link href="style.css" rel="stylesheet" />
+  <title>XAVS Configuration - Error Handling Test</title>
+  <style>
+    .test-section {
+      margin: 20px 0;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+    }
+    .test-button {
+      margin: 5px;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      background: #197560;
+      color: white;
+      cursor: pointer;
+    }
+    .test-button:hover {
+      background: #166551;
+    }
+  </style>
+</head>
+<body>
+  <div class="container-fluid">
+    <h1>XAVS Configuration - Error Handling Test</h1>
+    
+    <!-- Status Panel (same as main app) -->
+    <div id="status_panel" class="alert alert-info" role="status" style="display:none;"></div>
+    
+    <div class="test-section">
+      <h3>Validation Error Tests</h3>
+      <p>These tests simulate validation errors like those seen in the console.</p>
+      
+      <button class="test-button" onclick="testValidationErrors()">
+        Test Validation Errors Display
+      </button>
+      
+      <button class="test-button" onclick="testSingleError()">
+        Test Single Field Error
+      </button>
+      
+      <button class="test-button" onclick="clearErrors()">
+        Clear All Errors
+      </button>
+    </div>
+    
+    <div class="test-section">
+      <h3>Sample Form Fields</h3>
+      <p>Test form fields to demonstrate error highlighting and conditional logic.</p>
+      
+      <div style="margin-bottom: 15px;">
+        <label class="form-label">Enable Cinder *</label>
+        <input type="checkbox" id="test-enable-cinder" class="switch-input" />
+        <span>Enable block storage service</span>
+      </div>
+      
+      <div style="margin-bottom: 15px;">
+        <label class="form-label">Volume Driver</label>
+        <select id="test-volume-driver" class="form-control">
+          <option value="LVM">LVM</option>
+          <option value="NFS">NFS</option>
+          <option value="CEPH">CEPH</option>
+        </select>
+      </div>
+      
+      <div style="margin-bottom: 15px;">
+        <label class="form-label">Internal VIP Address *</label>
+        <input type="text" id="test-vip" class="form-control" placeholder="10.0.1.79" />
+      </div>
+      
+      <div style="margin-bottom: 15px;" id="cinder-vg-wrapper">
+        <label class="form-label">Cinder Volume Group *</label>
+        <select id="test-vg" class="form-control">
+          <option value="">— Select VG —</option>
+          <option value="vg01">vg01</option>
+        </select>
+        <small class="form-text">Only shown when Cinder is enabled AND Volume Driver is LVM</small>
+      </div>
+      
+      <button class="test-button" onclick="validateTestFields()">
+        Validate Test Fields
+      </button>
+      
+      <button class="test-button" onclick="testConditionalLogic()">
+        Test Conditional Logic
+      </button>
+    </div>
+    
+    <div class="test-section">
+      <h3>Silent Save Blocking Test</h3>
+      <p>This test reproduces the issue where validation errors silently block saving without clear feedback.</p>
+      
+      <button class="test-button" onclick="testSilentBlocking()">
+        Test Silent Save Blocking (Old Behavior)
+      </button>
+      
+      <button class="test-button" onclick="testImprovedFeedback()">
+        Test Improved Error Feedback (New Behavior)
+      </button>
+      
+      <div id="mock-save-status" style="margin-top: 10px; padding: 10px; background: #f5f5f5; border-radius: 4px; display: none;">
+        <strong>Save Process:</strong>
+        <div id="save-steps"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Mock the enhanced showStatus function for testing
+    function showStatus(message, type = 'info') {
+      const el = document.getElementById('status_panel');
+      if (el) {
+        el.className = `alert alert-${type}`;
+        el.textContent = message;
+        el.style.display = 'block';
+        
+        // Clear any custom styling from validation errors
+        el.style.border = '';
+        el.style.boxShadow = '';
+        el.style.backgroundColor = '';
+        el.style.borderRadius = '';
+        el.innerHTML = '';
+        el.textContent = message;
+        
+        // Add specific styling for each type
+        if (type === 'success') {
+          el.style.border = '2px solid #10b981';
+          el.style.backgroundColor = '#f0fdf4';
+          el.style.borderRadius = '8px';
+          setTimeout(() => { el.style.display = 'none'; }, 5000);
+        } else if (type === 'info') {
+          el.style.border = '2px solid #3b82f6';
+          el.style.backgroundColor = '#eff6ff';
+          el.style.borderRadius = '8px';
+        } else if (type === 'warning') {
+          el.style.border = '2px solid #f59e0b';
+          el.style.backgroundColor = '#fffbeb';
+          el.style.borderRadius = '8px';
+        }
+      }
+    }
+
+    function showValidationErrors(errors) {
+      const el = document.getElementById('status_panel');
+      if (el && errors.length > 0) {
+        el.className = 'alert alert-danger';
+        
+        let errorHTML = '<strong>Validation Failed:</strong><br>';
+        errorHTML += '<ul style="margin: 8px 0 0 0; padding-left: 20px;">';
+        errors.forEach(error => {
+          errorHTML += `<li>${error}</li>`;
+        });
+        errorHTML += '</ul>';
+        
+        el.innerHTML = errorHTML;
+        el.style.display = 'block';
+        
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+
+    function logToConsole(message) {
+      const output = document.getElementById('console-output');
+      const timestamp = new Date().toLocaleTimeString();
+      output.textContent += `[${timestamp}] ${message}\n`;
+      output.scrollTop = output.scrollHeight;
+      console.log(message);
+    }
+
+    // Test functions
+    function testValidationErrors() {
+      const errors = [
+        'Internal VIP Address * is required',
+        'Cinder Volume Group * is required'
+      ];
+      
+      logToConsole('Testing validation errors display...');
+      showValidationErrors(errors);
+      logToConsole(`Displayed ${errors.length} validation errors in GUI`);
+    }
+
+    function testSingleError() {
+      const errors = ['Network Interface is required'];
+      
+      logToConsole('Testing single validation error...');
+      showValidationErrors(errors);
+      logToConsole('Displayed single validation error in GUI');
+    }
+
+    function clearErrors() {
+      const el = document.getElementById('status_panel');
+      if (el) {
+        el.style.display = 'none';
+      }
+      
+      // Clear field highlighting
+      document.querySelectorAll('.is-invalid').forEach(field => {
+        field.classList.remove('is-invalid');
+      });
+      
+      logToConsole('Cleared all errors from GUI');
+    }
+
+    function validateTestFields() {
+      const vipField = document.getElementById('test-vip');
+      const vgField = document.getElementById('test-vg');
+      const cinderEnabled = document.getElementById('test-enable-cinder').checked;
+      const volumeDriver = document.getElementById('test-volume-driver').value;
+      const errors = [];
+      
+      // Clear previous errors
+      vipField.classList.remove('is-invalid');
+      vgField.classList.remove('is-invalid');
+      
+      // Validate VIP field
+      if (!vipField.value.trim()) {
+        errors.push('Internal VIP Address * is required');
+        vipField.classList.add('is-invalid');
+      }
+      
+      // Validate VG field only if Cinder is enabled AND volume driver is LVM
+      const shouldRequireVG = cinderEnabled && volumeDriver === 'LVM';
+      logToConsole(`Cinder enabled: ${cinderEnabled}, Volume driver: ${volumeDriver}, Should require VG: ${shouldRequireVG}`);
+      
+      if (shouldRequireVG && !vgField.value.trim()) {
+        errors.push('Cinder Volume Group * is required');
+        vgField.classList.add('is-invalid');
+      }
+      
+      if (errors.length > 0) {
+        showValidationErrors(errors);
+        logToConsole(`Validation failed with ${errors.length} errors`);
+      } else {
+        showStatus('Validation passed successfully!', 'success');
+        logToConsole('Validation passed - no errors found');
+      }
+    }
+
+    function testConditionalLogic() {
+      const cinderCheckbox = document.getElementById('test-enable-cinder');
+      const volumeDriverSelect = document.getElementById('test-volume-driver');
+      const vgWrapper = document.getElementById('cinder-vg-wrapper');
+      
+      function updateVisibility() {
+        const cinderEnabled = cinderCheckbox.checked;
+        const volumeDriver = volumeDriverSelect.value;
+        const shouldShow = cinderEnabled && volumeDriver === 'LVM';
+        
+        vgWrapper.style.display = shouldShow ? 'block' : 'none';
+        
+        logToConsole(`Conditional logic: Cinder=${cinderEnabled}, Driver=${volumeDriver}, Show VG field=${shouldShow}`);
+      }
+      
+      // Add event listeners
+      cinderCheckbox.addEventListener('change', updateVisibility);
+      volumeDriverSelect.addEventListener('change', updateVisibility);
+      
+      // Initial update
+      updateVisibility();
+      
+      logToConsole('Conditional logic test activated - try toggling Cinder and Volume Driver');
+    }
+
+    function testSilentBlocking() {
+      const mockSaveStatus = document.getElementById('mock-save-status');
+      const saveSteps = document.getElementById('save-steps');
+      
+      mockSaveStatus.style.display = 'block';
+      saveSteps.innerHTML = '';
+      
+      function addStep(message, type = 'info') {
+        const step = document.createElement('div');
+        step.style.color = type === 'error' ? '#dc2626' : type === 'success' ? '#197560' : '#666';
+        step.style.margin = '2px 0';
+        step.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+        saveSteps.appendChild(step);
+      }
+      
+      addStep('User clicks Save button...');
+      
+      setTimeout(() => {
+        addStep('Validating form...', 'info');
+        
+        setTimeout(() => {
+          addStep('❌ Validation failed: Internal VIP Address required', 'error');
+          addStep('❌ Validation failed: Cinder Volume Group required', 'error');
+          
+          setTimeout(() => {
+            addStep('⚠️ OLD BEHAVIOR: Save silently blocked, no clear feedback to user!', 'error');
+            logToConsole('Silent blocking test: Demonstrated how save would fail without clear feedback');
+          }, 500);
+        }, 500);
+      }, 300);
+    }
+
+    function testImprovedFeedback() {
+      const mockSaveStatus = document.getElementById('mock-save-status');
+      const saveSteps = document.getElementById('save-steps');
+      
+      mockSaveStatus.style.display = 'block';
+      saveSteps.innerHTML = '';
+      
+      function addStep(message, type = 'info') {
+        const step = document.createElement('div');
+        step.style.color = type === 'error' ? '#dc2626' : type === 'success' ? '#197560' : '#666';
+        step.style.margin = '2px 0';
+        step.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+        saveSteps.appendChild(step);
+      }
+      
+      addStep('User clicks Save button...');
+      
+      setTimeout(() => {
+        addStep('Button changes to "Validating..."', 'info');
+        
+        setTimeout(() => {
+          addStep('❌ Found 2 validation errors', 'error');
+          
+          setTimeout(() => {
+            addStep('✅ NEW BEHAVIOR: Detailed error panel displayed with field list', 'success');
+            addStep('✅ Invalid fields highlighted with red borders', 'success');
+            addStep('✅ Auto-navigate to first tab with errors', 'success');
+            addStep('✅ Save button shows "Fix 2 Error(s)" message', 'success');
+            addStep('✅ Clear instructions provided to user', 'success');
+            
+            // Actually show the validation errors for demonstration
+            const errors = [
+              'Internal VIP Address * is required',
+              'Cinder Volume Group * is required (only when Cinder enabled + LVM driver)'
+            ];
+            showValidationErrors(errors);
+            
+            logToConsole('Improved feedback test: Demonstrated new clear error reporting');
+          }, 500);
+        }, 500);
+      }, 300);
+    }
+
+    function testSaveButtonBehavior() {
+      const mockBtn = document.getElementById('mock-save-btn');
+      const originalText = mockBtn.textContent;
+      const originalStyle = mockBtn.style.cssText;
+      
+      logToConsole('Testing save button behavior during validation failure...');
+      
+      // Step 1: Normal button click
+      mockBtn.textContent = 'Validating...';
+      mockBtn.disabled = true;
+      
+      setTimeout(() => {
+        // Step 2: Validation failed - amber warning (not red error)
+        mockBtn.style.backgroundColor = '#f59e0b';
+        mockBtn.style.color = '#ffffff';
+        mockBtn.textContent = 'Please fix 2 error(s)';
+        mockBtn.style.cursor = 'not-allowed';
+        
+        // Also show error panel at the same time
+        const errors = ['Internal VIP Address * is required', 'Test field validation'];
+        showValidationErrors(errors);
+        
+        logToConsole('Button now shows amber warning (not red) to distinguish from error panel');
+        
+        setTimeout(() => {
+          // Step 3: User fixes errors - button returns to normal
+          mockBtn.style.cssText = originalStyle;
+          mockBtn.textContent = originalText;
+          mockBtn.disabled = false;
+          
+          // Clear error panel
+          const statusPanel = document.getElementById('status_panel');
+          if (statusPanel) {
+            statusPanel.style.display = 'none';
+          }
+          
+          logToConsole('Button returned to normal state - ready for retry');
+        }, 3000);
+      }, 1000);
+    }
+
+    function testStatusPanelColors() {
+      logToConsole('Testing status panel color transitions...');
+      
+      // Step 1: Show validation errors (red)
+      const errors = ['Internal VIP Address * is required'];
+      showValidationErrors(errors);
+      logToConsole('Step 1: Showing validation errors (should be red)');
+      
+      setTimeout(() => {
+        // Step 2: Show success message (should be green, not red)
+        showStatus('✅ Configuration saved successfully to /etc/xavs/globals.d/_99_xavs.yml', 'success');
+        logToConsole('Step 2: Showing success message (should be GREEN, not red)');
+        
+        setTimeout(() => {
+          // Step 3: Show info message
+          showStatus('Loading configuration interface...', 'info');
+          logToConsole('Step 3: Showing info message (should be blue)');
+          
+          setTimeout(() => {
+            // Step 4: Show warning message
+            showStatus('Could not detect interfaces; using defaults', 'warning');
+            logToConsole('Step 4: Showing warning message (should be amber)');
+          }, 2000);
+        }, 3000);
+      }, 2000);
+    }
+
+    <div class="test-section">
+      <h3>Error Console Output</h3>
+      <p>Console output from tests (check browser console for additional details).</p>
+      <pre id="console-output" style="background: #f5f5f5; padding: 10px; border-radius: 4px; max-height: 200px; overflow-y: auto;"></pre>
+    </div>
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      logToConsole('Error handling test page loaded');
+      logToConsole('Ready to test error display functionality');
+      
+      // Simulate some of the console errors mentioned in the issue
+      setTimeout(simulateConsoleErrors, 1000);
+    });
+  </script>
+
+    <div class="test-section">
+      <h3>Status Panel Color Test</h3>
+      <p>Test that success messages appear in green, not red after validation errors.</p>
+      
+      <button class="test-button" onclick="testStatusPanelColors()">
+        Test Status Panel Colors
+      </button>
+      
+      <div style="margin-top: 10px;">
+        <small>This test simulates: validation error (red) → fix errors → save success (green)</small>
+      </div>
+    </div>    <div class="test-section">
+      <h3>Save Button Behavior Test</h3>
+      <p>Test the improved save button feedback to ensure it's not confusing with error panel.</p>
+      
+      <button class="test-button" id="mock-save-btn" onclick="testSaveButtonBehavior()">
+        Save Configuration (Mock)
+      </button>
+      
+      <div style="margin-top: 15px;">
+        <h4>Button State Legend:</h4>
+        <div style="display: flex; gap: 10px; margin: 10px 0;">
+          <span style="background: #197560; color: white; padding: 4px 8px; border-radius: 4px;">Normal (Green)</span>
+          <span style="background: #f59e0b; color: white; padding: 4px 8px; border-radius: 4px;">Validation Failed (Amber)</span>
+          <span style="background: #dc2626; color: white; padding: 4px 8px; border-radius: 4px;">Save Failed (Red)</span>
+        </div>
+      </div>
+    </div>
+
+    // Simulate the console errors from the original issue
+    function simulateConsoleErrors() {
+      const consoleErrors = [
+        'Failed to get current crypto policy: not-found',
+        'failed to fetch lastlog2: V {problem: null, exit_status: 1}',
+        'Mismatching update: linux-headers-5.15.0-153'
+      ];
+      
+      consoleErrors.forEach(error => {
+        console.error(error);
+        logToConsole(`Console Error: ${error}`);
+      });
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      logToConsole('Error handling test page loaded');
+      logToConsole('Ready to test error display functionality');
+      
+      // Simulate some of the console errors mentioned in the issue
+      setTimeout(simulateConsoleErrors, 1000);
+    });
+  </script>
+</body>
+</html>
