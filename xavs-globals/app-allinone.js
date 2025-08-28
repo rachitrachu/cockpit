@@ -1,1303 +1,1281 @@
-// XAVS Globals Configuration - Complete Production Version
-// This version includes the full XAVS configuration schema
+// XAVS Globals Configuration - Cockpit Module (with Storage restored + switch-flat toggles)
+// - Uses provided switch HTML/CSS pattern (injected here) with brand colors (green #197560 / red #dc2626)
+// - Quick Tips on hover and click (modal) with high z-index
+// - Cockpit theme follow; networking/storage logic; YAML preview/export/load/save
 
-console.log('XAVS Globals Production app starting...');
+console.log('XAVS Globals app starting...');
 
-// Complete CONFIG_SCHEMA for XAVS
+const BRAND_GREEN = '#197560';
+const BRAND_RED   = '#dc2626';
+
+let ALL_INTERFACES = [];
+
+/* ===================== CONFIG SCHEMA ===================== */
 const CONFIG_SCHEMA = {
-    network: {
-        title: 'Network Configuration',
-        description: 'Core networking settings for XAVS deployment',
-        fields: {
-            network_interface: {
-                type: 'select',
-                label: 'Management Network Interface',
-                description: 'Primary network interface for XAVS management traffic <button type="button" class="btn btn-sm btn-outline-secondary ms-2" onclick="refreshNetworkInterfaces()" title="Refresh available interfaces"></span>Refresh</button>',
-                default: 'eth0',
-                required: true,
-                options: ['eth0'] // Will be populated by detectNetworkInterfaces
-            },
-            kolla_internal_vip_address: {
-                type: 'text',
-                label: 'Internal VIP Address',
-                description: 'Virtual IP address for internal API communication',
-                default: '10.0.1.100',
-                required: true,
-                validation: /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/
-            },
-                kolla_internal_fqdn: {
-                type: 'text',
-                label: 'Internal FQDN',
-                description: 'Fully qualified domain name for internal access',
-                default: '{{ kolla_internal_vip_address }}',
-                required: false
-            },    
-            neutron_external_interface: {
-                type: 'select',
-                label: 'Neutron External Interface',
-                description: 'Network interface for external/provider networks <button type="button" class="btn btn-sm btn-outline-secondary ms-2" onclick="refreshNetworkInterfaces()" title="Refresh available interfaces"></span>Refresh</button>',
-                default: 'eth1',
-                required: true,
-                options: ['eth1'] // Will be populated by detectNetworkInterfaces
-            },
-            kolla_external_vip_address: {
-                type: 'text',
-                label: 'External VIP Address',
-                description: 'Virtual IP address for external API access',
-                default: '192.168.1.100',
-                required: true,
-                validation: /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/
-            },
-            kolla_external_fqdn: {
-                type: 'text',
-                label: 'External FQDN',
-                description: 'Fully qualified domain name for external access',
-                default: '{{ kolla_external_vip_address }}',
-                required: false
-            },
-            enable_neutron_dvr: {
-                type: 'select',
-                label: 'Enable Neutron DVR',
-                description: 'Enable Distributed Virtual Routing for better performance',
-                options: ['yes', 'no'],
-                default: 'no'
-            }
-        }
-    },
-    storage: {
-        title: 'Storage Configuration',
-        description: 'Cinder and storage backend settings',
-        fields: {
-            enable_cinder: {
-                type: 'select',
-                label: 'Enable Cinder',
-                description: 'Enable block storage service',
-                options: ['yes', 'no'],
-                default: 'yes',
-                required: true
-            },
-            enable_cinder_backup: {
-                type: 'select',
-                label: 'Enable Cinder Backup',
-                description: 'Enable volume backup service',
-                options: ['yes', 'no'],
-                default: 'yes'
-            },
-            cinder_volume_driver: {
-                type: 'select',
-                label: 'Volume Driver',
-                description: 'Backend driver for Cinder volumes',
-                options: ['lvm', 'nfs', 'ceph', 'netapp'],
-                default: 'lvm'
-            },
-            enable_swift: {
-                type: 'select',
-                label: 'Enable Swift',
-                description: 'Enable object storage service',
-                options: ['yes', 'no'],
-                default: 'no'
-            }
-        }
-    },
-
-    database: {
-        title: 'Database Configuration',
-        description: 'MariaDB and database service settings',
-        fields: {
-              enable_proxysql: {
-                type: 'select',
-                label: 'Enable ProxySQL',
-                description: 'Enable ProxySQL for database load balancing',
-                options: ['yes', 'no'],
-                default: 'no'
-            },
-
-        }
-    },
-
-    monitoring: {
-        title: 'Monitoring & Logging',
-        description: 'Monitoring and logging service configuration',
-        fields: {
-            enable_prometheus: {
-                type: 'select',
-                label: 'Enable Prometheus',
-                description: 'Enable Prometheus monitoring',
-                options: ['yes', 'no'],
-                default: 'no'
-            },
-            enable_grafana: {
-                type: 'select',
-                label: 'Enable Grafana',
-                description: 'Enable Grafana dashboards',
-                options: ['yes', 'no'],
-                default: 'no'
-            },
-            enable_central_logging: {
-                type: 'select',
-                label: 'Enable Central Logging',
-                description: 'Enable centralized log collection',
-                options: ['yes', 'no'],
-                default: 'no'
-            },
-            enable_elasticsearch: {
-                type: 'select',
-                label: 'Enable Elasticsearch',
-                description: 'Enable Elasticsearch for log storage',
-                options: ['yes', 'no'],
-                default: 'no'
-            }
-        }
-    },
-    security: {
-        title: 'Security Configuration',
-        description: 'Security and authentication settings',
-        fields: {
-            keystone_admin_user: {
-                type: 'text',
-                label: 'Keystone Admin User',
-                description: 'Administrative username for OpenStack',
-                default: 'admin',
-                required: true
-            },
-            enable_barbican: {
-                type: 'select',
-                label: 'Enable Barbican',
-                description: 'Enable key management service',
-                options: ['yes', 'no'],
-                default: 'no'
-            },
-            enable_horizon_ssl: {
-                type: 'select',
-                label: 'Enable Horizon SSL',
-                description: 'Enable SSL/TLS for dashboard access',
-                options: ['yes', 'no'],
-                default: 'yes'
-            },
-            kolla_enable_tls_internal: {
-                type: 'select',
-                label: 'Enable TLS Internal',
-                description: 'Enable TLS encryption for internal API communication',
-                options: ['yes', 'no'],
-                default: 'no'
-            },
-            kolla_enable_tls_external: {
-                type: 'select',
-                label: 'Enable TLS External',
-                description: 'Enable TLS encryption for external API access',
-                options: ['yes', 'no'],
-                default: 'yes'
-            },
-            kolla_external_fqdn_cert: {
-                type: 'text',
-                label: 'External FQDN Certificate Path',
-                description: 'Path to SSL certificate file for external FQDN',
-                default: '/etc/kolla/certificates/xloud.pem',
-                required: false
-            }
-        }
-    },
-    advanced: {
-        title: 'Advanced Configuration',
-        description: 'Advanced service and deployment settings',
-        fields: {
-            enable_keepalived: {
-                type: 'select',
-                label: 'Enable Keepalived',
-                description: 'Enable Keepalived for high availability',
-                options: ['yes', 'no'],
-                default: 'yes'
-            },
-            enable_haproxy: {
-                type: 'select',
-                label: 'Enable HAProxy',
-                description: 'Enable HAProxy load balancer',
-                options: ['yes', 'no'],
-                default: 'yes'
-            },
-            enable_memcached: {
-                type: 'select',
-                label: 'Enable Memcached',
-                description: 'Enable Memcached caching service',
-                options: ['yes', 'no'],
-                default: 'yes'
-            },
-            enable_haproxy_memcached: {
-                type: 'select',
-                label: 'Enable HAProxy Memcached',
-                description: 'Enable Memcached backend for HAProxy',
-                options: ['yes', 'no'],
-                default: 'yes'
-            },
-
-        }
-    },
-    custom: {
-        title: 'Custom Configuration',
-        description: 'Add your own custom YAML configuration that will be appended to the generated file',
-        fields: {
-            custom_yaml: {
-                type: 'textarea',
-                label: 'Custom YAML Configuration',
-                description: `<div class="custom-config-help">
-                    <h6>🔧 Custom YAML Guidelines:</h6>
-                    <ul>
-                        <li>Use proper YAML syntax with <code>key: value</code> format</li>
-                        <li>Use 2 spaces for indentation (no tabs)</li>
-                        <li>For lists, use <code>- item</code> format</li>
-                        <li>Avoid duplicating keys from other sections</li>
-                        <li>Test your YAML syntax before saving</li>
-                    </ul>
-                </div>`,
-                placeholder: `# Add your custom configuration here
-# Example - Custom service settings:
-custom_service_enabled: yes
-custom_database_settings:
-  max_connections: 500
-  timeout: 30
-
-# Example - Additional variables:
-custom_variables:
-  - name: "custom_var1"
-    value: "custom_value1"
-  - name: "custom_var2"
-    value: "custom_value2"
-
-# Example - Environment overrides:
-environment_overrides:
-  CUSTOM_ENV_VAR: "production"
-  DEBUG_MODE: "false"`,
-                rows: 15,
-                required: false,
-                validation: null
-            },
-            custom_comments: {
-                type: 'textarea',
-                label: 'Documentation & Comments',
-                description: 'Add documentation explaining what your custom configuration does. This will be added as comments in the YAML file.',
-                placeholder: `Document your custom configuration here:
-- What does this configuration do?
-- Why was it added?
-- Any special requirements or dependencies?
-- Contact information for questions`,
-                rows: 6,
-                required: false
-            }
-        }
+  basics: {
+    title: 'XAVS Configuration',
+    description: 'Primary networking, domains, and TLS',
+    fields: {
+      network_interface: {
+        type: 'select',
+        label: 'API/Management Network Interface',
+        description: 'Select the management NIC. Its IPv4 will prefill Internal VIP.',
+        options: [],
+        default: '',
+        required: true
+      },
+      kolla_internal_vip_address: {
+        type: 'text',
+        label: 'Internal VIP Address',
+        description: 'Select an interface or enter IP manually.',
+        placeholder: 'Will auto-fill from selected interface (or enter manually, e.g., 10.0.1.79)',
+        default: '',
+        required: true,
+        validation: /^(?:\d{1,3}\.){3}\d{1,3}$/
+      },
+      kolla_external_vip_address: {
+        type: 'text',
+        label: 'External VIP Address',
+        description: 'Public-facing API VIP (optional).',
+        placeholder: 'Externally reachable VIP for public APIs (e.g., 203.0.113.10)',
+        default: '',
+        required: false,
+        validation: /^(?:\d{1,3}\.){3}\d{1,3}$/
+      },
+      domain_setup: {
+        type: 'toggle',
+        label: 'Domain Setup',
+        description: 'Enable domain/FQDN configuration',
+        default: 'no',
+        required: true
+      },
+      kolla_internal_fqdn: {
+        type: 'text',
+        label: 'Internal FQDN',
+        description: 'Should resolve to Internal VIP Address',
+        placeholder: 'e.g., xavs-int.example.com',
+        default: '',
+        required: false,
+        validation: /^[a-z0-9.-]+$/i,
+        visibleWhen: { field: 'domain_setup', equals: 'yes' }
+      },
+      kolla_external_fqdn: {
+        type: 'text',
+        label: 'External FQDN',
+        description: 'Should resolve to External VIP Address',
+        placeholder: 'e.g., xavs.example.com',
+        default: '',
+        required: false,
+        validation: /^[a-z0-9.-]+$/i,
+        visibleWhen: { field: 'domain_setup', equals: 'yes' }
+      },
+      kolla_enable_tls_internal: {
+        type: 'toggle',
+        label: 'Internal API TLS',
+        description: 'Enable TLS for internal APIs',
+        default: 'no',
+        required: true,
+        visibleWhen: { field: 'domain_setup', equals: 'yes' }
+      },
+      kolla_enable_tls_external: {
+        type: 'toggle',
+        label: 'External API TLS',
+        description: 'Enable TLS for external APIs',
+        default: 'no',
+        required: true,
+        visibleWhen: { field: 'domain_setup', equals: 'yes' }
+      },
+      kolla_internal_fqdn_cert: {
+        type: 'text',
+        label: 'Internal FQDN Cert Path',
+        description: 'Path to certificate for Internal FQDN',
+        placeholder: 'Consolidated PEM (e.g., /etc/kolla/certificates/xloud.pem)',
+        default: '',
+        required: false,
+        visibleWhen: { field: 'kolla_enable_tls_internal', equals: 'yes' }
+      },
+      kolla_external_fqdn_cert: {
+        type: 'text',
+        label: 'External FQDN Cert Path',
+        description: 'Path to certificate for External FQDN',
+        placeholder: 'Consolidated PEM (e.g., /etc/kolla/certificates/xloud.pem)',
+        default: '',
+        required: false,
+        visibleWhen: { field: 'kolla_enable_tls_external', equals: 'yes' }
+      }
     }
+  },
+
+  network: {
+    title: 'Network Configuration',
+    description: 'Neutron provider/external networking and extensions',
+    fields: {
+      neutron_external_interface: {
+        type: 'select',
+        label: 'Neutron External Interface',
+        description: 'Interface dedicated to provider/external networks. Its current IP (if any) will become unusable.',
+        default: '',
+        required: false,
+        options: []
+      },
+      enable_neutron_provider_networks: {
+        type: 'toggle',
+        label: 'Enable Neutron Provider Networks',
+        description: 'Required when mapping a physical NIC as provider so VMs can reach external networks (Floating IP / egress).',
+        default: 'yes',
+        required: true,
+        visibleWhen: { field: 'neutron_external_interface', equals: '__NONEMPTY__' }
+      },
+      enable_neutron_vpnaas: {
+        type: 'toggle',
+        label: 'Enable Neutron VPNaaS',
+        description: 'Site-to-site/tenant VPN services.',
+        default: 'no',
+        required: false
+      },
+      enable_neutron_qos: {
+        type: 'toggle',
+        label: 'Enable Neutron QoS',
+        description: 'Quality of Service (bandwidth limits, DSCP, min-rate).',
+        default: 'no',
+        required: false
+      },
+      enable_neutron_trunk: {
+        type: 'toggle',
+        label: 'Enable Neutron Trunk',
+        description: '802.1Q VLAN trunking for instances.',
+        default: 'no',
+        required: false
+      }
+    }
+  },
+
+  // ===== RESTORED STORAGE =====
+  storage: {
+    title: 'Storage Configuration',
+    description: 'Block storage options',
+    fields: {
+      enable_cinder: {
+        type: 'toggle',
+        label: 'Enable Cinder',
+        description: 'Enable block storage service',
+        default: 'no',
+        required: true
+      },
+      volume_driver: {
+        type: 'select',
+        label: 'Volume Driver',
+        description: 'Choose the Cinder backend',
+        options: ['LVM', 'NFS', 'CEPH', 'SAN'],
+        default: 'LVM',
+        required: false,
+        visibleWhen: { field: 'enable_cinder', equals: 'yes' }
+      },
+      cinder_volume_group: {
+        type: 'select',
+        label: 'Cinder Volume Group',
+        description: 'Only free VGs (no active LVs) are listed.',
+        options: [],
+        default: '',
+        required: true,
+        visibleWhen: { field: 'volume_driver', equals: 'LVM' }
+      },
+      enable_cinder_backend_nfs: {
+        type: 'toggle',
+        label: 'Enable NFS Backend',
+        description: 'Make sure you have configured NFS in the shares tab.',
+        default: 'no',
+        required: false,
+        visibleWhen: { field: 'volume_driver', equals: 'NFS' }
+      },
+      note_ceph: {
+        type: 'note',
+        label: '',
+        description: 'These features are coming in future. Please refer to XLOUD guide: https://xloud.tech/knowledgeBase/getting-started for Ceph-based deployment.',
+        visibleWhen: { field: 'volume_driver', equals: 'CEPH' }
+      },
+      note_san: {
+        type: 'note',
+        label: '',
+        description: 'These features are coming in future. Please refer to XLOUD guide: https://xloud.tech/knowledgeBase/getting-started for SAN-based deployment.',
+        visibleWhen: { field: 'volume_driver', equals: 'SAN' }
+      }
+    }
+  },
+
+  monitoring: {
+    title: 'Monitoring & Logging',
+    description: 'Enable/disable observability services',
+    fields: {
+      enable_prometheus: { type: 'toggle', label: 'Enable Prometheus', description: '', default: 'no' },
+      enable_grafana:    { type: 'toggle', label: 'Enable Grafana',    description: '', default: 'no' },
+      enable_central_logging: { type: 'toggle', label: 'Enable Central Logging', description: '', default: 'no' }
+    }
+  },
+
+  advanced: {
+    title: 'Advance Features',
+    description: 'Optional platform capabilities',
+    fields: {
+      enable_kms: {
+        type: 'toggle',
+        label: 'Enable KMS',
+        description: 'When enabled, Barbican will be turned on.',
+        default: 'no',
+        required: false
+      }
+    }
+  },
+
+  custom: {
+    title: 'Custom Configuration',
+    description: 'Append custom YAML',
+    fields: {
+      custom_yaml: {
+        type: 'textarea',
+        label: 'Custom YAML Configuration',
+        description: `<div class="custom-config-help">
+          <h6>🔧 Custom YAML Guidelines:</h6>
+          <ul>
+            <li>Use proper YAML syntax with <code>key: value</code> format</li>
+            <li>Use 2 spaces for indentation (no tabs)</li>
+            <li>For lists, use <code>- item</code> format</li>
+            <li>Avoid duplicating keys from other sections</li>
+            <li>Test your YAML syntax before saving</li>
+          </ul>
+        </div>`,
+        placeholder: `# Add your custom configuration here`,
+        rows: 15,
+        required: false,
+        validation: null
+      },
+      custom_comments: {
+        type: 'textarea',
+        label: 'Documentation & Comments',
+        description: 'Comments will be added above your custom YAML.',
+        placeholder: `Document your custom configuration here`,
+        rows: 6,
+        required: false
+      }
+    }
+  }
 };
 
-// Enhanced FormGenerator class for complete OpenStack configuration
+/* ===================== FORM GENERATOR ===================== */
 class FormGenerator {
-    constructor(containerId, schema) {
-        console.log('FormGenerator constructor called with:', containerId);
-        this.container = document.getElementById(containerId);
-        this.schema = schema;
-        this.formData = {};
-        
-        if (!this.container) {
-            throw new Error(`Container with id '${containerId}' not found`);
+  constructor(containerId, schema) {
+    this.container = document.getElementById(containerId);
+    this.schema = schema;
+    if (!this.container) throw new Error(`Container with id '${containerId}' not found`);
+  }
+
+  async generateForm() {
+    injectSwitchCSS(); // ensure the switch-flat CSS exists
+
+    // Tabs header
+    let formHtml = `
+      <ul class="nav nav-tabs mb-2" id="configTabs" role="tablist" style="list-style:none;padding-left:0;">
+    `;
+    let keys = Object.keys(this.schema);
+    let isFirst = true;
+    for (const [sectionKey, section] of Object.entries(this.schema)) {
+      formHtml += `
+        <li class="nav-item" role="presentation">
+          <button class="nav-link ${isFirst ? 'active' : ''}" id="${sectionKey}-tab" data-bs-toggle="tab"
+                  data-bs-target="#${sectionKey}-pane" type="button" role="tab">
+            ${section.title}
+          </button>
+        </li>`;
+      isFirst = false;
+    }
+    formHtml += '</ul><div class="tab-content" id="configTabsContent">';
+
+    // Panes
+    isFirst = true;
+    let idx = 0;
+    for (const [sectionKey, section] of Object.entries(this.schema)) {
+      const isActive = isFirst ? 'show active' : '';
+      formHtml += `
+        <div class="tab-pane fade ${isActive}" id="${sectionKey}-pane" role="tabpanel" data-tab-index="${idx}">
+          <div class="card">
+            <div class="card-body">
+              <div class="row">`;
+
+      // Fields loop
+      for (const [fieldKey, field] of Object.entries(section.fields)) {
+        const fieldId = `${sectionKey}_${fieldKey}`;
+        const requiredMark = field.required ? '<span class="text-danger">*</span>' : '';
+        const isTextArea = field.type === 'textarea';
+        const isNote = field.type === 'note';
+        const colClass = (isTextArea || isNote) ? 'col-12' : 'col-md-6';
+        formHtml += `<div class="${colClass}" style="margin-bottom:18px;">`;
+
+        if (field.type === 'toggle') {
+          const defYes = String(field.default).toLowerCase() === 'yes';
+          formHtml += `
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <label class="form-label" style="margin:0 12px 0 0;">${field.label} ${requiredMark}</label>
+
+              <!-- switch-flat control -->
+              <label class="switch switch-flat" style="margin:0;">
+                <input class="switch-input" type="checkbox" id="${fieldId}" name="${fieldId}" ${defYes ? 'checked' : ''}/>
+                <span class="switch-label" data-on="YES" data-off="NO"></span>
+                <span class="switch-handle"></span>
+              </label>
+            </div>`;
+          if (field.description)
+            formHtml += `<div class="form-text">${field.description}</div>`;
+          if (fieldId === 'network_neutron_external_interface')
+            formHtml += `<div id="neutron_ext_ip_hint" class="form-text"></div>`;
+          if (fieldId === 'storage_cinder_volume_group')
+            formHtml += `<div id="cinder_vg_hint" class="form-text"></div>`;
+          formHtml += `</div>`;
+          continue;
         }
-        
-        console.log('FormGenerator initialized successfully');
-    }
 
-    async generateForm() {
-        console.log('Generating complete configuration form...');
-        
-        try {
-            let formHtml = `
-                <div class="row">
-                    <div class="col-12 mb-4">
-                        <div class="alert alert-info">
-                            <h5 class="alert-heading">XAVS Configuration</h5>
-                            <p class="mb-0">Configure your XAVS deployment settings. Required fields are marked with <span class="text-danger">*</span></p>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Navigation Tabs -->
-                <ul class="nav nav-tabs mb-4" id="configTabs" role="tablist">
-            `;
-            
-            // Generate tab headers
-            let isFirst = true;
-            for (const [sectionKey, section] of Object.entries(this.schema)) {
-                const activeClass = isFirst ? 'active' : '';
-                formHtml += `
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link ${activeClass}" id="${sectionKey}-tab" data-bs-toggle="tab" 
-                                data-bs-target="#${sectionKey}-pane" type="button" role="tab">
-                            ${section.title}
-                        </button>
-                    </li>
-                `;
-                isFirst = false;
-            }
-            
-            formHtml += '</ul><div class="tab-content" id="configTabsContent">';
-            
-            // Generate tab content
-            isFirst = true;
-            for (const [sectionKey, section] of Object.entries(this.schema)) {
-                const activeClass = isFirst ? 'show active' : '';
-                formHtml += `
-                    <div class="tab-pane fade ${activeClass}" id="${sectionKey}-pane" role="tabpanel">
-                        <div class="card">
-                            <div class="card-header">
-                                <h5 class="card-title mb-1">${section.title}</h5>
-                                ${section.description ? `<p class="text-muted mb-0">${section.description}</p>` : ''}
-                            </div>
-                            <div class="card-body">
-                                <div class="row">
-                `;
-                
-                // Generate fields in a responsive grid
-                for (const [fieldKey, field] of Object.entries(section.fields)) {
-                    const fieldId = `${sectionKey}_${fieldKey}`;
-                    const requiredMark = field.required ? '<span class="text-danger">*</span>' : '';
-                    
-                    // Special handling for custom configuration section
-                    if (sectionKey === 'custom') {
-                        formHtml += `
-                            <div class="col-12 mb-4">
-                                <label for="${fieldId}" class="form-label fw-bold">${field.label} ${requiredMark}</label>
-                        `;
-                        
-                        if (field.type === 'textarea') {
-                            const rows = field.rows || 4;
-                            const placeholder = field.placeholder ? `placeholder="${field.placeholder.replace(/"/g, '&quot;')}"` : '';
-                            formHtml += `<textarea class="form-control font-monospace" id="${fieldId}" name="${fieldId}" 
-                                                   rows="${rows}" ${placeholder}
-                                                   ${field.required ? 'required' : ''}>${field.default || ''}</textarea>`;
-                        } else {
-                            formHtml += `<input type="text" class="form-control" id="${fieldId}" name="${fieldId}" 
-                                               value="${field.default || ''}" ${field.required ? 'required' : ''}>`;
-                        }
-                        
-                        // Add help text for custom section after the input
-                        if (field.description && field.description.includes('<div class="custom-config-help">')) {
-                            formHtml += `<div class="mt-3">${field.description}</div>`;
-                        } else if (field.description) {
-                            formHtml += `<div class="form-text">${field.description}</div>`;
-                        }
-                        
-                        formHtml += `</div>`;
-                    } else {
-                        // Standard field handling for other sections
-                        const colClass = field.type === 'textarea' ? 'col-12' : 'col-md-6';
-                        
-                        formHtml += `
-                            <div class="${colClass} mb-3">
-                                <label for="${fieldId}" class="form-label">${field.label} ${requiredMark}</label>
-                        `;
-                        
-                        // Generate appropriate input based on field type
-                        if (field.type === 'select') {
-                            formHtml += `<select class="form-control" id="${fieldId}" name="${fieldId}" ${field.required ? 'required' : ''}>`;
-                            for (const option of field.options) {
-                                const selected = option === field.default ? 'selected' : '';
-                                formHtml += `<option value="${option}" ${selected}>${option}</option>`;
-                            }
-                            formHtml += `</select>`;
-                        } else if (field.type === 'number') {
-                            const minAttr = field.min !== undefined ? `min="${field.min}"` : '';
-                            const maxAttr = field.max !== undefined ? `max="${field.max}"` : '';
-                            formHtml += `<input type="number" class="form-control" id="${fieldId}" name="${fieldId}" 
-                                               value="${field.default || ''}" ${minAttr} ${maxAttr} 
-                                               ${field.required ? 'required' : ''}>`;
-                        } else if (field.type === 'textarea') {
-                            const rows = field.rows || 4;
-                            const placeholder = field.placeholder ? `placeholder="${field.placeholder.replace(/"/g, '&quot;')}"` : '';
-                            formHtml += `<textarea class="form-control font-monospace" id="${fieldId}" name="${fieldId}" 
-                                                   rows="${rows}" ${placeholder}
-                                                   ${field.required ? 'required' : ''}>${field.default || ''}</textarea>`;
-                        } else {
-                            // Default to text input
-                            formHtml += `<input type="text" class="form-control" id="${fieldId}" name="${fieldId}" 
-                                               value="${field.default || ''}" ${field.required ? 'required' : ''}>`;
-                        }
-                        
-                        if (field.description && !field.description.includes('<div class="custom-config-help">')) {
-                            formHtml += `<div class="form-text">${field.description}</div>`;
-                        }
-                        
-                        formHtml += `</div>`;
-                    }
-                }
-                
-                formHtml += `
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-                isFirst = false;
-            }
-            
-            formHtml += '</div>';
-            
-            this.container.innerHTML = formHtml;
-            
-            // Initialize Bootstrap tabs if available, otherwise use simple click handlers
-            this.initializeTabs();
-            
-            console.log('Complete form generated successfully');
-            
-        } catch (error) {
-            console.error('Error generating form:', error);
-            throw error;
+        // Label for non-toggles
+        if (!isNote) {
+          formHtml += `<label for="${fieldId}" class="form-label" style="margin-bottom:6px;">${field.label} ${requiredMark}</label>`;
         }
-    }
 
-    initializeTabs() {
-        // Simple tab functionality without Bootstrap JS dependency
-        const tabButtons = this.container.querySelectorAll('[data-bs-toggle="tab"]');
-        const tabPanes = this.container.querySelectorAll('.tab-pane');
-        
-        tabButtons.forEach(button => {
-            button.addEventListener('click', (e) => {
-                e.preventDefault();
-                
-                // Remove active classes from all tabs and panes
-                tabButtons.forEach(btn => btn.classList.remove('active'));
-                tabPanes.forEach(pane => {
-                    pane.classList.remove('show', 'active');
-                });
-                
-                // Add active class to clicked tab
-                button.classList.add('active');
-                
-                // Show corresponding pane
-                const targetId = button.getAttribute('data-bs-target');
-                const targetPane = this.container.querySelector(targetId);
-                if (targetPane) {
-                    targetPane.classList.add('show', 'active');
-                }
-            });
-        });
-    }
+        // Controls
+        if (field.type === 'select') {
+          formHtml += `<select class="form-control" id="${fieldId}" name="${fieldId}" style="height:32px;" ${field.required ? 'required' : ''}></select>`;
+        } else if (field.type === 'number') {
+          const minAttr = field.min !== undefined ? `min="${field.min}"` : '';
+          const maxAttr = field.max !== undefined ? `max="${field.max}"` : '';
+          formHtml += `<input type="number" class="form-control" id="${fieldId}" name="${fieldId}" style="height:32px;" value="${field.default || ''}" ${minAttr} ${maxAttr} ${field.required ? 'required' : ''}>`;
+        } else if (field.type === 'textarea') {
+          const rows = field.rows || 4;
+          const placeholder = field.placeholder ? `placeholder="${field.placeholder.replace(/"/g, '&quot;')}"` : '';
+          formHtml += `<textarea class="form-control font-monospace" id="${fieldId}" name="${fieldId}" rows="${rows}" ${placeholder} ${field.required ? 'required' : ''}>${field.default || ''}</textarea>`;
+        } else if (field.type === 'note') {
+          formHtml += `<div id="${fieldId}" class="alert alert-warning py-2 mb-0 small">${field.description || ''}</div>`;
+        } else {
+          const placeholder = field.placeholder ? `placeholder="${field.placeholder.replace(/"/g, '&quot;')}"` : '';
+          formHtml += `<input type="text" class="form-control" id="${fieldId}" name="${fieldId}" style="height:32px;" value="${field.default || ''}" ${placeholder} ${field.required ? 'required' : ''}>`;
+        }
 
-    getFormData() {
-        const data = {};
-        const inputs = this.container.querySelectorAll('input, select, textarea');
-        
-        inputs.forEach(input => {
-            const parts = input.name.split('_');
-            const section = parts[0];
-            const field = parts.slice(1).join('_');
-            
-            if (!data[section]) data[section] = {};
-            
-            // Convert number inputs to proper type
-            if (input.type === 'number') {
-                data[section][field] = input.value ? parseInt(input.value) : undefined;
-            } else {
-                data[section][field] = input.value;
+        if (field.description && field.type !== 'note')
+          formHtml += `<div class="form-text">${field.description}</div>`;
+
+        if (fieldId === 'network_neutron_external_interface')
+          formHtml += `<div id="neutron_ext_ip_hint" class="form-text"></div>`;
+        if (fieldId === 'storage_cinder_volume_group')
+          formHtml += `<div id="cinder_vg_hint" class="form-text"></div>`;
+
+        formHtml += `</div>`;
+      }
+
+      // Per-tab nav
+      const prevDisabled = (idx === 0) ? 'disabled' : '';
+      const nextDisabled = (idx === keys.length-1) ? 'disabled' : '';
+      formHtml += `
+              </div>
+              <div class="tab-nav" style="margin-top:8px;padding-top:10px;border-top:1px solid var(--border, #d1d5db);display:flex;justify-content:space-between;">
+                <button type="button" class="btn btn-outline-brand prev-tab" ${prevDisabled}>Back</button>
+                <button type="button" class="btn btn-brand next-tab" ${nextDisabled}>Next</button>
+              </div>
+            </div>
+          </div>
+        </div>`;
+      isFirst = false;
+      idx++;
+    }
+    formHtml += '</div>';
+
+    this.container.innerHTML = formHtml;
+
+    this.initializeTabs();
+    populateSelectOptionsFromSchema(this.container, this.schema);
+    wireTabNav();
+    wireFlatSwitches(); // set yes/no values on checkbox switches
+  }
+
+  initializeTabs() {
+    const tabButtons = this.container.querySelectorAll('[data-bs-toggle="tab"]');
+    const tabPanes   = this.container.querySelectorAll('.tab-pane');
+    tabButtons.forEach(button => {
+      button.addEventListener('click', (e) => {
+        e.preventDefault();
+        tabButtons.forEach(btn => btn.classList.remove('active'));
+        tabPanes.forEach(pane => pane.classList.remove('show','active'));
+        button.classList.add('active');
+        const targetId = button.getAttribute('data-bs-target');
+        const targetPane = this.container.querySelector(targetId);
+        if (targetPane) targetPane.classList.add('show','active');
+      });
+    });
+  }
+
+  getFormData() {
+    const data = {};
+    const inputs = this.container.querySelectorAll('input, select, textarea');
+    inputs.forEach(input => {
+      const parts = (input.name || '').split('_');
+      const section = parts[0];
+      const field   = parts.slice(1).join('_');
+      if (!section || !field) return;
+      if (!data[section]) data[section] = {};
+
+      if (input.classList.contains('switch-input')) {
+        data[section][field] = input.checked ? 'yes' : 'no';
+      } else if (input.type === 'number') {
+        data[section][field] = input.value ? parseInt(input.value) : undefined;
+      } else {
+        data[section][field] = input.value;
+      }
+    });
+    return data;
+  }
+
+  validateForm() {
+    const errors = [];
+    const inputs = this.container.querySelectorAll('input, select, textarea');
+    inputs.forEach(input => {
+      const wrapper = input.closest('[style*="margin-bottom"]');
+      if (wrapper && wrapper.style.display === 'none') return;
+
+      const parts = (input.name || '').split('_');
+      if (parts.length < 2) return;
+      const section = parts[0];
+      const key     = parts.slice(1).join('_');
+      const fieldDef = CONFIG_SCHEMA?.[section]?.fields?.[key];
+      if (!fieldDef) return;
+
+      const label = wrapper ? (wrapper.querySelector('.form-label')?.textContent || key) : key;
+
+      if (fieldDef.type !== 'toggle' && fieldDef.type !== 'note') {
+        if (fieldDef.required && !String(input.value || '').trim()) {
+          errors.push(`${label.trim()} is required`);
+          input.classList.add('is-invalid');
+          return;
+        }
+        if (fieldDef.validation && input.value) {
+          try {
+            const re = fieldDef.validation;
+            if (!re.test(input.value)) {
+              errors.push(`${label.trim()} has invalid format`);
+              input.classList.add('is-invalid');
+              return;
             }
-        });
-        
-        return data;
-    }
-
-    validateForm() {
-        const requiredFields = this.container.querySelectorAll('[required]');
-        const errors = [];
-        
-        requiredFields.forEach(field => {
-            if (!field.value.trim()) {
-                errors.push(`${field.labels[0]?.textContent || field.name} is required`);
-                field.classList.add('is-invalid');
-            } else {
-                field.classList.remove('is-invalid');
-            }
-        });
-        
-        return errors;
-    }
+          } catch (e) {}
+        }
+      }
+      input.classList.remove('is-invalid');
+    });
+    return errors;
+  }
 }
 
 let formGenerator = null;
-let currentConfig = {};
 
-// Show status message
+/* ===================== THEME FOLLOW (Cockpit) ===================== */
+function applyCockpitTheme() {
+  const root = document.documentElement;
+  const body = document.body;
+  const cls = `${root.className} ${body.className}`;
+  let dark = /\bpf-theme-dark\b/.test(cls) || body.getAttribute('data-theme') === 'dark' || root.getAttribute('data-theme') === 'dark';
+  if (/\bpf-theme-light\b/.test(cls) || body.getAttribute('data-theme') === 'light' || root.getAttribute('data-theme') === 'light') {
+    dark = false;
+  }
+  body.setAttribute('data-theme', dark ? 'dark' : 'light');
+}
+function watchCockpitTheme() {
+  applyCockpitTheme();
+  const obs = new MutationObserver(applyCockpitTheme);
+  obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] });
+  obs.observe(document.body,           { attributes: true, attributeFilter: ['class', 'data-theme'] });
+}
+
+/* ===================== UI HELPERS ===================== */
+function populateSelectOptionsFromSchema(container, schema) {
+  for (const [sectionKey, section] of Object.entries(schema)) {
+    for (const [fieldKey, field] of Object.entries(section.fields)) {
+      if (field.type !== 'select') continue;
+      const el = container.querySelector(`#${sectionKey}_${fieldKey}`);
+      if (!el) continue;
+
+      const ph = document.createElement('option');
+      ph.value = '';
+      ph.textContent = '— Select —';
+      el.appendChild(ph);
+
+      (field.options || []).forEach(opt => {
+        const o = document.createElement('option');
+        o.value = opt;
+        o.textContent = opt;
+        if (field.default && field.default === opt) o.selected = true;
+        el.appendChild(o);
+      });
+    }
+  }
+}
+
+function wireTabNav() {
+  const container = document.getElementById('dynamic_form_container');
+  const tabs = [...container.querySelectorAll('.nav-tabs .nav-link')];
+  const panes = [...container.querySelectorAll('.tab-pane')];
+
+  function goto(i) {
+    if (i < 0 || i >= panes.length) return;
+    tabs.forEach(t => t.classList.remove('active'));
+    panes.forEach(p => p.classList.remove('show','active'));
+    tabs[i].classList.add('active');
+    panes[i].classList.add('show','active');
+  }
+
+  panes.forEach((pane, i) => {
+    const prev = pane.querySelector('.prev-tab');
+    const next = pane.querySelector('.next-tab');
+    prev && prev.addEventListener('click', () => goto(i-1));
+    next && next.addEventListener('click', () => goto(i+1));
+  });
+}
+
+/* ========== switch-flat CSS injection (brand, compact) ========== */
+function injectSwitchCSS() {
+  if (document.getElementById('xavs-switch-css')) return;
+  const css = `
+/* Base switch */
+.switch { position: relative; display: inline-block; vertical-align: middle; }
+.switch-input { position: absolute; left: -9999px; }
+
+.switch-label {
+  display: block; position: relative;
+  width: 78px; height: 28px;               /* compact pill */
+  border-radius: 9999px;
+  border: 2px solid ${BRAND_RED};
+  background: ${BRAND_RED};
+  cursor: pointer; user-select: none;
+  transition: background-color .18s ease, border-color .18s ease;
+}
+
+/* Off/On text via data attributes */
+.switch-label:before,
+.switch-label:after {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  font-size: 12px; font-weight: 700; letter-spacing: .2px;
+  color: #fff;
+}
+.switch-label:before { content: attr(data-off); left: 12px; opacity: 1; }
+.switch-label:after  { content: attr(data-on);  right: 12px; opacity: 0; }
+
+/* Knob */
+.switch-handle {
+  position: absolute; top: 5px; left: 5px;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: #dadada;
+  box-shadow: 0 2px 4px rgba(0,0,0,.2);
+  transition: left .18s ease, background .18s ease;
+}
+
+/* Checked state (YES) */
+.switch-input:checked ~ .switch-label {
+  border-color: ${BRAND_GREEN};
+  background: ${BRAND_GREEN};
+}
+.switch-input:checked ~ .switch-label:before { opacity: 0; }
+.switch-input:checked ~ .switch-label:after  { opacity: 1; }
+/* Move knob to the right (78 - (20 + 5 + 5) = 48) */
+.switch-input:checked ~ .switch-handle { left: 53px; background: ${BRAND_GREEN}; }
+
+/* Flat variant baseline */
+.switch-flat { padding: 0; background: transparent; }
+.switch-flat .switch-label { box-shadow: none; }
+.switch-flat .switch-handle { box-shadow: none; }
+  `;
+  const style = document.createElement('style');
+  style.id = 'xavs-switch-css';
+  style.textContent = css;
+  document.head.appendChild(style);
+}
+
+/* Ensure checkbox switches store 'yes'/'no' values */
+function wireFlatSwitches() {
+  document.querySelectorAll('.switch-input').forEach(chk => {
+    const setVal = () => { chk.value = chk.checked ? 'yes' : 'no'; };
+    setVal();
+    chk.addEventListener('change', setVal);
+  });
+}
+
+/* Status panel */
 function showStatus(message, type = 'info') {
-    console.log(`[${type.toUpperCase()}] ${message}`);
-    
-    const statusElement = document.getElementById('status_panel');
-    if (statusElement) {
-        statusElement.className = `alert alert-${type}`;
-        statusElement.textContent = message;
-        statusElement.style.display = 'block';
-        
-        if (type === 'success') {
-            setTimeout(() => {
-                statusElement.style.display = 'none';
-            }, 5000);
-        }
-    }
+  const el = document.getElementById('status_panel');
+  if (el) {
+    el.className = `alert alert-${type}`;
+    el.textContent = message;
+    el.style.display = 'block';
+    if (type === 'success') setTimeout(() => { el.style.display = 'none'; }, 5000);
+  }
 }
 
-// Enhanced YAML generation for OpenStack-Ansible
+/* ===================== YAML GEN ===================== */
+const YAML_SKIP_KEYS = new Set(['domain_setup', 'volume_driver', 'enable_kms', 'note_ceph', 'note_san']);
+const YAML_ONLY_IF_YES = new Set(['enable_neutron_vpnaas','enable_neutron_qos','enable_neutron_trunk','enable_cinder_backend_nfs']);
+
 function generateYamlContent(config) {
-    let yamlContent = '---\n';
-    yamlContent += '# XAVS Global Configuration Variables\n';
-    yamlContent += '# Generated by XAVS Globals Configuration Manager\n';
-    yamlContent += `# Generated on: ${new Date().toISOString()}\n`;
-    yamlContent += `# Configuration version: 1.0\n\n`;
-    
-    // Add header comments for each section
-    const sectionComments = {
-        network: 'Network and connectivity configuration',
-        compute: 'Nova compute service configuration', 
-        storage: 'Storage services configuration',
-        database: 'Database service configuration',
-        messaging: 'Message queue configuration',
-        monitoring: 'Monitoring and logging configuration',
-        security: 'Security and authentication configuration',
-        advanced: 'Advanced deployment configuration',
-        custom: 'User-defined custom configuration'
-    };
-    
-    // Process each section
-    for (const [sectionKey, sectionValue] of Object.entries(config)) {
-        if (!sectionValue || Object.keys(sectionValue).length === 0) continue;
-        
-        yamlContent += `# ${sectionComments[sectionKey] || sectionKey.toUpperCase() + ' Configuration'}\n`;
-        
-        for (const [key, value] of Object.entries(sectionValue)) {
-            if (value === undefined || value === null || value === '') continue;
-            
-            // Handle different value types appropriately
-            if (typeof value === 'string') {
-                // Handle template variables
-                if (value.includes('{{') && value.includes('}}')) {
-                    yamlContent += `${key}: ${value}\n`;
-                } else if (value === 'yes' || value === 'no') {
-                    yamlContent += `${key}: ${value}\n`;
-                } else {
-                    yamlContent += `${key}: "${value}"\n`;
-                }
-            } else if (typeof value === 'number') {
-                yamlContent += `${key}: ${value}\n`;
-            } else if (typeof value === 'boolean') {
-                yamlContent += `${key}: ${value ? 'yes' : 'no'}\n`;
-            } else {
-                yamlContent += `${key}: "${value}"\n`;
-            }
-        }
-        yamlContent += '\n';
+  let yaml = '---\n';
+  yaml += '# XAVS Global Configuration Variables\n';
+  yaml += `# Generated on: ${new Date().toISOString()}\n\n`;
+
+  const comments = {
+    basics: 'Primary networking, domains, and TLS',
+    network: 'Network and connectivity configuration',
+    storage: 'Storage services configuration',
+    monitoring: 'Monitoring and logging configuration',
+    advanced: 'Advanced deployment configuration',
+    custom: 'User-defined custom configuration'
+  };
+
+  const writeKV = (k, v) => {
+    if (typeof v === 'string') {
+      if (v.includes('{{') && v.includes('}}')) yaml += `${k}: ${v}\n`;
+      else if (v === 'yes' || v === 'no')       yaml += `${k}: ${v}\n`;
+      else                                      yaml += `${k}: "${v}"\n`;
+    } else if (typeof v === 'number')           yaml += `${k}: ${v}\n`;
+    else if (typeof v === 'boolean')            yaml += `${k}: ${v ? 'yes' : 'no'}\n`;
+    else if (v !== undefined && v !== null && v !== '') yaml += `${k}: "${v}"\n`;
+  };
+
+  for (const [sectionKey, sectionValue] of Object.entries(config)) {
+    if (!sectionValue || Object.keys(sectionValue).length === 0) continue;
+    yaml += `# ${comments[sectionKey] || (sectionKey.toUpperCase() + ' Configuration')}\n`;
+
+    const isStorage  = (sectionKey === 'storage');
+    const isAdvanced = (sectionKey === 'advanced');
+
+    for (const [key, value] of Object.entries(sectionValue)) {
+      if (value === undefined || value === null || value === '') continue;
+      if (YAML_SKIP_KEYS.has(key)) continue;
+      if (YAML_ONLY_IF_YES.has(key) && String(value).toLowerCase() !== 'yes') continue;
+      if (isStorage && (key === 'enable_cinder_backend_nfs' || key === 'cinder_volume_group')) continue;
+      writeKV(key, value);
     }
-    
-    // Add custom configuration if provided
-    if (config.custom && config.custom.custom_yaml && config.custom.custom_yaml.trim()) {
-        yamlContent += '# Custom Configuration Section\n';
-        if (config.custom.custom_comments && config.custom.custom_comments.trim()) {
-            const comments = config.custom.custom_comments.trim().split('\n');
-            for (const comment of comments) {
-                yamlContent += `# ${comment}\n`;
-            }
+
+    if (isStorage) {
+      const cinderOn = String(sectionValue.enable_cinder || 'no').toLowerCase() === 'yes';
+      const driver   = sectionValue.volume_driver || '';
+      if (cinderOn) {
+        if (driver === 'LVM') {
+          const vg = sectionValue.cinder_volume_group || '';
+          if (vg) { writeKV('enable_cinder_backend_lvm', 'yes'); writeKV('cinder_volume_group', vg); }
+        } else if (driver === 'NFS') {
+          if (String(sectionValue.enable_cinder_backend_nfs || 'no').toLowerCase() === 'yes')
+            writeKV('enable_cinder_backend_nfs', 'yes');
         }
-        yamlContent += config.custom.custom_yaml.trim() + '\n\n';
+      }
     }
-    
-    // Add footer comment
-    yamlContent += '# End of XAVS Globals Configuration\n';
-    yamlContent += '# For more advanced settings, edit this file directly or use ansible-playbook\n';
-    
-    return yamlContent;
+
+    if (isAdvanced) {
+      if (String(sectionValue.enable_kms || 'no').toLowerCase() === 'yes')
+        writeKV('enable_barbican', 'yes');
+    }
+
+    yaml += '\n';
+  }
+
+  if (config.custom && config.custom.custom_yaml && config.custom.custom_yaml.trim()) {
+    yaml += '# Custom Configuration Section\n';
+    if (config.custom.custom_comments && config.custom.custom_comments.trim()) {
+      for (const line of config.custom.custom_comments.trim().split('\n')) yaml += `# ${line}\n`;
+    }
+    yaml += config.custom.custom_yaml.trim() + '\n\n';
+  }
+
+  yaml += '# End of XAVS Globals Configuration\n';
+  return yaml;
 }
 
-// Enhanced save configuration with validation
+/* ===================== SAVE ===================== */
 async function saveConfiguration() {
-    console.log('Starting enhanced save configuration...');
-    showStatus('Validating configuration...', 'info');
-    
-    try {
-        if (!formGenerator) {
-            throw new Error('Form generator not initialized');
-        }
-        
-        // Validate form first
-        const validationErrors = formGenerator.validateForm();
-        if (validationErrors.length > 0) {
-            const errorMsg = 'Please fix the following errors:\n• ' + validationErrors.join('\n• ');
-            showStatus('Validation failed. Please check required fields.', 'danger');
-            console.error('Validation errors:', validationErrors);
-            return;
-        }
-        
-        showStatus('Generating configuration file...', 'info');
-        
-        const config = formGenerator.getFormData();
-        const yamlContent = generateYamlContent(config);
-        
-        console.log('Generated configuration:', config);
-        console.log('YAML content length:', yamlContent.length);
-        
-        // Create backup of existing file if it exists
-        const filePath = '/etc/xavs/globals.d/_99_xavs.yml';
-        const backupPath = `/etc/xavs/globals.d/_99_xavs.yml.backup.${Date.now()}`;
-        
-        showStatus('Creating backup and saving configuration...', 'info');
-        
-        try {
-            // Try to backup existing file (ignore errors if file doesn't exist)
-            await cockpit.spawn(['cp', filePath, backupPath], {
-                superuser: 'require',
-                err: 'ignore'
-            });
-            console.log('Backup created at:', backupPath);
-        } catch (backupErr) {
-            console.log('No existing file to backup (this is normal for first-time setup)');
-        }
-        
-        // Save the new configuration
-        const escapedContent = yamlContent.replace(/'/g, "'\\''");
-        const command = `mkdir -p "/etc/xavs/globals.d" && echo '${escapedContent}' > "${filePath}"`;
-        
-        await cockpit.spawn(['bash', '-c', command], {
-            superuser: 'require',
-            err: 'out'
-        });
-        
-        // Verify the file was written correctly
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        const yamlFile = cockpit.file(filePath);
-        const readContent = await yamlFile.read();
-        
-        if (readContent && readContent.length > 0) {
-            console.log('Configuration saved successfully!');
-            console.log('File size:', readContent.length, 'characters');
-            console.log('Configuration sections saved:', Object.keys(config).length);
-            
-            showStatus(`Configuration saved successfully to ${filePath}`, 'success');
-            
-            // Show summary of what was saved
-            const summary = Object.entries(config)
-                .map(([section, fields]) => `${section}: ${Object.keys(fields).length} settings`)
-                .join(', ');
-            console.log('Saved sections:', summary);
-            
-            return filePath;
-        } else {
-            throw new Error('Configuration file was created but appears to be empty');
-        }
-        
-    } catch (error) {
-        console.error('Save configuration failed:', error);
-        showStatus('Failed to save configuration: ' + error.message, 'danger');
-        throw error;
+  showStatus('Validating configuration...', 'info');
+  try {
+    if (!formGenerator) throw new Error('Form generator not initialized');
+    const errs = formGenerator.validateForm();
+    if (errs.length) {
+      showStatus('Validation failed. Please check required fields.', 'danger');
+      console.error('Validation errors:', errs);
+      return;
     }
+
+    const config = formGenerator.getFormData();
+    const yamlContent = generateYamlContent(config);
+
+    const filePath = '/etc/xavs/globals.d/_99_xavs.yml';
+    const backupPath = `/etc/xavs/globals.d/_99_xavs.yml.backup.${Date.now()}`;
+    try { await cockpit.spawn(['cp', filePath, backupPath], { superuser: 'require', err: 'ignore' }); } catch {}
+
+    const escaped = yamlContent.replace(/'/g, "'\\''");
+    const tmpPath = `/etc/xavs/globals.d/_99_xavs.yml.tmp.${Date.now()}`;
+    const cmd = `
+      set -e
+      mkdir -p "/etc/xavs/globals.d"
+      umask 077
+      echo '${escaped}' > "${tmpPath}"
+      mv -f "${tmpPath}" "${filePath}"
+    `;
+    await cockpit.spawn(['bash', '-lc', cmd], { superuser: 'require', err: 'out' });
+
+    const readback = await cockpit.file(filePath).read();
+    if (!readback || !readback.length) throw new Error('Configuration file seems empty');
+
+    showStatus(`Configuration saved to ${filePath}`, 'success');
+    return filePath;
+  } catch (e) {
+    console.error('Save failed:', e);
+    showStatus('Failed to save configuration: ' + e.message, 'danger');
+  }
 }
 
-// Initialize the application
-document.addEventListener('DOMContentLoaded', async function() {
-    console.log('All-in-one XAVS Globals app starting...');
-    showStatus('Loading configuration interface...', 'info');
-    
-    // Wait for cockpit API to be ready
-    try {
-        console.log('Waiting for cockpit API...');
-        if (typeof cockpit === 'undefined') {
-            showStatus('Waiting for Cockpit API to load...', 'info');
-            // Wait a bit for cockpit to load
-            await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-        
-        if (typeof cockpit === 'undefined') {
-            throw new Error('Cockpit API not available. Make sure this page is loaded within Cockpit.');
-        }
-        
-        console.log('Cockpit API available, initializing...');
-        
-        console.log('Detecting network interfaces...');
-        showStatus('Detecting network interfaces...', 'info');
-        await updateNetworkInterfaceOptions();
-        
-        console.log('Creating form generator...');
-        formGenerator = new FormGenerator('dynamic_form_container', CONFIG_SCHEMA);
-        
-        console.log('Generating form...');
-        await formGenerator.generateForm();
-        
-        showStatus('Configuration loaded successfully!', 'success');
-        
-        // Setup event listeners for all buttons
-        setupEventListeners();
-        
-        console.log('Application initialized successfully!');
-        
-    } catch (error) {
-        console.error('Failed to initialize app:', error);
-        showStatus('Failed to load: ' + error.message, 'danger');
-    }
+/* ===================== INIT ===================== */
+document.addEventListener('DOMContentLoaded', async () => {
+  showStatus('Loading configuration interface...', 'info');
+  try {
+    if (typeof cockpit === 'undefined') await new Promise(r => setTimeout(r, 800));
+    if (typeof cockpit === 'undefined') throw new Error('Cockpit API not available. Open inside Cockpit.');
+
+    watchCockpitTheme();
+
+    ALL_INTERFACES = await updateNetworkInterfaceOptions();
+
+    formGenerator = new FormGenerator('dynamic_form_container', CONFIG_SCHEMA);
+    await formGenerator.generateForm();
+
+    await populateInterfacesAndAutofill();
+    syncExternalInterfaceOptions();
+    hookExternalInterfaceBehavior();
+    await updateVGOptionsAndHint();
+
+    // Reactivity
+    formGenerator.container.addEventListener('change', async (e) => {
+      if (!e.target || !e.target.name) return;
+
+      if (e.target.id === 'basics_network_interface') syncExternalInterfaceOptions();
+      if (e.target.id === 'network_neutron_external_interface') hookExternalInterfaceBehavior();
+
+      if (e.target.id === 'storage_volume_driver' || e.target.id === 'storage_enable_cinder')
+        await updateVGOptionsAndHint();
+
+      evaluateVisibility(formGenerator.container, CONFIG_SCHEMA);
+    });
+
+    setupEventListeners();
+    setupHelpUX();     // hover & click
+    evaluateVisibility(formGenerator.container, CONFIG_SCHEMA);
+    showStatus('Configuration UI ready', 'success');
+  } catch (e) {
+    console.error('Init failed:', e);
+    showStatus('Failed to load: ' + e.message, 'danger');
+  }
 });
 
-// Setup all event listeners
+/* ===================== EVENTS & HELP ===================== */
 function setupEventListeners() {
-    console.log('Setting up event listeners...');
-    
-    // Primary action buttons
-    const saveBtn = document.getElementById('save');
-    
-    if (saveBtn) {
-        saveBtn.addEventListener('click', () => {
-            saveConfiguration().catch(console.error);
-        });
-        console.log('Save Configuration button listener added');
-    }
-    
-    // Secondary action buttons
-    const loadBtn = document.getElementById('load_config_btn');
-    const previewBtn = document.getElementById('preview_config_btn');
-    const downloadBtn = document.getElementById('download_config_btn');
-    const resetBtn = document.getElementById('reset_config_btn');
-    
-    if (loadBtn) {
-        loadBtn.addEventListener('click', () => {
-            loadSavedConfiguration().catch(console.error);
-        });
-        console.log('Load Configuration button listener added');
-    }
-    
-    if (previewBtn) {
-        previewBtn.addEventListener('click', () => {
-            previewConfiguration();
-        });
-        console.log('Preview Configuration button listener added');
-    }
-    
-    if (downloadBtn) {
-        downloadBtn.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            console.log('Download button clicked directly');
-            downloadConfiguration();
-        });
-        console.log('Download Configuration button listener added');
-    } else {
-        console.warn('Download button not found!');
-    }
-    
-    if (resetBtn) {
-        resetBtn.addEventListener('click', () => {
-            resetToDefaults();
-        });
-        console.log('Reset Configuration button listener added');
-    }
-    
-    console.log('All event listeners configured successfully');
+  document.getElementById('save')?.addEventListener('click', () => { saveConfiguration().catch(console.error); });
+  document.getElementById('load_config_btn')?.addEventListener('click', () => { loadSavedConfiguration().catch(console.error); });
+  document.getElementById('preview_config_btn')?.addEventListener('click', () => { previewConfiguration(); });
+  document.getElementById('download_config_btn')?.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); downloadConfiguration(); });
+  document.getElementById('reset_config_btn')?.addEventListener('click', () => { resetToDefaults(); });
+
+  // Help button click opens modal with quick tips
+  document.getElementById('help_btn')?.addEventListener('click', () => openHelpModal());
 }
 
-// Additional utility functions for complete module
+// Quick Tips hover tooltip + click modal; high z-index
+function setupHelpUX() {
+  const helpBtn = document.getElementById('help_btn');
+  if (!helpBtn) return;
 
-// Preview configuration in modal or panel
+  const hoverText =
+`Quick tips:
+• Start with XAVS Configuration (choose management interface & Internal VIP)
+• Pick Neutron External Interface only if you need provider/FIP egress
+• Use Preview YAML before save; backup is automatic
+• Apply changes via deployment playbooks`;
+
+  let tip;
+  const showTip = () => {
+    if (tip) return;
+    tip = document.createElement('div');
+    tip.textContent = hoverText;
+    tip.setAttribute('role','tooltip');
+    Object.assign(tip.style, {
+      position: 'fixed',
+      right: '24px',
+      top: '64px',
+      maxWidth: '420px',
+      whiteSpace: 'pre-wrap',
+      fontSize: '12px',
+      fontWeight: '400',
+      textAlign: 'left',
+      lineHeight: '1.35',
+      background: 'var(--surface, #fff)',
+      color: 'var(--text, #111827)',
+      border: `1px solid ${BRAND_GREEN}`,
+      padding: '10px 12px',
+      borderRadius: '10px',
+      boxShadow: '0 12px 30px rgba(0,0,0,.25)',
+      zIndex: '12000',
+      pointerEvents: 'none'
+    });
+    document.body.appendChild(tip);
+  };
+  const hideTip = () => { if (tip && tip.parentNode) tip.parentNode.removeChild(tip); tip = null; };
+
+  helpBtn.addEventListener('mouseenter', showTip);
+  helpBtn.addEventListener('mouseleave', hideTip);
+  window.addEventListener('scroll', hideTip, { passive: true });
+}
+
+function openHelpModal() {
+  let m = document.getElementById('helpModal');
+  if (!m) {
+    const html = `
+      <div class="modal" id="helpModal" role="dialog" aria-modal="true" aria-labelledby="help_title" style="z-index:11000;">
+        <div class="modal-content" style="border-radius:12px;border:1px solid ${BRAND_GREEN};">
+          <div class="modal-body" style="padding:14px;">
+            <ul class="small" style="margin:0;padding-left:18px;line-height:1.45;font-weight:400;">
+              <li>Start with <strong>XAVS Configuration</strong> (choose management interface & Internal VIP).</li>
+              <li>Select a <strong>Neutron External Interface</strong> only if you need provider/FIP egress.</li>
+              <li>Use <strong>Preview YAML</strong> before saving; a backup is created automatically.</li>
+              <li>Run your deployment playbooks to apply changes.</li>
+            </ul>
+          </div>
+          <div class="modal-foot" style="border-top:1px solid var(--border,#d1d5db);padding:12px 14px;display:flex;justify-content:flex-end;gap:8px;">
+            <button class="btn btn-brand" id="help_ok_modal">Close</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.insertAdjacentHTML('beforeend', html);
+    m = document.getElementById('helpModal');
+  }
+  const close = () => { m.remove(); };
+  document.getElementById('help_ok_modal')?.addEventListener('click', close, { once: true });
+  m.addEventListener('click', (e) => { if (e.target === m) close(); }, { once: true });
+}
+
+/* ===================== PREVIEW / DOWNLOAD / LOAD ===================== */
 function previewConfiguration() {
-    console.log('Generating configuration preview...');
-    showStatus('Generating preview...', 'info');
-    
-    try {
-        if (!formGenerator) {
-            throw new Error('Form generator not initialized');
-        }
-        
-        const config = formGenerator.getFormData();
-        const yamlContent = generateYamlContent(config);
-        
-        // Create or update preview modal
-        let previewModal = document.getElementById('previewModal');
-        if (!previewModal) {
-            // Create modal HTML
-            const modalHtml = `
-                <div class="modal fade" id="previewModal" tabindex="-1">
-                    <div class="modal-dialog modal-lg">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title">Configuration Preview</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                            </div>
-                            <div class="modal-body">
-                                <pre id="previewContent" class="bg-light p-3" style="max-height: 500px; overflow-y: auto;"></pre>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                                <button type="button" id="modal_download_btn" class="btn btn-primary">Download YAML</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.body.insertAdjacentHTML('beforeend', modalHtml);
-            previewModal = document.getElementById('previewModal');
-            
-            // Add close button functionality for both close buttons
-            const closeButtons = previewModal.querySelectorAll('[data-bs-dismiss="modal"], .btn-close');
-            closeButtons.forEach(button => {
-                button.addEventListener('click', () => {
-                    previewModal.style.display = 'none';
-                    previewModal.classList.remove('show');
-                });
-            });
-            
-            // Add download button functionality
-            const modalDownloadBtn = previewModal.querySelector('#modal_download_btn');
-            if (modalDownloadBtn) {
-                modalDownloadBtn.addEventListener('click', () => {
-                    downloadConfiguration();
-                });
-            }
-        }
-        
-        // Update content and show modal
-        document.getElementById('previewContent').textContent = yamlContent;
-        previewModal.style.display = 'block';
-        previewModal.classList.add('show');
-        
-        showStatus('Preview generated successfully', 'success');
-        
-    } catch (error) {
-        console.error('Preview generation failed:', error);
-        showStatus('Failed to generate preview: ' + error.message, 'danger');
+  try {
+    if (!formGenerator) throw new Error('Form generator not initialized');
+    const yaml = generateYamlContent(formGenerator.getFormData());
+
+    let m = document.getElementById('previewModal');
+    if (!m) {
+      const html = `
+        <div class="modal" id="previewModal" role="dialog" aria-modal="true" aria-labelledby="previewTitle" style="z-index:11000;">
+          <div class="modal-content" style="border-radius:12px;border:1px solid ${BRAND_GREEN};">
+            <div class="modal-body" style="padding:14px;">
+              <pre id="previewContent" class="yaml-terminal"></pre>
+            </div>
+            <div class="modal-foot" style="border-top:1px solid var(--border,#d1d5db);padding:12px 14px;display:flex;justify-content:flex-end;">
+              <button type="button" id="modal_download_btn" class="btn btn-brand">Download YAML</button>
+            </div>
+          </div>
+        </div>`;
+      document.body.insertAdjacentHTML('beforeend', html);
+      m = document.getElementById('previewModal');
+
+      m.addEventListener('click', (e) => { if (e.target === m) m.remove(); });
+      const dl = document.getElementById('modal_download_btn');
+      if (dl) dl.addEventListener('click', () => { downloadConfiguration(); });
     }
+    document.getElementById('previewContent').textContent = yaml;
+  } catch (e) {
+    console.error('Preview failed:', e);
+    showStatus('Failed to generate preview: ' + e.message, 'danger');
+  }
 }
 
-// Download configuration as YAML file
 function downloadConfiguration() {
-    console.log('Download configuration started...');
-    showStatus('Preparing configuration download...', 'info');
-    
-    try {
-        if (!formGenerator) {
-            throw new Error('Form generator not initialized');
-        }
-        
-        console.log('Getting form data...');
-        const config = formGenerator.getFormData();
-        console.log('Form data retrieved:', Object.keys(config));
-        
-        console.log('Generating YAML content...');
-        const yamlContent = generateYamlContent(config);
-        console.log('YAML content generated, length:', yamlContent.length);
-        
-        // Create download with better browser compatibility
-        console.log('Creating blob...');
-        const blob = new Blob([yamlContent], { type: 'application/x-yaml' });
-        const url = window.URL.createObjectURL(blob);
-        console.log('Blob URL created:', url);
-        
-        // Create temporary download link
-        const downloadLink = document.createElement('a');
-        downloadLink.href = url;
-        downloadLink.download = `xavs_globals_${new Date().toISOString().split('T')[0]}.yml`;
-        downloadLink.style.display = 'none';
-        
-        console.log('Download link created:', downloadLink.download);
-        
-        // Add to document, click, and remove
-        document.body.appendChild(downloadLink);
-        console.log('Link added to document, triggering click...');
-        downloadLink.click();
-        
-        // Clean up
-        setTimeout(() => {
-            document.body.removeChild(downloadLink);
-            window.URL.revokeObjectURL(url);
-            console.log('Download cleanup completed');
-        }, 100);
-        
-        showStatus('Configuration downloaded successfully', 'success');
-        console.log('Download process completed successfully');
-        
-    } catch (error) {
-        console.error('Download failed:', error);
-        showStatus('Failed to download configuration: ' + error.message, 'danger');
-    }
+  try {
+    if (!formGenerator) throw new Error('Form generator not initialized');
+    const yaml = generateYamlContent(formGenerator.getFormData());
+    const blob = new Blob([yaml], { type: 'application/x-yaml' });
+    const url  = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `xavs_globals_${new Date().toISOString().split('T')[0]}.yml`;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 100);
+    showStatus('Configuration downloaded', 'success');
+  } catch (e) {
+    console.error('Download failed:', e);
+    showStatus('Failed to download configuration: ' + e.message, 'danger');
+  }
 }
 
-// Load configuration from saved file and populate form
 async function loadSavedConfiguration() {
-    console.log('Loading saved configuration...');
-    showStatus('Loading saved configuration...', 'info');
-    
-    try {
-        const filePath = '/etc/xavs/globals.d/_99_xavs.yml';
-        const yamlFile = cockpit.file(filePath);
-        const content = await yamlFile.read();
-        
-        if (content && content.trim().length > 0) {
-            console.log('Loaded configuration length:', content.length);
-            
-            // Parse YAML content and populate form
-            const parsedConfig = parseYamlToConfig(content);
-            console.log('Parsed configuration:', parsedConfig);
-            
-            if (parsedConfig && Object.keys(parsedConfig).length > 0) {
-                populateFormFromConfig(parsedConfig);
-                showStatus('Configuration loaded and applied to form successfully', 'success');
-                console.log('Form populated with loaded configuration');
-            } else {
-                // Fallback: show in preview if parsing failed
-                showConfigPreview(content);
-                showStatus('Configuration loaded in preview (could not auto-populate form)', 'warning');
-            }
-        } else {
-            showStatus('No saved configuration found', 'warning');
-        }
-        
-    } catch (error) {
-        console.error('Failed to load configuration:', error);
-        showStatus('Failed to load configuration: ' + error.message, 'danger');
+  showStatus('Loading saved configuration...', 'info');
+  try {
+    const filePath = '/etc/xavs/globals.d/_99_xavs.yml';
+    const content  = await cockpit.file(filePath).read();
+    if (content && content.trim().length > 0) {
+      const parsed = parseYamlToConfig(content);
+      if (parsed && Object.keys(parsed).length > 0) {
+        populateFormFromConfig(parsed);
+        evaluateVisibility(formGenerator.container, CONFIG_SCHEMA);
+        syncExternalInterfaceOptions();
+        hookExternalInterfaceBehavior();
+        await updateVGOptionsAndHint();
+        wireFlatSwitches();
+        showStatus('Configuration loaded into form', 'success');
+      } else {
+        showConfigPreview(content);
+        showStatus('Loaded config into preview (could not auto-populate)', 'warning');
+      }
+    } else {
+      showStatus('No saved configuration found', 'warning');
     }
+  } catch (e) {
+    console.error('Load failed:', e);
+    showStatus('Failed to load configuration: ' + e.message, 'danger');
+  }
 }
 
-// Simple YAML parser for our specific format
-function parseYamlToConfig(yamlContent) {
-    console.log('Parsing YAML content...');
-    const config = {};
-    const lines = yamlContent.split('\n');
-    let customYaml = [];
-    let customComments = [];
-    let inCustomSection = false;
-    
-    try {
-        for (let i = 0; i < lines.length; i++) {
-            let line = lines[i].trim();
-            
-            // Check for custom configuration section
-            if (line.includes('# Custom Configuration Section')) {
-                inCustomSection = true;
-                continue;
-            }
-            
-            // Check for end of configuration
-            if (line.includes('# End of XAVS Globals Configuration')) {
-                inCustomSection = false;
-                break;
-            }
-            
-            // Handle custom section
-            if (inCustomSection) {
-                if (line.startsWith('#') && !line.includes('Custom Configuration Section')) {
-                    // Collect custom comments
-                    customComments.push(line.substring(1).trim());
-                } else if (line !== '') {
-                    // Collect custom YAML
-                    customYaml.push(lines[i]); // Keep original indentation
-                }
-                continue;
-            }
-            
-            // Skip comments, empty lines, and YAML document markers for standard config
-            if (line.startsWith('#') || line === '' || line === '---') {
-                continue;
-            }
-            
-            // Parse key-value pairs
-            if (line.includes(':')) {
-                const colonIndex = line.indexOf(':');
-                let key = line.substring(0, colonIndex).trim();
-                let value = line.substring(colonIndex + 1).trim();
-                
-                // Remove quotes from value
-                if ((value.startsWith('"') && value.endsWith('"')) || 
-                    (value.startsWith("'") && value.endsWith("'"))) {
-                    value = value.slice(1, -1);
-                }
-                
-                // Skip template variables
-                if (value.includes('{{') && value.includes('}}')) {
-                    continue;
-                }
-                
-                // Map keys to sections based on our schema
-                const section = mapKeyToSection(key);
-                if (section) {
-                    if (!config[section]) {
-                        config[section] = {};
-                    }
-                    config[section][key] = value;
-                }
-            }
-        }
-        
-        // Add custom configuration if found
-        if (customYaml.length > 0 || customComments.length > 0) {
-            config.custom = {
-                custom_yaml: customYaml.join('\n'),
-                custom_comments: customComments.join('\n')
-            };
-        }
-        
-        console.log('YAML parsing completed, found sections:', Object.keys(config));
-        return config;
-        
-    } catch (error) {
-        console.error('YAML parsing failed:', error);
-        return null;
-    }
-}
-
-// Map configuration keys to their sections
-function mapKeyToSection(key) {
-    const keyMappings = {
-        // Network section
-        'network_interface': 'network',
-        'kolla_internal_vip_address': 'network',
-        'kolla_internal_fqdn': 'network',
-        'kolla_external_vip_address': 'network',
-        'kolla_external_fqdn': 'network',
-        'neutron_external_interface': 'network',
-        'enable_neutron_dvr': 'network',
-        
-        // Compute section
-        'nova_compute_virt_type': 'compute',
-        'nova_vncproxy_host': 'compute',
-        'enable_nova_fake_driver': 'compute',
-        
-        // Storage section
-        'enable_cinder': 'storage',
-        'enable_cinder_backup': 'storage',
-        'cinder_volume_driver': 'storage',
-        'enable_swift': 'storage',
-        
-        // Database section
-        'enable_mariadb': 'database',
-        'enable_mariabackup': 'database',
-        'enable_mariadb_clustercheck': 'database',
-        'enable_proxysql': 'database',
-        'database_max_timeout': 'database',
-        'mariadb_server_id': 'database',
-        
-     
-        // Monitoring section
-        'enable_prometheus': 'monitoring',
-        'enable_grafana': 'monitoring',
-        'enable_central_logging': 'monitoring',
-        'enable_elasticsearch': 'monitoring',
-        
-        // Security section
-        'keystone_admin_user': 'security',
-        'enable_barbican': 'security',
-        'keystone_token_provider': 'security',
-        'enable_horizon_ssl': 'security',
-        'kolla_enable_tls_internal': 'security',
-        'kolla_enable_tls_external': 'security',
-        'kolla_external_fqdn_cert': 'security',
-        
-        // Advanced section
-        'enable_haproxy': 'advanced',
-        'enable_keepalived': 'advanced',
-        'enable_memcached': 'advanced',
-        'enable_haproxy_memcached': 'advanced'
-    };
-    
-    return keyMappings[key] || null;
-}
-
-// Populate form fields from parsed configuration
-function populateFormFromConfig(config) {
-    console.log('Populating form from configuration...');
-    
-    if (!formGenerator || !formGenerator.container) {
-        console.error('Form generator not available');
-        return;
-    }
-    
-    try {
-        for (const [section, fields] of Object.entries(config)) {
-            for (const [key, value] of Object.entries(fields)) {
-                const fieldId = `${section}_${key}`;
-                const field = formGenerator.container.querySelector(`#${fieldId}`);
-                
-                if (field) {
-                    if (field.type === 'number') {
-                        field.value = parseInt(value) || 0;
-                    } else {
-                        field.value = value;
-                    }
-                    console.log(`Set ${fieldId} = ${value}`);
-                } else {
-                    console.warn(`Field not found: ${fieldId}`);
-                }
-            }
-        }
-        
-        console.log('Form population completed');
-        
-    } catch (error) {
-        console.error('Form population failed:', error);
-        throw error;
-    }
-}
-
-// Show configuration in preview modal (fallback)
 function showConfigPreview(content) {
-    let previewModal = document.getElementById('previewModal');
-    if (!previewModal) {
-        previewConfiguration(); // Create the modal
-        previewModal = document.getElementById('previewModal');
-    }
-    
-    document.getElementById('previewContent').textContent = content;
-    previewModal.style.display = 'block';
-    previewModal.classList.add('show');
+  let m = document.getElementById('previewModal');
+  if (!m) { previewConfiguration(); m = document.getElementById('previewModal'); }
+  document.getElementById('previewContent').textContent = content;
+  m.style.display = 'block';
+  m.classList.add('show');
 }
 
-// Reset configuration to defaults
-// Refresh network interfaces and update dropdowns
-async function refreshNetworkInterfaces() {
-    try {
-        showStatus('Refreshing network interfaces...', 'info');
-        console.log('Refreshing network interfaces...');
-        
-        // Detect interfaces again
-        const interfaces = await detectNetworkInterfaces();
-        
-        // Update the CONFIG_SCHEMA
-        await updateNetworkInterfaceOptions();
-        
-        // Update the dropdowns in the current form
-        const networkInterfaceSelect = document.getElementById('network_network_interface');
-        const neutronInterfaceSelect = document.getElementById('network_neutron_external_interface');
-        
-        if (networkInterfaceSelect) {
-            const currentValue = networkInterfaceSelect.value;
-            networkInterfaceSelect.innerHTML = '';
-            
-            interfaces.forEach(iface => {
-                const option = document.createElement('option');
-                option.value = iface;
-                option.textContent = iface;
-                option.selected = (iface === currentValue);
-                networkInterfaceSelect.appendChild(option);
-            });
-            
-            // If current value is not in new list, select first option
-            if (!interfaces.includes(currentValue) && interfaces.length > 0) {
-                networkInterfaceSelect.value = interfaces[0];
-            }
+/* ===================== YAML PARSE/ROUND-TRIP ===================== */
+function parseYamlToConfig(yamlContent) {
+  const config = {};
+  const lines = yamlContent.split('\n');
+  let customYaml = [];
+  let customComments = [];
+  let inCustom = false;
+  try {
+    for (let i = 0; i < lines.length; i++) {
+      let line = lines[i].trim();
+      if (line.includes('# Custom Configuration Section')) { inCustom = true; continue; }
+      if (line.includes('# End of XAVS Globals Configuration')) { inCustom = false; break; }
+      if (inCustom) {
+        if (line.startsWith('#') && !line.includes('Custom Configuration Section')) customComments.push(line.substring(1).trim());
+        else if (line !== '') customYaml.push(lines[i]);
+        continue;
+      }
+      if (line.startsWith('#') || line === '' || line === '---') continue;
+      if (line.includes(':')) {
+        const idx = line.indexOf(':');
+        let key = line.substring(0, idx).trim();
+        let val = line.substring(idx + 1).trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) val = val.slice(1, -1);
+        if (val.includes('{{') && val.includes('}}')) continue;
+        const section = mapKeyToSection(key);
+        if (section) {
+          if (!config[section]) config[section] = {};
+          config[section][key] = val;
         }
-        
-        if (neutronInterfaceSelect) {
-            const currentValue = neutronInterfaceSelect.value;
-            neutronInterfaceSelect.innerHTML = '';
-            
-            interfaces.forEach(iface => {
-                const option = document.createElement('option');
-                option.value = iface;
-                option.textContent = iface;
-                option.selected = (iface === currentValue);
-                neutronInterfaceSelect.appendChild(option);
-            });
-            
-            // If current value is not in new list, select first or second option
-            if (!interfaces.includes(currentValue) && interfaces.length > 0) {
-                neutronInterfaceSelect.value = interfaces[1] || interfaces[0];
-            }
-        }
-        
-        showStatus(`Network interfaces refreshed - ${interfaces.length} interfaces found`, 'success');
-        console.log('Network interfaces refreshed successfully:', interfaces);
-        
-    } catch (error) {
-        console.error('Failed to refresh network interfaces:', error);
-        showStatus('Failed to refresh network interfaces: ' + error.message, 'danger');
+      }
     }
+    if (customYaml.length || customComments.length) {
+      config.custom = { custom_yaml: customYaml.join('\n'), custom_comments: customComments.join('\n') };
+    }
+    return config;
+  } catch (e) {
+    console.error('YAML parse failed:', e);
+    return null;
+  }
 }
 
-// Network Interface Detection
+function mapKeyToSection(key) {
+  const map = {
+    // basics
+    'network_interface': 'basics',
+    'kolla_internal_vip_address': 'basics',
+    'kolla_external_vip_address': 'basics',
+    'kolla_internal_fqdn': 'basics',
+    'kolla_external_fqdn': 'basics',
+    'kolla_enable_tls_internal': 'basics',
+    'kolla_enable_tls_external': 'basics',
+    'kolla_internal_fqdn_cert': 'basics',
+    'kolla_external_fqdn_cert': 'basics',
+
+    // network
+    'neutron_external_interface': 'network',
+    'enable_neutron_provider_networks': 'network',
+    'enable_neutron_vpnaas': 'network',
+    'enable_neutron_qos': 'network',
+    'enable_neutron_trunk': 'network',
+
+    // storage
+    'enable_cinder': 'storage',
+    'cinder_volume_group': 'storage',
+    'enable_cinder_backend_lvm': 'storage',
+    'enable_cinder_backend_nfs': 'storage',
+
+    // monitoring
+    'enable_prometheus': 'monitoring',
+    'enable_grafana': 'monitoring',
+    'enable_central_logging': 'monitoring',
+
+    // advanced
+    'enable_barbican': 'advanced'
+  };
+  return map[key] || null;
+}
+
+function populateFormFromConfig(cfg) {
+  if (!formGenerator || !formGenerator.container) return;
+  for (const [section, fields] of Object.entries(cfg)) {
+    for (const [key, value] of Object.entries(fields)) {
+      const id = `${section}_${key}`;
+      const el = formGenerator.container.querySelector(`#${id}`);
+      if (!el) continue;
+
+      if (el.classList.contains('switch-input')) {
+        el.checked = String(value).toLowerCase() === 'yes';
+        el.value   = el.checked ? 'yes' : 'no';
+      } else if (el.tagName === 'SELECT') {
+        if (![...el.options].some(o => o.value === value)) {
+          const opt = document.createElement('option'); opt.value = value; opt.textContent = value; el.appendChild(opt);
+        }
+        el.value = value;
+      } else {
+        el.value = value;
+      }
+    }
+  }
+}
+
+/* ===================== VISIBILITY & NETWORK/VG HELPERS ===================== */
+function evaluateVisibility(container, schema) {
+  const values = {};
+  container.querySelectorAll('input, select, textarea').forEach(el => {
+    if (!el.name) return;
+    const parts = el.name.split('_');
+    const section = parts[0];
+    const key = parts.slice(1).join('_');
+    const val = el.classList.contains('switch-input') ? (el.checked ? 'yes' : 'no') : el.value;
+    values[`${section}.${key}`] = val;
+  });
+
+  for (const [sectionKey, section] of Object.entries(schema)) {
+    for (const [fieldKey, field] of Object.entries(section.fields)) {
+      const fieldId = `${sectionKey}_${fieldKey}`;
+      const input = container.querySelector(`#${fieldId}`);
+      if (!input) continue;
+      const wrap = input.closest('[style*="margin-bottom"]') || input.parentElement;
+
+      let show = true;
+      if (field.visibleWhen) {
+        const depVal = values[`${sectionKey}.${field.visibleWhen.field}`] || '';
+        if (field.visibleWhen.equals === '__NONEMPTY__') {
+          show = depVal.trim() !== '';
+        } else {
+          show = (depVal === field.visibleWhen.equals);
+        }
+      }
+      wrap.style.display = show ? '' : 'none';
+      if (!show) {
+        if (input.classList.contains('switch-input')) input.checked = String(field.default).toLowerCase() === 'yes';
+        else input.value = '';
+      }
+    }
+  }
+}
+
+/* ===================== NETWORK / VG ===================== */
 async function detectNetworkInterfaces() {
-    try {
-        console.log('Detecting network interfaces...');
-        
-        // Use multiple commands to get comprehensive interface information
-        const result = await cockpit.spawn([
-            'bash', '-c', 
-            'ip link show | grep "^[0-9]" | awk -F": " \'{print $2}\' | grep -v "^lo$" | sort'
-        ], { 
-            superuser: 'try',
-            err: 'message'
-        });
-        
-        const interfaces = result.trim().split('\n').filter(iface => 
-            iface && 
-            iface.length > 0 && 
-            !iface.includes('lo') && 
-            !iface.includes('@')
-        );
-        
-        console.log('Detected interfaces:', interfaces);
-        
-        // If no interfaces detected, provide common defaults
-        if (interfaces.length === 0) {
-            console.log('No interfaces detected, using defaults');
-            return ['eth0', 'eth1', 'ens3', 'ens4', 'enp0s3', 'enp0s8'];
-        }
-        
-        return interfaces;
-    } catch (error) {
-        console.error('Failed to detect network interfaces:', error);
-        showStatus('Could not detect network interfaces, using defaults', 'warning');
-        
-        // Return common interface names as fallback
-        return ['eth0', 'eth1', 'ens3', 'ens4', 'enp0s3', 'enp0s8', 'eno1', 'eno2'];
-    }
+  try {
+    const out = await cockpit.spawn(
+      ['bash', '-lc', "ifconfig -a | sed 's/[ \\t].*//;/^$/d'"],
+      { superuser: 'try', err: 'message' }
+    );
+    let nics = out.trim().split('\n').map(s => s.trim()).filter(Boolean)
+      .map(n => n.replace(/:$/, ''))
+      .filter(n => n !== 'lo');
+    if (!nics.length) throw new Error('no nics');
+    return nics;
+  } catch (e) {
+    console.error('detectNetworkInterfaces:', e);
+    showStatus('Could not detect interfaces; using common defaults', 'warning');
+    return ['eth0','eth0.100','eth1','ens3','eno1'];
+  }
 }
 
-// Update network interface options in CONFIG_SCHEMA
 async function updateNetworkInterfaceOptions() {
-    try {
-        const interfaces = await detectNetworkInterfaces();
-        
-        // Update network_interface field
-        if (CONFIG_SCHEMA.network && CONFIG_SCHEMA.network.fields && CONFIG_SCHEMA.network.fields.network_interface) {
-            CONFIG_SCHEMA.network.fields.network_interface.type = 'select';
-            CONFIG_SCHEMA.network.fields.network_interface.options = interfaces;
-            CONFIG_SCHEMA.network.fields.network_interface.default = interfaces[0] || 'eth0';
-        }
-        
-        // Update neutron_external_interface field
-        if (CONFIG_SCHEMA.network && CONFIG_SCHEMA.network.fields && CONFIG_SCHEMA.network.fields.neutron_external_interface) {
-            CONFIG_SCHEMA.network.fields.neutron_external_interface.type = 'select';
-            CONFIG_SCHEMA.network.fields.neutron_external_interface.options = interfaces;
-            CONFIG_SCHEMA.network.fields.neutron_external_interface.default = interfaces[1] || interfaces[0] || 'eth1';
-        }
-        
-        console.log('Updated network interface options:', interfaces);
-        return interfaces;
-    } catch (error) {
-        console.error('Failed to update network interface options:', error);
-        return [];
-    }
+  const nics = await detectNetworkInterfaces();
+  ALL_INTERFACES = nics;
+
+  if (CONFIG_SCHEMA.basics?.fields?.network_interface) {
+    CONFIG_SCHEMA.basics.fields.network_interface.options = nics;
+    CONFIG_SCHEMA.basics.fields.network_interface.default = nics[0] || '';
+  }
+  if (CONFIG_SCHEMA.network?.fields?.neutron_external_interface) {
+    CONFIG_SCHEMA.network.fields.neutron_external_interface.options = nics;
+    CONFIG_SCHEMA.network.fields.neutron_external_interface.default = '';
+  }
+  return nics;
 }
 
+async function populateInterfacesAndAutofill() {
+  try {
+    const mgmt = document.getElementById('basics_network_interface');
+    const vip = document.getElementById('basics_kolla_internal_vip_address');
+    if (!mgmt || !vip) return;
+
+    const getIPv4 = async (iface) => {
+      const cmd = `
+        (ip -o -4 addr show dev "${iface}" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n1) \
+        || (ifconfig "${iface}" 2>/dev/null | awk '/inet /{print $2}' | sed 's/addr://' | head -n1)
+      `;
+      const out = await cockpit.spawn(['bash', '-lc', cmd], { superuser: 'try', err: 'message' });
+      return (out || '').trim();
+    };
+
+    const setFromSelected = async () => {
+      if (!mgmt.value) return;
+      const ip = await getIPv4(mgmt.value);
+      if (ip) { vip.value = ip; vip.placeholder = ''; }
+      else { vip.value = ''; vip.placeholder = 'No IPv4 found — enter manually'; }
+    };
+
+    await setFromSelected();
+    mgmt.addEventListener('change', setFromSelected);
+  } catch (e) {
+    console.error('populateInterfacesAndAutofill:', e);
+  }
+}
+
+function syncExternalInterfaceOptions() {
+  const mgmt = document.getElementById('basics_network_interface');
+  const ext = document.getElementById('network_neutron_external_interface');
+  if (!mgmt || !ext) return;
+
+  const current = ext.value;
+  ext.innerHTML = '';
+  const ph = document.createElement('option');
+  ph.value = '';
+  ph.textContent = '— Select —';
+  ext.appendChild(ph);
+
+  const filtered = ALL_INTERFACES.filter(n => n !== mgmt.value);
+  filtered.forEach(n => {
+    const o = document.createElement('option');
+    o.value = n;
+    o.textContent = n;
+    ext.appendChild(o);
+  });
+
+  if (current && current !== mgmt.value && filtered.includes(current)) ext.value = current;
+  else ext.value = '';
+}
+
+async function hookExternalInterfaceBehavior() {
+  const ext = document.getElementById('network_neutron_external_interface');
+  const hint = document.getElementById('neutron_ext_ip_hint');
+  if (!ext || !hint) return;
+
+  const getIPv4 = async (iface) => {
+    const cmd = `
+      (ip -o -4 addr show dev "${iface}" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n1) \
+      || (ifconfig "${iface}" 2>/dev/null | awk '/inet /{print $2}' | sed 's/addr://' | head -n1)
+    `;
+    const out = await cockpit.spawn(['bash', '-lc', cmd], { superuser: 'try', err: 'message' });
+    return (out || '').trim();
+  };
+
+  let msg = '';
+  if (ext.value) {
+    const ip = await getIPv4(ext.value);
+    if (ip) msg = `Selected interface has IP ${ip}. This IP will be unusable — interface is dedicated to provider/VM traffic.`;
+    else    msg = `Selected interface has no IPv4. It will be dedicated to provider/VM traffic.`;
+  }
+  hint.textContent = msg;
+}
+
+async function detectAvailableVolumeGroups() {
+  try {
+    const vgOut = await cockpit.spawn(
+      ['bash','-lc', "vgs --noheadings -o vg_name | awk '{$1=$1;print}'"],
+      { superuser: 'try', err: 'message' }
+    );
+    const allVgs = vgOut.trim().split('\n').map(s => s.trim()).filter(Boolean);
+
+    const usedOut = await cockpit.spawn(
+      ['bash','-lc', "lvs --noheadings -o vg_name,lv_attr | awk '$2 ~ /a/ {print $1}' | sort -u"],
+      { superuser: 'try', err: 'message' }
+    );
+    const usedSet = new Set(usedOut.trim().split('\n').map(s => s.trim()).filter(Boolean));
+
+    const freeVgs = allVgs.filter(vg => !usedSet.has(vg));
+    return { freeVgs, allVgs, usedVgs: Array.from(usedSet) };
+  } catch (e) {
+    console.error('detectAvailableVolumeGroups:', e);
+    return { freeVgs: [], allVgs: [], usedVgs: [] };
+  }
+}
+
+async function updateVGOptionsAndHint() {
+  const driverEl = document.getElementById('storage_volume_driver');
+  const cinderChk = document.getElementById('storage_enable_cinder'); // switch-input
+  const vgSelect  = document.getElementById('storage_cinder_volume_group');
+  const vgHint    = document.getElementById('cinder_vg_hint');
+
+  if (!driverEl || !vgSelect || !cinderChk) return;
+
+  const cinderOn = cinderChk.checked;
+  const driver   = driverEl.value;
+
+  if (!(cinderOn && driver === 'LVM')) {
+    vgSelect.innerHTML = '';
+    vgSelect.disabled = false;
+    if (vgHint) vgHint.textContent = '';
+    return;
+  }
+
+  const { freeVgs, allVgs } = await detectAvailableVolumeGroups();
+
+  vgSelect.innerHTML = '';
+  const ph = document.createElement('option');
+  ph.value = '';
+  ph.textContent = '— Select VG —';
+  vgSelect.appendChild(ph);
+
+  if (freeVgs.length) {
+    freeVgs.forEach(vg => {
+      const o = document.createElement('option');
+      o.value = vg; o.textContent = vg;
+      vgSelect.appendChild(o);
+    });
+    vgSelect.disabled = false;
+    if (vgHint) vgHint.textContent = 'Only volume groups without active logical volumes are shown.';
+  } else {
+    vgSelect.disabled = true;
+    if (vgHint) vgHint.textContent = (allVgs.length === 0)
+      ? 'No volume groups found. Please create a VG in the storage section and retry.'
+      : 'No free volume groups found (all have active LVs). Create a new VG for Cinder LVM.';
+  }
+}
+
+/* ===================== RESET & EXPORTS ===================== */
 function resetToDefaults() {
-    if (confirm('Are you sure you want to reset all settings to their default values? This action cannot be undone.')) {
-        console.log('Resetting configuration to defaults...');
-        showStatus('Resetting to defaults...', 'info');
-        
-        try {
-            // Reload the form which will restore all default values
-            if (formGenerator) {
-                formGenerator.generateForm().then(() => {
-                    showStatus('Configuration reset to defaults', 'success');
-                });
-            }
-        } catch (error) {
-            console.error('Reset failed:', error);
-            showStatus('Failed to reset configuration: ' + error.message, 'danger');
-        }
+  if (confirm('Reset all settings to defaults?')) {
+    if (formGenerator) {
+      formGenerator.generateForm().then(async () => {
+        await populateInterfacesAndAutofill();
+        syncExternalInterfaceOptions();
+        hookExternalInterfaceBehavior();
+        await updateVGOptionsAndHint();
+        evaluateVisibility(formGenerator.container, CONFIG_SCHEMA);
+        wireFlatSwitches();
+        showStatus('Configuration reset', 'success');
+      });
     }
+  }
 }
 
-// Export functions for global access
-window.saveConfiguration = saveConfiguration;
-window.previewConfiguration = previewConfiguration;
-window.downloadConfiguration = downloadConfiguration;
-window.loadSavedConfiguration = loadSavedConfiguration;
-window.resetToDefaults = resetToDefaults;
-window.detectNetworkInterfaces = detectNetworkInterfaces;
-window.updateNetworkInterfaceOptions = updateNetworkInterfaceOptions;
-window.refreshNetworkInterfaces = refreshNetworkInterfaces;
+window.saveConfiguration        = saveConfiguration;
+window.previewConfiguration     = previewConfiguration;
+window.downloadConfiguration    = downloadConfiguration;
+window.loadSavedConfiguration   = loadSavedConfiguration;
+window.resetToDefaults          = resetToDefaults;
