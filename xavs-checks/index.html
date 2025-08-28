@@ -1,0 +1,156 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>xDeploy Checks</title>
+  <script src="../base1/cockpit.js"></script>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    :root { --tab-border: var(--border, #e5e7eb); }
+    .panel { display: none !important; }
+    .panel.active { display: block !important; }
+    .badge { padding: 2px 10px; border-radius: 999px; font-size: 12px; border: 1px solid var(--tab-border); }
+    .ok   { background: #e8f5e9; color: #1b5e20; }
+    .warn { background: #fff8e1; color: #8d6e00; }
+    .err  { background: #ffebee; color: #b71c1c; }
+    .card { border: 1px solid var(--tab-border); border-radius: 12px; padding: 16px; background: var(--surface,#fff); }
+    .check-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; padding: 8px 0; border-bottom: 1px dashed var(--tab-border); align-items: center; }
+    .check-row:last-child { border-bottom: 0; }
+    .value { text-align: right; white-space: nowrap; }
+    .muted { color: var(--muted,#6b7280); font-size: 12px; }
+    .kv { display: grid; grid-template-columns: 160px 1fr; row-gap: 6px; }
+
+    /* Tabs */
+    .nav-tabs { display:flex; gap:8px; margin-bottom:12px; padding:0; list-style:none; }
+    .nav-tabs .nav-link { display:inline-block; padding:8px 14px; border:1px solid var(--tab-border); border-radius:8px; background:var(--surface,#fff); text-decoration:none; cursor:pointer; }
+    .nav-tabs .nav-link.active { background: var(--brand,#0ea5a4); color:#fff; border-color: var(--brand,#0ea5a4); }
+
+    .progress { width: 100%; height: 10px; background: var(--surface-2,#f7f7f8); border: 1px solid var(--tab-border); border-radius: 999px; overflow: hidden; }
+    .progress-bar { height: 100%; width: 0%; background: var(--brand,#0ea5a4); transition: width .25s ease; }
+
+    pre.yaml-terminal { max-height: 320px; }
+    .toolbar .btn + .btn { margin-left: 8px; }
+  </style>
+</head>
+<body>
+  <div class="container-fluid">
+    <div class="topbar">
+      <h1 class="app-title">xDeploy Checks</h1>
+      <div class="toolbar right">
+        <button class="btn btn-outline-muted" id="btn-refresh" type="button">Re-run all detections</button>
+      </div>
+    </div>
+
+    <ul class="nav-tabs" id="tabs">
+      <li><a class="nav-link active" data-target="panel-overview">Overview</a></li>
+      <li><a class="nav-link" data-target="panel-hw">Hardware</a></li>
+      <li><a class="nav-link" data-target="panel-deps">Dependencies</a></li>
+      <li><a class="nav-link" data-target="panel-logs">Logs</a></li>
+    </ul>
+
+    <!-- Overview -->
+    <section id="panel-overview" class="panel active">
+      <div class="alert" id="xos-reco" style="display:none;">
+        Using <strong>XOS</strong> is recommended for smooth installation and working. Check it out at
+        <a href="https://xloud.tech" target="_blank" rel="noopener">xloud.tech</a>.
+      </div>
+
+      <div class="card">
+        <div style="margin-bottom:8px;"><b>Operating System</b></div>
+        <div class="kv">
+          <div><b>OS</b></div><div id="os-name">—</div>
+          <div><b>Kernel</b></div><div id="os-kernel" class="muted">—</div>
+          <div><b>Check Branch</b></div><div id="os-branch" class="muted">—</div>
+          <div><b>Mode</b></div><div id="os-mode" class="muted">—</div>
+        </div>
+
+        <div class="toolbar" style="margin-top:12px;">
+          <button class="btn btn-outline-brand" id="btn-detect-os" type="button">Detect OS</button>
+          <button class="btn btn-brand" id="btn-run-hw-top" type="button">Run Hardware Checks</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Hardware -->
+    <section id="panel-hw" class="panel">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <strong>Hardware & Core Preconditions</strong>
+          <button class="btn" id="btn-run-hw" type="button">Re-run</button>
+        </div>
+
+        <div class="check-row">
+          <div>Root free space ≥ 100 GB</div>
+          <div class="value"><span id="chk-root" class="badge">—</span></div>
+        </div>
+        <div class="check-row">
+          <div>Network interfaces (excluding lo) ≥ 2</div>
+          <div class="value"><span id="chk-nics" class="badge">—</span></div>
+        </div>
+        <div class="check-row">
+          <div>Additional disk OR blank VG</div>
+          <div class="value"><span id="chk-extra" class="badge">—</span></div>
+        </div>
+        <div class="check-row">
+          <div>CPU cores ≥ 4</div>
+          <div class="value"><span id="chk-cores" class="badge">—</span></div>
+        </div>
+        <div class="check-row">
+          <div>RAM ≥ 8 GB</div>
+          <div class="value"><span id="chk-ram" class="badge">—</span></div>
+        </div>
+
+        <div class="muted" id="hw-summary" style="margin-top:8px;"></div>
+      </div>
+    </section>
+
+    <!-- Dependencies -->
+    <section id="panel-deps" class="panel">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <strong>Dependencies</strong>
+          <div>
+            <button class="btn" id="btn-check-deps" type="button">Check</button>
+            <button class="btn btn-brand" id="btn-install-all" type="button">Install All</button>
+          </div>
+        </div>
+
+        <div class="kv" style="margin-top:8px;">
+          <div><b>Branch</b></div><div id="dep-branch" class="muted">—</div>
+          <div><b>Status</b></div><div id="dep-status" class="muted">—</div>
+        </div>
+
+        <div id="dep-grid" style="margin-top:10px;">
+          <div class="check-row"><div>Python dependencies</div><div class="value"><span id="dep-py" class="badge">—</span></div></div>
+          <div class="check-row"><div>Environment (/opt/xenv)</div><div class="value"><span id="dep-env" class="badge">—</span></div></div>
+          <div class="check-row"><div>xDeploy dependencies</div><div class="value"><span id="dep-xdep" class="badge">—</span></div></div>
+          <div class="check-row"><div>Config prepared</div><div class="value"><span id="dep-cfg" class="badge">—</span></div></div>
+          <div class="check-row"><div>Passwords ready</div><div class="value"><span id="dep-pwd" class="badge">—</span></div></div>
+        </div>
+
+        <div class="toolbar" style="margin-top:12px;">
+          <div class="left" style="width:320px;">
+            <div class="progress"><div class="progress-bar" id="dep-progress"></div></div>
+          </div>
+          <div class="right">
+            <span class="muted" id="dep-note"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Logs -->
+    <section id="panel-logs" class="panel">
+      <div class="card">
+        <strong>Execution Log</strong>
+        <pre class="yaml-terminal" id="log"></pre>
+        <div class="footer-actions">
+          <button class="btn btn-outline-muted" id="btn-clear-log" type="button">Clear log</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="index.js"></script>
+</body>
+</html>

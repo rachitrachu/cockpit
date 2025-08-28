@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "tools": {
+    "xdeploy-checks": {
+      "label": "xDeploy Checks",
+      "path": "index.html",
+      "icon": "fa-clipboard-check"
+    }
+  }
+}
