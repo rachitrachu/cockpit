@@ -2316,30 +2316,30 @@ async function loadSavedConfiguration() {
         console.log('📋 Loading configuration into form...', parsed);
         
         // Step 1: Ensure all event handlers are set up first
-        console.log('🔧 Setting up event handlers...');
+        console.log('Setting up event handlers...');
         wireFlatSwitches();
         syncExternalInterfaceOptions();
         hookExternalInterfaceBehavior();
         await updateVGOptionsAndHint();
         
         // Step 2: Populate form values and trigger events
-        console.log('📝 Populating form with configuration data...');
+        console.log('Populating form with configuration data...');
         populateFormFromConfig(parsed);
         
         // Step 3: Multiple visibility evaluations to ensure everything is updated
         setTimeout(() => {
-          console.log('🔄 First visibility evaluation...');
+          console.log('First visibility evaluation...');
           evaluateVisibility(formGenerator.container, CONFIG_SCHEMA);
         }, 100);
         
         setTimeout(() => {
-          console.log('🔄 Second visibility evaluation (final)...');
+          console.log('Second visibility evaluation (final)...');
           evaluateVisibility(formGenerator.container, CONFIG_SCHEMA);
           
           // Step 4: Force check all switch states and log them
           const switches = formGenerator.container.querySelectorAll('.switch-input');
           switches.forEach(switchEl => {
-            console.log(`🔍 Final switch state - ${switchEl.id}: checked=${switchEl.checked}, value=${switchEl.value}`);
+            console.log(`Final switch state - ${switchEl.id}: checked=${switchEl.checked}, value=${switchEl.value}`);
           });
           
         }, 300);
@@ -2445,9 +2445,6 @@ function mapKeyToSection(key) {
   return map[key] || null;
 }
 
-// Make mapKeyToSection available globally for debugging
-window.mapKeyToSection = mapKeyToSection;
-
 // Centralized function to trigger all switches and selects in proper dependency order
 function triggerAllSwitchesInOrder(enhancedConfig) {
   // Define dependency layers - each layer must complete before the next
@@ -2504,18 +2501,13 @@ function triggerAllSwitchesInOrder(enhancedConfig) {
             
             if (el && !triggeredElements.has(id)) {
               if (el.classList.contains('switch-input')) {
-                console.log(`🔄 Auto-triggering switch: ${id} (${el.value}) - Config value: ${value}`);
-                
-                // Special logging for enable_kms
-                if (id === 'advanced_enable_kms') {
-                  console.log(`🔑 ENABLE_KMS FOUND! Element: ${el.id}, Current value: ${el.value}, Config value: ${value}, Checked: ${el.checked}`);
-                }
+                console.log(`Auto-triggering switch: ${id} (${el.value}) - Config value: ${value}`);
                 
                 el.dispatchEvent(new Event('change', { bubbles: true }));
                 el.dispatchEvent(new Event('input', { bubbles: true }));
                 triggeredElements.add(id);
               } else if (el.tagName === 'SELECT') {
-                console.log(`🔄 Auto-triggering select: ${id} (${el.value}) - Config value: ${value}`);
+                console.log(`Auto-triggering select: ${id} (${el.value}) - Config value: ${value}`);
                 el.dispatchEvent(new Event('change', { bubbles: true }));
                 triggeredElements.add(id);
               }
@@ -2565,7 +2557,7 @@ function triggerAllSwitchesInOrder(enhancedConfig) {
   
   // Final verification and cleanup
   setTimeout(() => {
-    console.log('🔧 Final verification of all switch states...');
+    console.log('Final verification of all switch states...');
     
     for (const [section, fields] of Object.entries(enhancedConfig)) {
       for (const [key, value] of Object.entries(fields)) {
@@ -2575,18 +2567,13 @@ function triggerAllSwitchesInOrder(enhancedConfig) {
         if (el && el.classList.contains('switch-input')) {
           const expectedChecked = String(value).toLowerCase() === 'yes';
           
-          // Special logging for enable_kms
-          if (id === 'advanced_enable_kms') {
-            console.log(`🔑 ENABLE_KMS VERIFICATION: Element: ${el.id}, Expected: ${expectedChecked}, Actual: ${el.checked}, Value: ${el.value}, Config: ${value}`);
-          }
-          
           if (el.checked !== expectedChecked) {
-            console.warn(`⚠️ Switch ${id} state mismatch! Expected: ${expectedChecked}, Actual: ${el.checked}. Correcting...`);
+            console.warn(`Switch ${id} state mismatch! Expected: ${expectedChecked}, Actual: ${el.checked}. Correcting...`);
             el.checked = expectedChecked;
             el.value = expectedChecked ? 'yes' : 'no';
             el.dispatchEvent(new Event('change', { bubbles: true }));
           } else {
-            console.log(`✅ Switch ${id} state correct: checked=${el.checked}, value=${el.value}`);
+            console.log(`Switch ${id} state correct: checked=${el.checked}, value=${el.value}`);
           }
         }
       }
@@ -2717,21 +2704,13 @@ function populateFormFromConfig(cfg) {
   
   // Transform config keys to match GUI elements (enable_barbican -> enable_kms)
   if (enhancedConfig.advanced && enhancedConfig.advanced.enable_barbican) {
-    console.log('🔄 Transforming enable_barbican to enable_kms for GUI compatibility');
+    console.log('Transforming enable_barbican to enable_kms for GUI compatibility');
     enhancedConfig.advanced.enable_kms = enhancedConfig.advanced.enable_barbican;
     delete enhancedConfig.advanced.enable_barbican;
   }
   
   // First pass: Set all values without triggering events
-  console.log('🔍 DEBUG: Enhanced config sections:', Object.keys(enhancedConfig));
-  
-  // Special debug for advanced section
-  if (enhancedConfig.advanced) {
-    console.log('🔑 DEBUG: Advanced section contents:', enhancedConfig.advanced);
-    console.log('🔑 DEBUG: Advanced section keys:', Object.keys(enhancedConfig.advanced));
-  } else {
-    console.log('❌ DEBUG: No advanced section found in config');
-  }
+  console.log('Enhanced config sections:', Object.keys(enhancedConfig));
   
   for (const [section, fields] of Object.entries(enhancedConfig)) {
     for (const [key, value] of Object.entries(fields)) {
