@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>XAVS Images</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <!-- Brand CSS + Local Font Awesome -->
+  <link rel="stylesheet" href="xavs-images.css" />
+  <link rel="stylesheet" href="fontawesome/css/all.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- Top bar -->
+    <header class="topbar">
+      <h1 class="app-title"><i class="fa fa-box"></i> XAVS Images</h1>
+      <div class="help" data-tip="This module helps manage image deployment:
+• Extract a .tar.gz of Docker images by path
+• Pull from Xloud registry (/etc/xavs/images.list)
+• Run local registry named docker-registry on port 4000
+• Push images to docker-registry:4000 and view catalog">?</div>
+    </header>
+
+    <!-- Tabs -->
+    <ul class="nav-tabs" id="tabs">
+      <li><a href="#" class="nav-link active" data-tab="tab-extract"><i class="fa fa-file-archive"></i> Extract / Pull</a></li>
+      <li><a href="#" class="nav-link" data-tab="tab-registry"><i class="fa fa-server"></i> Local Registry</a></li>
+      <li><a href="#" class="nav-link" data-tab="tab-push"><i class="fa fa-upload"></i> Push Images</a></li>
+      <li><a href="#" class="nav-link" data-tab="tab-catalog"><i class="fa fa-list"></i> Catalog</a></li>
+    </ul>
+
+    <main class="tab-content">
+      <!-- TAB 1: EXTRACT / PULL -->
+      <section id="tab-extract" class="tab-pane show active">
+        <!-- Toggle pill -->
+        <div class="toggle-pill" role="tablist" aria-label="Mode toggle">
+          <button id="toggle-extract" class="toggle-seg active" type="button" aria-selected="true">Extract</button>
+          <button id="toggle-pull" class="toggle-seg" type="button" aria-selected="false">Pull</button>
+        </div>
+
+        <!-- Extract block -->
+        <div id="extract-block">
+          <label class="form-label" for="file-path">Path to <code>.tar.gz</code> archive on server</label>
+          <input id="file-path" class="form-control" placeholder="/root/xdeploy/images-archive.tar.gz" />
+          <div class="hint">Archive will be extracted to <code>/root/xdeploy/xdeploy-images/</code>, then all <code>.tar</code> images are <strong>docker load</strong>’ed and their tar files are removed.</div>
+          <div class="actions">
+            <button class="btn btn-brand" id="extract-btn">Extract & Load</button>
+          </div>
+        </div>
+
+        <!-- Pull block -->
+        <div id="pull-block" style="display:none">
+          <p class="hint">
+            Reads image names from <code>/etc/xavs/images.list</code> and pulls from
+            <code>quay.io/xavs.images/&lt;name&gt;:&lt;tag&gt;</code>.
+          </p>
+          <div class="actions">
+            <button class="btn btn-outline-brand" id="pull-btn">Pull from Xloud</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: LOCAL REGISTRY -->
+      <section id="tab-registry" class="tab-pane">
+        <div class="status-row">
+          <div class="status-dot" id="registry-dot" aria-hidden="true"></div>
+          <div>Status: <span id="registry-status">Checking…</span></div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-outline-muted" id="run-registry-btn">Run Registry</button>
+          <button class="btn btn-outline-muted" id="restart-docker-btn" disabled>Restart Docker</button>
+          <button class="btn btn-outline-brand" id="check-status-btn">Re-check Status</button>
+        </div>
+        <div class="hint">
+          Creates/updates <code>/etc/docker/daemon.json</code> with
+          <code>"insecure-registries": ["docker-registry:4000"]</code>.
+          After writing, restart Docker to apply.
+        </div>
+      </section>
+
+      <!-- TAB 3: PUSH IMAGES -->
+      <section id="tab-push" class="tab-pane">
+        <p class="hint">
+          Tags images from <code>quay.io/xavs.images</code> to
+          <code>docker-registry:4000/xavs.images</code>, pushes, then removes the public-tagged local copies.
+          List is read from <code>/etc/xavs/images.list</code>.
+        </p>
+        <div class="actions">
+          <button class="btn btn-brand" id="push-btn" disabled>Push Images</button>
+        </div>
+      </section>
+
+      <!-- TAB 4: CATALOG -->
+      <section id="tab-catalog" class="tab-pane">
+        <div class="actions">
+          <button class="btn btn-outline-brand" id="refresh-catalog-btn">Refresh Catalog</button>
+        </div>
+        <ul id="catalog" class="catalog-list"></ul>
+      </section>
+    </main>
+
+    <!-- Log -->
+    <div class="alert" id="log-output">Ready.</div>
+  </div>
+
+  <script src="xavs-images.js"></script>
+</body>
+</html>
