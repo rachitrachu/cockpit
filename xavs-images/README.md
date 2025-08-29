@@ -8,7 +8,10 @@ A Cockpit module for managing Docker images from Xloud repository and configurin
 - **📦 Image Operations** - Pull from Xloud repository, push to local registry  
 - **⚙️ Configuration Management** - Automatic Docker daemon setup for insecure registries
 - **📝 Images List Management** - Manage hardcoded list of xAVS deployment images
+- **🗑️ Registry Cleanup** - Clear registry content or delete entire registry with volumes
+- **📊 Registry Analytics** - View registry info, storage usage, and performance stats
 - **🎨 Modern Interface** - Professional web UI with real-time feedback
+- **🔒 Safety Features** - Confirmation dialogs for destructive operations
 
 ## Installation
 
@@ -31,10 +34,38 @@ A Cockpit module for managing Docker images from Xloud repository and configurin
 
 1. **Navigate** to Applications → xAVS Images in Cockpit
 2. **Configure** Docker daemon for insecure registry (Configuration tab)
-3. **Start** local Docker registry (Registry tab)
-4. **Pull** images from Xloud repository (Extract/Pull tab)
-5. **Push** images to local registry (Push tab)
-6. **Browse** local registry contents (Catalog tab)
+3. **Manage Registry** - Start registry, push images, and browse catalog (Registry Management tab)
+4. **Pull Images** from Xloud repository (Extract/Pull tab)
+5. **Monitor Operations** through comprehensive logging (Logs tab)
+
+### Registry Management (Unified Tab)
+
+The Registry Management tab provides a complete workflow for Docker registry operations:
+
+**Registry Control**:
+- **Start/Stop Registry**: Manage local Docker registry container
+- **Status Monitoring**: Real-time registry health checks
+- **Docker Service**: Restart Docker daemon when needed
+
+**Image Operations**:
+- **Smart Push**: Automatically detects and pushes available Docker images
+- **Progress Tracking**: Real-time progress bars and detailed logging
+- **Automatic Tagging**: Images are properly tagged for local registry
+
+**Registry Catalog**:
+- **Browse Contents**: View all images stored in the registry
+- **Inspect Images**: Get detailed information about stored images
+- **Real-time Updates**: Catalog refreshes after push operations
+
+**Information & Analytics**:
+- **Registry Info**: View container details, performance stats, network configuration
+- **Storage Usage**: Analyze disk usage, volume sizes, and data distribution
+
+**Maintenance Operations**:
+- **Clear Content**: Remove all images but keep registry container running
+- **Delete Registry**: Completely remove registry container, volumes, and all data
+
+⚠️ **Safety Features**: All destructive operations require explicit confirmation
 
 ## Default Images
 

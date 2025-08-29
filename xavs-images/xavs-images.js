@@ -4,7 +4,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // ---- Helpers ----
   const logEl = $("log");
   const log = (t="") => {
-    if (!logEl) return;
+    if (!logEl) {
+      console.warn('Log element not found');
+      return;
+    }
     const timestamp = new Date().toLocaleTimeString();
     const logEntry = `[${timestamp}] ${t}`;
     logEl.textContent += logEntry + "\n";
@@ -12,12 +15,21 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Update status bar
     const statusElement = $('status-text');
-    if (statusElement) statusElement.textContent = t || "Ready";
+    if (statusElement) {
+      statusElement.textContent = t || "Ready";
+    }
     
     // Store logs for persistence across tabs (localStorage for better cross-tab sync)
     try {
         const existingLogs = localStorage.getItem('xavs-images-logs') || '';
-        localStorage.setItem('xavs-images-logs', existingLogs + logEntry + '\n');
+        const newLogs = existingLogs + logEntry + '\n';
+        localStorage.setItem('xavs-images-logs', newLogs);
+        
+        // Trigger custom event for immediate cross-tab sync
+        window.dispatchEvent(new CustomEvent('xavs-logs-updated', { 
+          detail: { logs: newLogs } 
+        }));
+        
     } catch (e) {
         // Fallback to sessionStorage if localStorage fails
         console.warn('localStorage failed, trying sessionStorage:', e);
@@ -47,6 +59,49 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {
         console.warn('Could not load stored logs:', e);
     }
+  };
+
+  // Cross-tab log synchronization
+  const syncLogsAcrossTabs = () => {
+    // Listen for storage changes from other tabs
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'xavs-images-logs' && e.newValue !== e.oldValue) {
+        if (logEl && e.newValue) {
+          logEl.textContent = e.newValue;
+          logEl.scrollTop = logEl.scrollHeight;
+        }
+      }
+    });
+
+    // Listen for custom log update events (for same-tab updates)
+    window.addEventListener('xavs-logs-updated', (e) => {
+      if (logEl && e.detail && e.detail.logs) {
+        // Only update if the content is different to avoid cursor jumps
+        if (logEl.textContent !== e.detail.logs) {
+          logEl.textContent = e.detail.logs;
+          logEl.scrollTop = logEl.scrollHeight;
+        }
+      }
+    });
+
+    // Also check for updates periodically in case of sessionStorage fallback
+    setInterval(() => {
+      if (!logEl) return;
+      
+      try {
+        let currentLogs = localStorage.getItem('xavs-images-logs');
+        if (!currentLogs) {
+          currentLogs = sessionStorage.getItem('xavs-images-logs');
+        }
+        
+        if (currentLogs && currentLogs !== logEl.textContent) {
+          logEl.textContent = currentLogs;
+          logEl.scrollTop = logEl.scrollHeight;
+        }
+      } catch (e) {
+        // Ignore errors during periodic sync
+      }
+    }, 2000); // Check every 2 seconds
   };
 
   // Cockpit API helper for running commands with superuser privileges
@@ -126,8 +181,11 @@ document.addEventListener('DOMContentLoaded', () => {
         checkDockerConfig();
       }
       if (link.dataset.tab === 'tab-catalog') refreshCatalog();
-      if (link.dataset.tab === 'tab-config') checkDockerConfig();
-      if (link.dataset.tab === 'tab-pull') loadCurrentImagesList();
+      if (link.dataset.tab === 'tab-extract') {
+        loadCurrentImagesList();
+        loadLocalDockerImages();
+        countImagesList();
+      }
     });
   });
 
@@ -166,11 +224,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const li = document.createElement('li');
         li.innerHTML = `
           <span class="image-name">${image}</span>
-          <div class="image-actions">
-            <button class="btn-icon delete" onclick="deleteImage(${index}, '${image.replace(/'/g, "\\'")}')">
-              🗑️
-            </button>
-          </div>
         `;
         listElement.appendChild(li);
       });
@@ -181,61 +234,159 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Delete specific image
-  window.deleteImage = async function(index, imageName) {
-    if (!confirm(`Delete image "${imageName}"?`)) return;
+  // ---- Local Docker Images Management ----
+  async function loadLocalDockerImages() {
+    const listElement = $('local-images-list');
+    const countElement = $('local-images-count');
+    
+    listElement.innerHTML = '<li class="loading-state">Loading Docker images...</li>';
+    countElement.textContent = '(Loading...)';
     
     try {
-      // Get current images list using priority system
-      const currentImagesList = await getImagesList();
-      let images = currentImagesList.split('\n')
-        .map(line => line.trim())
-        .filter(line => line && !line.startsWith('#'));
+      // Get all Docker images with their details
+      const { stdout } = await runCommand([
+        'docker', 'images', 
+        '--format', '{{.Repository}}:{{.Tag}}\t{{.ID}}\t{{.Size}}\t{{.CreatedAt}}'
+      ]);
       
-      images.splice(index, 1);
+      if (!stdout || stdout.trim() === '') {
+        listElement.innerHTML = '<li class="empty-state">No Docker images found</li>';
+        countElement.textContent = '(0 images)';
+        return;
+      }
       
-      const newContent = `# xAVS Container Images List
-# One image per line - these will be pulled from quay.io/xavs.images/
-${images.join('\n')}`;
+      const lines = stdout.trim().split('\n');
+      // Filter out empty lines
+      const imageLines = lines.filter(line => line.trim());
       
-      // Save to system file to persist changes
-      await runCommand(['mkdir', '-p', '/etc/xavs']);
-      await writeFile(IMAGE_LIST_PATH, newContent);
-      log(`Deleted image: ${imageName}`);
+      if (imageLines.length === 0) {
+        listElement.innerHTML = '<li class="empty-state">No Docker images found</li>';
+        countElement.textContent = '(0 images)';
+        return;
+      }
       
-      // Refresh the list and counts
-      await loadCurrentImagesList();
-      await countImagesList();
+      countElement.textContent = `(${imageLines.length} images)`;
+      listElement.innerHTML = '';
+      
+      imageLines.forEach((line, index) => {
+        const [repoTag, imageId, size, createdAt] = line.split('\t');
+        
+        // Skip if any required field is missing
+        if (!repoTag || !imageId) return;
+        
+        const li = document.createElement('li');
+        li.className = 'local-image-item';
+        li.innerHTML = `
+          <div class="image-info">
+            <div class="image-name">${repoTag}</div>
+            <div class="image-details">
+              <span class="image-id">ID: ${imageId.substring(0, 12)}</span>
+              <span class="image-size">Size: ${size || 'Unknown'}</span>
+              <span class="image-created">Created: ${createdAt ? createdAt.substring(0, 19) : 'Unknown'}</span>
+            </div>
+          </div>
+          <div class="image-actions">
+            <button class="btn-icon inspect" data-action="inspect-local" data-image-id="${imageId}" title="Inspect Image">
+              <i class="fa fa-search"></i>
+            </button>
+            <button class="btn-icon delete" data-action="delete-local" data-image-id="${imageId}" data-image-name="${repoTag}" title="Delete Image">
+              <i class="fa fa-trash"></i>
+            </button>
+          </div>
+        `;
+        listElement.appendChild(li);
+      });
       
     } catch (e) {
-      log(`Error deleting image: ${e.message}`);
+      listElement.innerHTML = `<li class="error-state">Error loading images: ${e.message}</li>`;
+      countElement.textContent = '(Error)';
+      log(`Error loading local Docker images: ${e.message}`);
+    }
+    
+    // Update push button state after loading images
+    await updatePushButtonState();
+  }
+
+  // Delete specific local Docker image
+  window.deleteLocalImage = async function(imageId, imageName) {
+    if (!confirm(`Delete Docker image "${imageName}"?\n\nThis will permanently remove the image from your system.`)) return;
+    
+    try {
+      log(`Deleting Docker image: ${imageName}`);
+      await runCommand(['docker', 'rmi', '-f', imageId]);
+      log(`Successfully deleted Docker image: ${imageName}`);
+      
+      // Refresh the local images list
+      await loadLocalDockerImages();
+      
+    } catch (e) {
+      log(`Error deleting Docker image: ${e.message}`);
     }
   }
 
-  // Event listeners for images list management
-  $('refresh-images-list-btn').addEventListener('click', async () => {
-    await loadCurrentImagesList();
-    await countImagesList();
-    log('Images list refreshed\n');
-  });
-
-  $('clear-all-images-btn').addEventListener('click', async () => {
-    if (!confirm('Clear all images from the list? This cannot be undone.')) return;
-    
+  // Inspect local Docker image
+  window.inspectLocalImage = async function(imageId) {
     try {
-      const emptyContent = `# xAVS Container Images List
-# One image per line - these will be pulled from quay.io/xavs.images/
-# List is currently empty`;
+      log(`Inspecting Docker image: ${imageId}`);
+      const { stdout } = await runCommand(['docker', 'inspect', imageId]);
+      const imageData = JSON.parse(stdout)[0];
       
-      await writeFile(IMAGE_LIST_PATH, emptyContent);
-      log('All images cleared from list');
+      // Show basic image information
+      const info = `Image: ${imageData.RepoTags ? imageData.RepoTags.join(', ') : 'No tags'}
+ID: ${imageData.Id}
+Created: ${imageData.Created}
+Size: ${(imageData.Size / (1024 * 1024)).toFixed(2)} MB
+Architecture: ${imageData.Architecture}
+OS: ${imageData.Os}`;
       
-      // Refresh the list and counts
-      await loadCurrentImagesList();
-      await countImagesList();
+      alert(`Docker Image Details:\n\n${info}`);
+      log(`Image inspection completed for: ${imageId}`);
       
     } catch (e) {
-      log(`Error clearing images: ${e.message}`);
+      log(`Error inspecting Docker image: ${e.message}`);
+      alert(`Failed to inspect image: ${e.message}`);
+    }
+  }
+
+  // Helper function for safe event listener binding
+  const safeAddEventListener = (id, event, handler) => {
+    const element = $(id);
+    if (element) {
+      element.addEventListener(event, handler);
+    } else {
+      console.warn(`Element with id '${id}' not found for event listener`);
+    }
+  };
+
+  // Event listeners for local Docker images management
+  safeAddEventListener('refresh-local-images-btn', 'click', async () => {
+    await loadLocalDockerImages();
+    log('Local Docker images refreshed');
+  });
+
+  // Event delegation for dynamically created buttons
+  document.addEventListener('click', (e) => {
+    const action = e.target.closest('[data-action]')?.dataset.action;
+    if (!action) return;
+
+    const button = e.target.closest('[data-action]');
+    
+    switch (action) {
+      case 'inspect-local':
+        const inspectImageId = button.dataset.imageId;
+        inspectLocalImage(inspectImageId);
+        break;
+        
+      case 'delete-local':
+        const deleteImageId = button.dataset.imageId;
+        const deleteImageName = button.dataset.imageName;
+        deleteLocalImage(deleteImageId, deleteImageName);
+        break;
+        
+      case 'inspect-catalog':
+        const repoName = button.dataset.repo;
+        inspectImage(repoName);
+        break;
     }
   });
 
@@ -267,22 +418,55 @@ ${images.join('\n')}`;
   const LOCAL_REG_HOST = 'docker-registry:4000';
   const REGISTRY_CONTAINER_NAME = 'docker-registry';
 
+  // Cache for images list to reduce repeated file reads
+  let imageListCache = null;
+  let imageListCacheTime = 0;
+  let imageListLoading = false; // Prevent multiple simultaneous loads
+  const CACHE_TTL = 5000; // 5 seconds cache
+
   // ---- Helper to get images list with priority order ----
   async function getImagesList() {
-    // Priority order: 1. Module file, 2. System file, 3. Generate default
-    const paths = [
-      '/usr/share/cockpit/xavs-images/images-list.txt',  // Module file (highest priority)
-      './images-list.txt',                                // Development path
-      'images-list.txt',                                  // Relative path
-      '/etc/xavs/images.list'                            // System file (fallback)
-    ];
+    // Return cached result if still valid
+    const now = Date.now();
+    if (imageListCache && (now - imageListCacheTime) < CACHE_TTL) {
+      return imageListCache;
+    }
+
+    // If already loading, wait for the existing load to complete
+    if (imageListLoading) {
+      return new Promise((resolve) => {
+        const checkInterval = setInterval(() => {
+          if (!imageListLoading) {
+            clearInterval(checkInterval);
+            resolve(imageListCache);
+          }
+        }, 100);
+      });
+    }
+
+    imageListLoading = true;
+
+    try {
+      // Priority order: 1. Module file, 2. System file, 3. Generate default
+      const paths = [
+        '/usr/share/cockpit/xavs-images/images-list.txt',  // Module file (highest priority)
+        './images-list.txt',                                // Development path
+        'images-list.txt',                                  // Relative path
+        '/etc/xavs/images.list'                            // System file (fallback)
+      ];
     
     for (const path of paths) {
       try {
         const content = await readFile(path);
         if (content && content.trim()) {
-          console.log(`Reading images list from: ${path}`);
-          return content.trim();
+          // Only log on first successful read or when switching sources
+          if (!imageListCache || imageListCache !== content.trim()) {
+            console.log(`Reading images list from: ${path}`);
+          }
+          // Cache the result
+          imageListCache = content.trim();
+          imageListCacheTime = now;
+          return imageListCache;
         }
       } catch (error) {
         console.log(`Could not read from ${path}: ${error.message}`);
@@ -292,7 +476,15 @@ ${images.join('\n')}`;
     
     // If no file found, generate default
     console.log('No images list file found, generating default');
-    return await generateDefaultImagesList();
+    const defaultList = await generateDefaultImagesList();
+    // Cache the result
+    imageListCache = defaultList;
+    imageListCacheTime = now;
+    return imageListCache;
+    
+    } finally {
+      imageListLoading = false;
+    }
   }
 
   // Global variable to track current pull process
@@ -382,7 +574,7 @@ ${imagesWithTags.join('\n')}`;
     }
   };
   // ---- Actions ----
-  $('extract-btn').addEventListener('click', async () => {
+  safeAddEventListener('extract-btn', 'click', async () => {
     const path = $('file-path').value.trim();
     if (!path || !path.endsWith('.tar.gz')) {
       return log('Please enter a valid .tar.gz path.');
@@ -457,16 +649,30 @@ ${imagesWithTags.join('\n')}`;
     log('🌐 TEST 2: Internet & Registry Connectivity\n');
     log('─────────────────────────────────────────────\n');
     try {
-      log('   🔍 Pinging quay.io...\n');
-      await runCommand(['ping', '-c', '1', 'quay.io'], { timeout: 10000 });
-      testResults.network = { status: 'pass', details: 'quay.io reachable' };
-      log('✅ PASS: Can reach quay.io registry\n');
-      log('   📡 Internet connectivity confirmed\n\n');
+      log('   🔍 Testing internet connectivity (Google DNS)...\n');
+      await runCommand(['ping', '-c', '1', '8.8.8.8'], { timeout: 10000 });
+      log('   ✅ Internet connectivity confirmed\n');
+      
+      log('   🔍 Testing registry connectivity (quay.io via nslookup)...\n');
+      await runCommand(['nslookup', 'quay.io'], { timeout: 10000 });
+      testResults.network = { status: 'pass', details: 'Internet and registry DNS resolved' };
+      log('✅ PASS: Internet connectivity and registry DNS resolution working\n');
+      log('   📡 Can reach Google DNS and resolve quay.io hostname\n\n');
     } catch (e) {
-      testResults.network = { status: 'fail', details: e.message };
-      log('❌ FAIL: Cannot reach quay.io registry\n');
-      log(`   ⚠️ Error: ${e.message}\n`);
-      log('   💡 Solution: Check internet connection and firewall settings\n\n');
+      // Try alternative connectivity tests
+      try {
+        log('   🔍 Fallback: Testing with curl to Google...\n');
+        await runCommand(['curl', '-s', '--connect-timeout', '5', '--max-time', '10', 'http://google.com'], { timeout: 15000 });
+        testResults.network = { status: 'pass', details: 'Internet reachable via HTTP' };
+        log('✅ PASS: Internet connectivity confirmed via HTTP\n');
+        log('   📡 Alternative connectivity test successful\n\n');
+      } catch (e2) {
+        testResults.network = { status: 'fail', details: `Ping failed: ${e.message}, HTTP failed: ${e2.message}` };
+        log('❌ FAIL: Cannot establish internet connectivity\n');
+        log(`   ⚠️ Ping error: ${e.message}\n`);
+        log(`   ⚠️ HTTP error: ${e2.message}\n`);
+        log('   💡 Solution: Check internet connection, DNS settings, and firewall\n\n');
+      }
     }
 
     // Test 3: Docker pull functionality
@@ -608,6 +814,7 @@ ${imagesWithTags.join('\n')}`;
     
     log('─────────────────────────────────────────────────────────────────\n');
     log('💡 TIP: If tests pass, the "Pull Images" operation should work smoothly!\n');
+    log('🎉 Connectivity test completed!\n');
   }
 
   $('pull-btn').addEventListener('click', async () => {
@@ -617,6 +824,10 @@ ${imagesWithTags.join('\n')}`;
       isPulling = false;
       $('pull-btn').textContent = 'Pull Images';
       $('pull-btn').className = 'btn btn-primary';
+      
+      // Hide progress bar
+      $('pull-progress-container').classList.add('hidden');
+      
       log('Pull operation stopped. You may need to wait for the current image pull to complete.\n');
       return;
     }
@@ -626,9 +837,21 @@ ${imagesWithTags.join('\n')}`;
     $('pull-btn').textContent = 'Stop Pull';
     $('pull-btn').className = 'btn btn-danger';
     
+    // Show and initialize progress bar
+    const progressContainer = $('pull-progress-container');
+    const progressBar = $('pull-progress-bar');
+    const progressText = $('pull-progress-text');
+    const progressCount = $('pull-progress-count');
+    
+    progressContainer.classList.remove('hidden');
+    progressBar.style.width = '0%';
+    progressText.textContent = 'Checking prerequisites...';
+    progressCount.textContent = '0/0';
+    
     try {
       // Check if Docker is running
       log('Checking Docker daemon...\n');
+      progressText.textContent = 'Checking Docker daemon...';
       try {
         await runCommand(['docker', 'version']);
         log('✅ Docker daemon is running\n');
@@ -638,6 +861,7 @@ ${imagesWithTags.join('\n')}`;
 
       // Check registry connectivity
       log('Testing registry connectivity...\n');
+      progressText.textContent = 'Testing registry connectivity...';
       try {
         await runCommand(['docker', 'pull', '--help'], { timeout: 5000 });
         log('✅ Docker pull command is available\n');
@@ -646,6 +870,7 @@ ${imagesWithTags.join('\n')}`;
       }
 
     log('📋 Reading images list...\n');
+      progressText.textContent = 'Reading images list...';
       // Use the priority-based image list loading
       const imagesList = await getImagesList();
       
@@ -663,6 +888,10 @@ ${imagesWithTags.join('\n')}`;
       
       log(`Found ${images.length} images to pull\n\n`);
       
+      // Initialize progress
+      progressText.textContent = 'Starting image pulls...';
+      progressCount.textContent = `0/${images.length}`;
+      
       let successCount = 0;
       let failCount = 0;
       
@@ -674,6 +903,13 @@ ${imagesWithTags.join('\n')}`;
         
         const image = images[i];
         const ref = `${PUBLIC_REG}/xavs.images/${image}`;
+        
+        // Update progress
+        const currentProgress = ((i) / images.length) * 100;
+        progressBar.style.width = `${currentProgress}%`;
+        progressText.textContent = `Pulling ${image}...`;
+        progressCount.textContent = `${i}/${images.length}`;
+        
         log(`📦 [${i + 1}/${images.length}] Pulling ${image}...\n`);
         log(`🔗 Full reference: ${ref}\n`);
         
@@ -702,6 +938,11 @@ ${imagesWithTags.join('\n')}`;
       }
       
       if (isPulling) {
+        // Complete progress bar
+        progressBar.style.width = '100%';
+        progressText.textContent = 'Pull operation completed!';
+        progressCount.textContent = `${images.length}/${images.length}`;
+        
         log(`🎉 Pull operation completed!`);
         log(`✅ Success: ${successCount} images`);
         if (failCount > 0) {
@@ -714,11 +955,26 @@ ${imagesWithTags.join('\n')}`;
         setTimeout(async () => {
           await loadCurrentImagesList();
           await countImagesList();
+          
+          // Hide progress bar after a delay
+          setTimeout(() => {
+            progressContainer.classList.add('hidden');
+          }, 2000);
         }, 500);
       }
       
     } catch (e) {
       log(`❌ Error: ${e.message}\n`);
+      // Update progress bar to show error
+      progressText.textContent = `Error: ${e.message}`;
+      progressBar.style.width = '100%';
+      progressBar.style.backgroundColor = '#dc2626'; // Red color for error
+      
+      // Hide progress bar after delay
+      setTimeout(() => {
+        progressContainer.classList.add('hidden');
+        progressBar.style.backgroundColor = ''; // Reset color
+      }, 3000);
     } finally {
       isPulling = false;
       currentPullProcess = null;
@@ -727,7 +983,28 @@ ${imagesWithTags.join('\n')}`;
     }
   });
 
-  $('run-registry-btn').addEventListener('click', async () => {
+  $('toggle-registry-btn').addEventListener('click', async () => {
+    // Check current status to determine action
+    try {
+      const { stdout } = await runCommand(['docker', 'ps', '--format', '{{.Names}}', '--filter', `name=${REGISTRY_CONTAINER_NAME}`]);
+      const running = stdout.trim() === REGISTRY_CONTAINER_NAME;
+      
+      if (running) {
+        // Registry is running, so stop it
+        await stopRegistry();
+      } else {
+        // Registry is not running, so start it
+        await startRegistry();
+      }
+    } catch (e) {
+      log(`Error checking registry status: ${e.message}\n`);
+      // Assume it's not running and try to start it
+      await startRegistry();
+    }
+  });
+
+  // Split registry start logic into separate function
+  async function startRegistry() {
     log('Starting docker-registry (host network, port 4000)…\n');
     try {
       // Check if hosts entry exists and add if needed
@@ -771,14 +1048,36 @@ ${imagesWithTags.join('\n')}`;
       // Container might already exist, that's okay
       if (e.message.includes('already in use')) {
         log('Registry container already exists, checking status...\n');
+        
+        // Check if the existing container is running
+        try {
+          const { stdout } = await runCommand(['docker', 'ps', '--format', '{{.Names}}', '--filter', `name=${REGISTRY_CONTAINER_NAME}`]);
+          const running = stdout.trim() === REGISTRY_CONTAINER_NAME;
+          
+          if (running) {
+            log('✅ Registry container is already running!\n');
+            log('Registry is accessible at: http://docker-registry:4000\n');
+            $('restart-docker-btn').disabled = false;
+          } else {
+            log('Registry container exists but is not running. Starting it...\n');
+            await runCommand(['docker', 'start', REGISTRY_CONTAINER_NAME]);
+            log('✅ Registry container started successfully!\n');
+            log('Registry is accessible at: http://docker-registry:4000\n');
+            $('restart-docker-btn').disabled = false;
+          }
+        } catch (statusError) {
+          log(`⚠️ Could not check registry status: ${statusError.message}\n`);
+        }
+        
         await checkStatus();
       } else {
         log(`❌ Error: ${e.message}\n`);
       }
     }
-  });
+  }
 
-  $('stop-registry-btn').addEventListener('click', async () => {
+  // Split registry stop logic into separate function
+  async function stopRegistry() {
     log('Stopping docker-registry...\n');
     try {
       // Stop and remove the registry container
@@ -805,7 +1104,7 @@ ${imagesWithTags.join('\n')}`;
     } catch (e) {
       log(`❌ Error stopping registry: ${e.message}\n`);
     }
-  });
+  }
 
   $('restart-docker-btn').addEventListener('click', async () => {
     log('Restarting Docker…');
@@ -825,130 +1124,215 @@ ${imagesWithTags.join('\n')}`;
     }
   });
 
-  $('check-status-btn').addEventListener('click', checkStatus);
+  $('check-status-btn').addEventListener('click', async () => {
+    log('🔍 Checking registry status...\n');
+    await checkStatus();
+    log('✅ Status check completed\n');
+  });
 
   $('push-btn').addEventListener('click', async () => {
-    log('Pushing images to local registry…');
+    const pushBtn = $('push-btn');
+    const originalText = pushBtn.innerHTML;
+    const progressContainer = $('push-progress-container');
+    const progressText = $('push-progress-text');
+    const progressCount = $('push-progress-count');
+    const progressBar = $('push-progress-bar');
+    
+    // Show immediate visual feedback
+    pushBtn.disabled = true;
+    pushBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Starting Push...';
+    
+    // Show progress container
+    if (progressContainer) {
+      progressContainer.classList.remove('hidden');
+      progressText.textContent = 'Preparing push operation...';
+      progressCount.textContent = '0/0';
+      progressBar.style.width = '0%';
+    }
+    
+    log('🚀 Starting push operation to local registry...\n');
+    
     try {
-      // Use the priority-based image list loading
-      const imagesList = await getImagesList();
-      const images = imagesList && imagesList.trim() ? 
-        imagesList.split('\n')
-          .map(line => line.trim())
-          .filter(line => line && !line.startsWith('#')) : [];
+      // Get actual Docker images that can be pushed (exclude localhost:5000 and <none>)
+      const { stdout } = await runCommand(['docker', 'images', '--format', '{{.Repository}}:{{.Tag}}']);
+      const availableImages = stdout ? stdout.trim().split('\n').filter(line => 
+        line && !line.includes('<none>') && !line.includes('localhost:5000')
+      ) : [];
       
-      if (images.length === 0) {
-        log('No images found in the images list\n');
+      if (availableImages.length === 0) {
+        log('❌ No pushable Docker images found\n');
+        log('💡 Pull some images first or check if all images are already in the registry\n');
+        pushBtn.disabled = false;
+        pushBtn.innerHTML = originalText;
+        if (progressContainer) progressContainer.classList.add('hidden');
         return;
       }
       
-      for (const image of images) {
-        const src = `${PUBLIC_REG}/xavs.images/${image}`;
-        const dest = `${LOCAL_REG_HOST}/xavs.images/${image}`;
+      // Update progress with total count
+      if (progressContainer) {
+        progressText.textContent = 'Analyzing available images...';
+        progressCount.textContent = `0/${availableImages.length}`;
+      }
+      
+      log(`📋 Found ${availableImages.length} Docker images to push:\n`);
+      availableImages.forEach((img, i) => log(`   ${i+1}. ${img}\n`));
+      log('\n');
+      
+      let completedCount = 0;
+      
+      for (const imageTag of availableImages) {
+        // Split from the right to handle registry:port/repo:tag format correctly
+        const lastColonIndex = imageTag.lastIndexOf(':');
+        const repository = imageTag.substring(0, lastColonIndex);
+        const tag = imageTag.substring(lastColonIndex + 1);
         
-        log(`Tagging ${src} -> ${dest}…\n`);
-        await runCommand(['docker', 'tag', src, dest]);
+        // Check if image is already retagged for local registry
+        let dest;
+        if (imageTag.startsWith(LOCAL_REG_HOST + '/')) {
+          // Already retagged, use as-is
+          dest = imageTag;
+        } else {
+          // Need to retag for local registry
+          dest = `${LOCAL_REG_HOST}/${repository}:${tag}`;
+        }
         
-        log(`Pushing ${dest}…\n`);
-        await runCommand(['docker', 'push', dest]);
+        // Update progress in both button and progress bar
+        const progressPercent = Math.round((completedCount / availableImages.length) * 100);
+        pushBtn.innerHTML = `<i class="fa fa-spinner fa-spin"></i> Pushing ${completedCount + 1}/${availableImages.length}`;
         
-        // Remove source image to save space
+        if (progressContainer) {
+          progressText.textContent = `Processing: ${repository}:${tag}`;
+          progressCount.textContent = `${completedCount}/${availableImages.length}`;
+          progressBar.style.width = `${progressPercent}%`;
+        }
+        
+        // Only retag if not already retagged
+        if (imageTag !== dest) {
+          log(`🏷️  [${completedCount + 1}/${availableImages.length}] Tagging ${imageTag} → ${dest}...\n`);
+          
+          try {
+            await runCommand(['docker', 'tag', imageTag, dest]);
+            log(`✅ Tagged successfully\n`);
+          } catch (tagError) {
+            log(`❌ [${completedCount + 1}/${availableImages.length}] Failed to tag ${imageTag}: ${tagError.message}\n\n`);
+            completedCount++;
+            continue;
+          }
+        } else {
+          log(`🏷️  [${completedCount + 1}/${availableImages.length}] Using existing tag ${dest}...\n`);
+        }
+        
         try {
-          await runCommand(['docker', 'rmi', src]);
-        } catch {
-          // Ignore errors when removing source image
+          // Update progress for push phase
+          if (progressContainer) {
+            progressText.textContent = `Pushing: ${repository}:${tag}`;
+          }
+          
+          log(`📤 [${completedCount + 1}/${availableImages.length}] Pushing ${dest}...\n`);
+          
+          // Use spawn for real-time progress on push
+          const pushProc = cockpit.spawn(['docker', 'push', dest], {
+            err: 'message',
+            superuser: 'try'
+          });
+          
+          let pushOutput = '';
+          pushProc.stream((data) => {
+            pushOutput += data;
+            // Log real-time progress for important updates
+            if (data.includes('Pushed') || data.includes('Layer already exists') || data.includes('Waiting')) {
+              log(`   ${data.trim()}\n`);
+            }
+          });
+          
+          await pushProc;
+          log(`✅ [${completedCount + 1}/${availableImages.length}] Successfully pushed: ${dest}\n`);
+          
+          // Clean up: Remove original image after successful push to save space
+          if (imageTag !== dest) {
+            log(`🧹 Removing original image: ${imageTag}...\n`);
+            try {
+              await runCommand(['docker', 'rmi', imageTag]);
+              log(`✅ Removed original image: ${imageTag}\n`);
+            } catch (cleanupError) {
+              // Don't fail the whole operation if cleanup fails
+              log(`⚠️ Could not remove original image ${imageTag}: ${cleanupError.message}\n`);
+              log(`   (Tagged version ${dest} is still available)\n`);
+            }
+          }
+          
+          completedCount++;
+          
+          // Update final progress for this image
+          const finalPercent = Math.round((completedCount / availableImages.length) * 100);
+          if (progressContainer) {
+            progressCount.textContent = `${completedCount}/${availableImages.length}`;
+            progressBar.style.width = `${finalPercent}%`;
+          }
+          
+          log(`📊 Progress: ${completedCount}/${availableImages.length} images completed\n\n`);
+          
+        } catch (imageError) {
+          log(`❌ [${completedCount + 1}/${availableImages.length}] Failed to push ${imageTag}: ${imageError.message}\n\n`);
+          completedCount++; // Still count as processed
+          
+          // Update progress even for failed images
+          const finalPercent = Math.round((completedCount / availableImages.length) * 100);
+          if (progressContainer) {
+            progressCount.textContent = `${completedCount}/${availableImages.length}`;
+            progressBar.style.width = `${finalPercent}%`;
+          }
         }
       }
       
-      log(`Successfully pushed ${images.length} images to local registry!`);
+      // Final success message
+      log(`🎉 Push operation completed!\n`);
+      log(`📊 Successfully processed ${completedCount}/${availableImages.length} images\n`);
+      log(`🌐 Local registry: http://localhost:5000/v2/_catalog\n\n`);
+      
+      // Update progress to completion
+      if (progressContainer) {
+        progressText.textContent = 'Updating catalog...';
+        progressBar.style.width = '100%';
+      }
+      
+      // Refresh catalog and reset button
+      pushBtn.innerHTML = '<i class="fa fa-refresh fa-spin"></i> Updating Catalog...';
       await refreshCatalog();
+      
+      // Final completion state
+      if (progressContainer) {
+        progressText.textContent = `Completed! Pushed ${completedCount}/${availableImages.length} images`;
+        setTimeout(() => {
+          progressContainer.classList.add('hidden');
+        }, 3000);
+      }
+      
     } catch (e) {
-      log(`Error: ${e.message}`);
+      log(`❌ Error during push operation: ${e.message}\n`);
+      if (progressContainer) {
+        progressText.textContent = `Error: ${e.message}`;
+        setTimeout(() => {
+          progressContainer.classList.add('hidden');
+        }, 5000);
+      }
+    } finally {
+      // Reset button state
+      pushBtn.disabled = false;
+      pushBtn.innerHTML = originalText;
+      updatePushButtonState(); // Refresh button state
     }
   });
 
   $('refresh-catalog-btn').addEventListener('click', refreshCatalog);
 
-  // ---- Docker Configuration Actions ----
-  $('apply-docker-config-btn').addEventListener('click', async () => {
-    log('Applying Docker daemon configuration…');
-    try {
-      // Ensure directory exists
-      await runCommand(['mkdir', '-p', '/etc/docker']);
-      
-      // Read existing config if it exists
-      let existingConfig = {};
-      try {
-        const existing = await readFile(DOCKER_DAEMON_JSON);
-        existingConfig = JSON.parse(existing);
-        log('Read existing Docker configuration\n');
-      } catch {
-        log('Creating new Docker configuration\n');
-      }
-      
-      // Merge with our required settings
-      const newConfig = { ...existingConfig, ...DOCKER_CONFIG_TEMPLATE };
-      
-      // Ensure insecure-registries includes our registry
-      const insecureRegs = newConfig['insecure-registries'] || [];
-      if (!insecureRegs.includes(LOCAL_REG_HOST)) {
-        insecureRegs.push(LOCAL_REG_HOST);
-      }
-      newConfig['insecure-registries'] = insecureRegs;
-      
-      // Write updated configuration
-      await writeFile(DOCKER_DAEMON_JSON, JSON.stringify(newConfig, null, 2));
-      log(`Applied Docker configuration to ${DOCKER_DAEMON_JSON}\n`);
-      
-      // Restart Docker service
-      log('Restarting Docker service…\n');
-      await runCommand(['systemctl', 'restart', 'docker']);
-      
-      // Wait and check status
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      const { stdout } = await runCommand(['systemctl', 'is-active', 'docker']);
-      log(`Docker service status: ${stdout}\nConfiguration applied successfully!`);
-      
-      await checkDockerConfig();
-    } catch (e) {
-      log(`Error: ${e.message}`);
-    }
-  });
-
-  $('check-docker-config-btn').addEventListener('click', checkDockerConfig);
-
-  $('view-images-list-btn').addEventListener('click', async () => {
-    try {
-      // Use the priority-based image list loading for viewing
-      const content = await getImagesList();
-      $('images-list-content').textContent = content || 'No images list found';
-    } catch (e) {
-      log(`Error getting images list: ${e.message}`);
-    }
-  });
-
-  $('update-images-list-btn').addEventListener('click', async () => {
-    const content = $('images-list-editor').value.trim();
-    if (!content) return log('Please enter image list content');
-    
-    log('Updating images list…');
-    try {
-      // Ensure directory exists
-      await runCommand(['mkdir', '-p', '/etc/xavs']);
-      
-      // Write the images list
-      await writeFile(IMAGE_LIST_PATH, content);
-      
-      // Count non-empty, non-comment lines
-      const lines = content && content.trim() ? 
-        content.split('\n').filter(line => line.trim() && !line.trim().startsWith('#')) : [];
-      
-      log(`Images list updated successfully with ${lines.length} images`);
-      $('view-images-list-btn').click(); // refresh display
-    } catch (e) {
-      log(`Error: ${e.message}`);
-    }
-  });
+  // ---- Registry Management Actions ----
+  $('registry-info-btn').addEventListener('click', showRegistryInfo);
+  $('registry-storage-btn').addEventListener('click', showStorageUsage);
+  
+  // Registry Management tab buttons
+  safeAddEventListener('clear-registry-content-btn', 'click', clearRegistryContent);
+  safeAddEventListener('delete-entire-registry-btn', 'click', deleteEntireRegistry);
 
   // ---- Status & Catalog helpers ----
   async function checkStatus() {
@@ -960,9 +1344,33 @@ ${imagesWithTags.join('\n')}`;
       $('registry-status').textContent = running ? 'Running' : 'Not running';
       $('registry-dot').classList.toggle('ok', running);
       $('registry-dot').classList.toggle('bad', !running);
+      
+      // Update toggle button based on status
+      const toggleBtn = $('toggle-registry-btn');
+      if (toggleBtn) {
+        if (running) {
+          toggleBtn.textContent = 'Stop Registry';
+          toggleBtn.className = 'btn btn-outline-danger';
+        } else {
+          toggleBtn.textContent = 'Run Registry';
+          toggleBtn.className = 'btn btn-success';
+        }
+      }
+      
+      // Log current status for user feedback
+      console.log(`Registry status: ${running ? 'Running' : 'Not running'}`);
+      
     } catch (e) {
       $('registry-status').textContent = 'Unknown';
       $('registry-dot').classList.remove('ok','bad');
+      
+      // Set button to default state on error
+      const toggleBtn = $('toggle-registry-btn');
+      if (toggleBtn) {
+        toggleBtn.textContent = 'Run Registry';
+        toggleBtn.className = 'btn btn-success';
+      }
+      
       log(`Status error: ${e.message}`);
     }
   }
@@ -1027,7 +1435,7 @@ ${imagesWithTags.join('\n')}`;
             <div class="repo-item">
               <span class="repo-name">📦 ${repo}</span>
               <span class="repo-actions">
-                <button class="btn-small" onclick="inspectImage('${repo}')">Inspect</button>
+                <button class="btn-small" data-action="inspect-catalog" data-repo="${repo}">Inspect</button>
               </span>
             </div>`;
           ul.appendChild(li);
@@ -1058,6 +1466,385 @@ ${imagesWithTags.join('\n')}`;
       log(`Tags: ${(data.tags || []).join(', ')}\n\n`);
     } catch (e) {
       log(`Failed to inspect ${imageName}: ${e.message}\n`);
+    }
+  }
+
+  // ---- Registry Management Functions ----
+  
+  async function showRegistryInfo() {
+    const detailsEl = $('registry-details');
+    
+    try {
+      log('📊 Gathering registry information...\n');
+      
+      // Get container info
+      const { stdout: containerInfo } = await runCommand(['docker', 'inspect', REGISTRY_CONTAINER_NAME]);
+      const containerData = JSON.parse(containerInfo)[0];
+      
+      // Get container stats
+      const { stdout: statsInfo } = await runCommand(['docker', 'stats', '--no-stream', '--format', 'table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.BlockIO}}', REGISTRY_CONTAINER_NAME]);
+      
+      // Get volume info
+      const { stdout: volumeInfo } = await runCommand(['docker', 'volume', 'ls', '--filter', 'name=registry']);
+      
+      // Get registry catalog
+      let catalogInfo = 'Unable to fetch catalog';
+      try {
+        const { stdout: catalogData } = await runCommand(['curl', '-s', `http://${LOCAL_REG_HOST}/v2/_catalog`]);
+        const catalog = JSON.parse(catalogData);
+        catalogInfo = `${(catalog.repositories || []).length} repositories`;
+      } catch (e) {
+        catalogInfo = 'Registry not accessible';
+      }
+      
+      const registryDetails = `
+Container Information:
+  Name: ${containerData.Name.replace('/', '')}
+  Status: ${containerData.State.Status}
+  Created: ${new Date(containerData.Created).toLocaleString()}
+  Image: ${containerData.Config.Image}
+  Ports: ${Object.keys(containerData.NetworkSettings.Ports || {}).join(', ')}
+  
+Performance Stats:
+${statsInfo}
+
+Volume Information:
+${volumeInfo}
+
+Registry Content:
+  Repositories: ${catalogInfo}
+  API Endpoint: http://${LOCAL_REG_HOST}/v2/
+  
+Network Configuration:
+  Host: ${LOCAL_REG_HOST}
+  Internal IP: ${containerData.NetworkSettings.IPAddress || 'N/A'}
+`;
+      
+      detailsEl.textContent = registryDetails;
+      
+      // Open the details element to show the information
+      const detailsParent = detailsEl.closest('details');
+      if (detailsParent) {
+        detailsParent.open = true;
+      }
+      
+      log('✅ Registry information loaded\n');
+      
+    } catch (e) {
+      detailsEl.textContent = `Error loading registry information: ${e.message}`;
+      log(`❌ Failed to get registry info: ${e.message}\n`);
+    }
+  }
+
+  async function showStorageUsage() {
+    try {
+      log('💾 Analyzing registry storage usage...\n');
+      
+      // Get registry volume size
+      const { stdout: volumeSize } = await runCommand(['docker', 'system', 'df', '-v']);
+      
+      // Get container size
+      const { stdout: containerSize } = await runCommand(['docker', 'ps', '-s', '--filter', `name=${REGISTRY_CONTAINER_NAME}`, '--format', 'table {{.Names}}\t{{.Size}}\t{{.CreatedAt}}']);
+      
+      // Get registry directory size inside container
+      let registryDataSize = 'N/A';
+      try {
+        const { stdout: dataSize } = await runCommand(['docker', 'exec', REGISTRY_CONTAINER_NAME, 'du', '-sh', '/var/lib/registry']);
+        registryDataSize = dataSize.trim();
+      } catch (e) {
+        registryDataSize = 'Unable to access registry data';
+      }
+      
+      const storageInfo = `
+Storage Usage Analysis:
+
+Container Size:
+${containerSize}
+
+Registry Data Size:
+${registryDataSize}
+
+Volume Information:
+${volumeSize}
+`;
+      
+      $('registry-details').textContent = storageInfo;
+      
+      // Open the details element to show the information
+      const detailsEl = $('registry-details');
+      const detailsParent = detailsEl.closest('details');
+      if (detailsParent) {
+        detailsParent.open = true;
+      }
+      
+      log('✅ Storage usage analysis complete\n');
+      
+    } catch (e) {
+      $('registry-details').textContent = `Error analyzing storage: ${e.message}`;
+      log(`❌ Storage analysis failed: ${e.message}\n`);
+    }
+  }
+
+  async function clearRegistryContent() {
+    const confirmed = confirm(
+      '⚠️ CLEAR REGISTRY CONTENT\n\n' +
+      'This will permanently delete ALL images and data from the registry.\n' +
+      'The registry will be recreated as an empty registry.\n\n' +
+      'This action CANNOT be undone!\n\n' +
+      'Are you sure you want to continue?'
+    );
+    
+    if (!confirmed) {
+      log('Registry clear operation cancelled by user\n');
+      return;
+    }
+    
+    try {
+      log('🗑️  Clearing registry content using proven method...\n');
+      
+      // Step 1: Get container ID and stop registry
+      log('1️⃣  Finding and stopping registry container...\n');
+      let containerId = '';
+      try {
+        const { stdout } = await runCommand(['docker', 'ps', '-a', '-q', '--filter', `name=${REGISTRY_CONTAINER_NAME}`]);
+        containerId = stdout.trim();
+        
+        if (containerId) {
+          log(`   Found container ID: ${containerId}\n`);
+          await runCommand(['docker', 'stop', containerId]);
+          log('✅ Registry container stopped\n');
+        } else {
+          log('⚠️  No registry container found\n');
+        }
+      } catch (e) {
+        log(`⚠️  Error stopping container: ${e.message}\n`);
+      }
+      
+      // Step 2: Remove the container
+      if (containerId) {
+        log('2️⃣  Removing registry container...\n');
+        try {
+          await runCommand(['docker', 'rm', containerId]);
+          log('✅ Registry container removed\n');
+        } catch (e) {
+          log(`⚠️  Error removing container: ${e.message}\n`);
+        }
+      }
+      
+      // Step 3: Remove the registry volume (this destroys all data)
+      log('3️⃣  Removing registry volume (destroys all data)...\n');
+      try {
+        await runCommand(['docker', 'volume', 'rm', 'registry']);
+        log('✅ Registry volume removed - all data destroyed\n');
+      } catch (e) {
+        log(`⚠️  Error removing volume: ${e.message}\n`);
+        // Continue anyway, volume might not exist
+      }
+      
+      // Step 4: Recreate the registry container
+      log('4️⃣  Recreating registry container...\n');
+      try {
+        await runCommand([
+          'docker', 'run', '-d', 
+          '--name', REGISTRY_CONTAINER_NAME,
+          '-p', '4000:5000',
+          '-v', 'registry:/var/lib/registry',
+          'registry:2'
+        ]);
+        log('✅ Registry container recreated successfully\n');
+      } catch (e) {
+        log(`❌ Failed to recreate registry: ${e.message}\n`);
+        throw new Error(`Failed to recreate registry: ${e.message}`);
+      }
+      
+      // Step 5: Wait for registry to be ready
+      log('5️⃣  Waiting for registry to be ready...\n');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Step 6: Verify the registry is empty
+      log('6️⃣  Verifying registry is empty...\n');
+      try {
+        const { stdout } = await runCommand(['curl', '-s', `http://${LOCAL_REG_HOST}/v2/_catalog`]);
+        const data = JSON.parse(stdout);
+        const repoCount = (data.repositories || []).length;
+        
+        if (repoCount === 0) {
+          log('✅ Registry content cleared successfully!\n');
+          log('📊 Registry is now empty and ready for new images\n');
+          
+          // Refresh catalog to show empty state
+          await refreshCatalog();
+          
+          // Update registry status in overview
+          await checkRegistryStatus();
+        } else {
+          log(`⚠️  Registry still contains ${repoCount} repositories\n`);
+        }
+      } catch (e) {
+        log(`⚠️  Could not verify registry state: ${e.message}\n`);
+        log('ℹ️  Registry should still be empty - verification failed\n');
+        
+        // Still try to refresh catalog
+        setTimeout(() => refreshCatalog(), 5000);
+      }
+      
+      log('🎯 REGISTRY CLEAR COMPLETE!\n');
+      log('📋 Summary:\n');
+      log('   • Container: RECREATED\n');
+      log('   • Volume: DESTROYED and recreated\n');
+      log('   • Data: COMPLETELY CLEARED\n');
+      log('   • Status: Registry is empty and ready\n');
+      
+    } catch (e) {
+      log(`❌ Failed to clear registry content: ${e.message}\n`);
+      log('💡 You may need to manually recreate the registry\n');
+    }
+  }
+
+  async function deleteEntireRegistry() {
+    // First confirmation dialog
+    const firstConfirm = confirm(
+      '🚨 DELETE ENTIRE REGISTRY\n\n' +
+      'This will PERMANENTLY DELETE:\n' +
+      '• Registry container\n' +
+      '• All registry volumes\n' +
+      '• All stored images and metadata\n' +
+      '• All registry configuration\n\n' +
+      'The registry will be completely removed from your system.\n' +
+      'You will need to recreate it if you want to use it again.\n\n' +
+      'This action CANNOT be undone!\n\n' +
+      'Do you want to continue?'
+    );
+    
+    if (!firstConfirm) {
+      log('Registry deletion cancelled by user\n');
+      return;
+    }
+    
+    // Second confirmation with text input
+    const confirmationText = prompt(
+      'FINAL CONFIRMATION\n\n' +
+      'Type "DELETE REGISTRY" exactly to confirm registry deletion:\n\n' +
+      '(This will permanently remove all registry data)'
+    );
+    
+    if (confirmationText !== 'DELETE REGISTRY') {
+      log('Registry deletion cancelled - confirmation text did not match\n');
+      log(`Expected: "DELETE REGISTRY", got: "${confirmationText}"\n`);
+      return;
+    }
+    
+    try {
+      log('🚨 DELETING ENTIRE REGISTRY...\n');
+      log('⚠️  This operation cannot be undone!\n\n');
+      
+      // Step 1: Stop the registry container
+      log('1️⃣  Stopping registry container...\n');
+      try {
+        await runCommand(['docker', 'stop', REGISTRY_CONTAINER_NAME]);
+        log('✅ Registry container stopped\n');
+      } catch (e) {
+        log(`⚠️  Container stop failed (may already be stopped): ${e.message}\n`);
+      }
+      
+      // Step 2: Remove the registry container
+      log('2️⃣  Removing registry container...\n');
+      try {
+        await runCommand(['docker', 'rm', REGISTRY_CONTAINER_NAME]);
+        log('✅ Registry container removed\n');
+      } catch (e) {
+        log(`⚠️  Container removal failed: ${e.message}\n`);
+      }
+      
+      // Step 3: Remove registry volumes
+      log('3️⃣  Removing registry volumes...\n');
+      try {
+        const { stdout: volumes } = await runCommand(['docker', 'volume', 'ls', '-q', '--filter', 'name=registry']);
+        const volumeList = volumes.trim().split('\n').filter(v => v);
+        
+        for (const volume of volumeList) {
+          if (volume) {
+            log(`   Removing volume: ${volume}\n`);
+            await runCommand(['docker', 'volume', 'rm', volume]);
+          }
+        }
+        
+        if (volumeList.length > 0) {
+          log(`✅ Removed ${volumeList.length} registry volumes\n`);
+        } else {
+          log('ℹ️  No registry volumes found to remove\n');
+        }
+      } catch (e) {
+        log(`⚠️  Volume removal failed: ${e.message}\n`);
+      }
+      
+      // Step 4: Clean up any orphaned registry images
+      log('4️⃣  Cleaning up registry images...\n');
+      try {
+        await runCommand(['docker', 'image', 'prune', '-f', '--filter', 'label=registry']);
+        log('✅ Registry images cleaned up\n');
+      } catch (e) {
+        log(`⚠️  Image cleanup failed: ${e.message}\n`);
+      }
+      
+      // Step 5: Update UI state
+      log('5️⃣  Updating interface...\n');
+      
+      // Clear catalog display
+      const catalogEl = $('catalog');
+      if (catalogEl) {
+        catalogEl.innerHTML = `
+          <li class="registry-error">
+            <div>🚨 Registry has been deleted</div>
+            <div class="error-hint">Create a new registry to continue using this functionality</div>
+          </li>`;
+      }
+      
+      // Update registry status
+      const statusEl = $('registry-status');
+      if (statusEl) {
+        statusEl.textContent = 'Deleted';
+      }
+      
+      const dotEl = $('registry-dot');
+      if (dotEl) {
+        dotEl.classList.remove('ok', 'bad');
+        dotEl.classList.add('bad');
+      }
+      
+      // Update toggle button
+      const toggleBtn = $('toggle-registry-btn');
+      if (toggleBtn) {
+        toggleBtn.textContent = 'Create Registry';
+        toggleBtn.className = 'btn btn-success';
+      }
+      
+      log('🎯 REGISTRY DELETION COMPLETE!\n');
+      log('📋 Summary:\n');
+      log('   • Registry container: DELETED\n');
+      log('   • Registry volumes: DELETED\n');
+      log('   • Registry data: DELETED\n');
+      log('   • All images: DELETED\n\n');
+      log('ℹ️  To use registry functionality again, create a new registry\n');
+      
+    } catch (e) {
+      log(`❌ Registry deletion failed: ${e.message}\n`);
+      log('⚠️  Registry may be in an inconsistent state\n');
+      log('💡 Try running individual cleanup commands manually if needed\n');
+    }
+  }
+
+  async function applyDockerConfig() {
+    try {
+      log('Applying Docker daemon configuration...\n');
+      await runCommand(['mkdir', '-p', '/etc/docker']);
+      await writeFile(DOCKER_DAEMON_JSON, JSON.stringify(DOCKER_CONFIG_TEMPLATE, null, 2));
+      log('✅ Applied Docker daemon configuration\n');
+      log('📋 Configuration: Allow insecure registry at docker-registry:4000\n');
+      log('⚠️  Note: Docker service restart may be required for changes to take effect\n\n');
+    } catch (e) {
+      log(`❌ Failed to apply Docker configuration: ${e.message}\n`);
+      throw e;
     }
   }
 
@@ -1219,14 +2006,14 @@ ${imagesWithTags.join('\n')}`;
     try {
       // 1. Apply Docker configuration
       log('Step 1: Applying Docker configuration...');
-      $('apply-docker-config-btn').click();
+      await applyDockerConfig();
       
       // Wait a moment
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // 2. Start registry
+      // 2. Start registry (force start, don't toggle)
       log('Step 2: Starting registry...');
-      $('run-registry-btn').click();
+      await startRegistry();
       
       // Wait a moment
       await new Promise(resolve => setTimeout(resolve, 3000));
@@ -1242,10 +2029,16 @@ ${imagesWithTags.join('\n')}`;
   $('refresh-overview-btn').addEventListener('click', refreshOverview);
   $('quick-setup-btn').addEventListener('click', quickSetup);
 
-  // ---- Logs Event Listeners ----
-  $('clear-logs-btn').addEventListener('click', () => {
-    $('log').textContent = 'Logs cleared.\n';
-    log('Logs cleared');
+  // Clear log functionality
+  $("btn-clear-log").addEventListener("click", () => {
+    if (logEl) logEl.textContent = "";
+    // Clear stored logs too
+    try {
+        sessionStorage.removeItem('xavs-images-logs');
+        localStorage.removeItem('xavs-images-logs');
+    } catch (e) {
+        console.warn('Could not clear stored logs:', e);
+    }
   });
 
   // Status bar link to logs
@@ -1266,21 +2059,78 @@ ${imagesWithTags.join('\n')}`;
   });
 
   // Clear log functionality
-  $("btn-clear-log").addEventListener("click", () => {
+  safeAddEventListener("btn-clear-log", "click", () => {
     if (logEl) logEl.textContent = "";
     // Clear stored logs too
     try {
         sessionStorage.removeItem('xavs-images-logs');
         localStorage.removeItem('xavs-images-logs');
+        
+        // Trigger custom event for immediate cross-tab sync
+        window.dispatchEvent(new CustomEvent('xavs-logs-updated', { 
+          detail: { logs: '' } 
+        }));
     } catch (e) {
         console.warn('Could not clear stored logs:', e);
     }
   });
 
+  // Function to check and update push button state
+  async function updatePushButtonState() {
+    const pushBtn = $('push-btn');
+    if (!pushBtn) return;
+    
+    try {
+      // First check if Docker is available
+      await runCommand(['docker', '--version']);
+      
+      // Check if we have any Docker images that could be pushed
+      const { stdout } = await runCommand(['docker', 'images', '--format', '{{.Repository}}:{{.Tag}}']);
+      const imageLines = stdout ? stdout.trim().split('\n').filter(line => 
+        line && !line.includes('<none>') && !line.includes('localhost:5000')
+      ) : [];
+      
+      if (imageLines.length > 0) {
+        pushBtn.disabled = false;
+        pushBtn.title = `Push ${imageLines.length} available images to local registry`;
+        pushBtn.innerHTML = '<i class="fa fa-upload"></i> Push Images to Registry';
+      } else {
+        pushBtn.disabled = true;
+        pushBtn.title = 'No pushable images found. Pull images first, or images already in registry.';
+        pushBtn.innerHTML = '<i class="fa fa-upload"></i> Push Images (No Images)';
+      }
+    } catch (e) {
+      // If Docker command fails, disable the button
+      pushBtn.disabled = true;
+      pushBtn.title = 'Docker not available. Ensure Docker is installed and running.';
+      pushBtn.innerHTML = '<i class="fa fa-exclamation-triangle"></i> Push Images (Docker N/A)';
+    }
+  }
+
   // initial checks on load
   checkStatus();
   refreshOverview();
+  loadCurrentImagesList(); // Auto-load images list on startup
+  loadLocalDockerImages(); // Auto-load local Docker images on startup
+  countImagesList();
+  updatePushButtonState(); // Check if push button should be enabled
+  
+  // Initialize cross-tab log synchronization
+  syncLogsAcrossTabs();
   
   // Load stored logs after DOM is ready
   setTimeout(loadStoredLogs, 100);
+  
+  // Add a manual button test for development/testing
+  if (window.location.search.includes('test=true')) {
+    setTimeout(() => {
+      const pushBtn = $('push-btn');
+      if (pushBtn) {
+        pushBtn.disabled = false;
+        pushBtn.title = 'Test mode - push button enabled for testing';
+        pushBtn.innerHTML = '<i class="fa fa-upload"></i> Push Images (Test Mode)';
+        log('🧪 Test mode enabled - push button force-enabled for testing\n');
+      }
+    }, 2000);
+  }
 });

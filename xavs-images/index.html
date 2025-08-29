@@ -26,10 +26,7 @@
     <ul class="nav-tabs" id="tabs">
       <li><a href="#" class="nav-link active" data-tab="tab-overview"><i class="fa fa-tachometer-alt"></i> Overview</a></li>
       <li><a href="#" class="nav-link" data-tab="tab-extract"><i class="fa fa-file-archive"></i> Extract / Pull</a></li>
-      <li><a href="#" class="nav-link" data-tab="tab-registry"><i class="fa fa-server"></i> Local Registry</a></li>
-      <li><a href="#" class="nav-link" data-tab="tab-push"><i class="fa fa-upload"></i> Push Images</a></li>
-      <li><a href="#" class="nav-link" data-tab="tab-catalog"><i class="fa fa-list"></i> Catalog</a></li>
-      <li><a href="#" class="nav-link" data-tab="tab-config"><i class="fa fa-cog"></i> Configuration</a></li>
+      <li><a href="#" class="nav-link" data-tab="tab-registry"><i class="fa fa-database"></i> Registry Management</a></li>
       <li><a href="#" class="nav-link" data-tab="tab-logs"><i class="fa fa-terminal"></i> Logs</a></li>
     </ul>
 
@@ -87,11 +84,11 @@
             </div>
           </div>
 
-          <!-- Configuration Status Card -->
+          <!-- Docker Registry Setup Card -->
           <div class="status-card">
             <div class="status-card-header">
-              <i class="fa fa-cog status-icon"></i>
-              <h3>Configuration</h3>
+              <i class="fa fa-server status-icon"></i>
+              <h3>Registry Setup</h3>
             </div>
             <div class="status-card-body">
               <div class="status-row">
@@ -144,118 +141,157 @@
         <!-- Pull block -->
         <div id="pull-block" class="pull-block-hidden">
           <p class="hint">
-            Reads image names from <code>/etc/xavs/images.list</code> and pulls from
+            Reads image list from and pulls from
             <code>quay.io/xavs.images/&lt;name&gt;:&lt;tag&gt;</code>.
           </p>
           
           <!-- Current Images List -->
           <div class="images-list-section">
             <h4>📦 Current Images List <span id="current-images-count">(Loading...)</span></h4>
+            <div class="hint">Images loaded from configuration file</div>
             <div class="images-list-container">
               <ul id="current-images-list" class="images-list">
                 <li>Loading images...</li>
               </ul>
             </div>
+          </div>
+          
+          <!-- Locally Pulled Images -->
+          <div class="images-list-section">
+            <h4>🐳 Locally Pulled Images <span id="local-images-count">(Loading...)</span></h4>
+            <div class="images-list-container">
+              <ul id="local-images-list" class="images-list">
+                <li>Loading Docker images...</li>
+              </ul>
+            </div>
             <div class="images-list-actions">
-              <button class="btn btn-outline-secondary" id="refresh-images-list-btn">🔄 Refresh List</button>
-              <button class="btn btn-outline-danger" id="clear-all-images-btn">🗑️ Clear All</button>
+              <button class="btn btn-outline-secondary" id="refresh-local-images-btn">🔄 Refresh Local Images</button>
+            </div>
+          </div>
+          
+          <!-- Pull Progress Indicator -->
+          <div id="pull-progress-container" class="progress-container hidden">
+            <div class="progress-info">
+              <span id="pull-progress-text">Preparing pull operation...</span>
+              <span id="pull-progress-count" class="progress-count">0/0</span>
+            </div>
+            <div class="progress-bar-container">
+              <div id="pull-progress-bar" class="progress-bar"></div>
             </div>
           </div>
           
           <div class="actions">
-            <button class="btn btn-outline-secondary" id="test-connectivity-btn">Test Connectivity</button>
+            <button class="btn btn-primary" id="test-connectivity-btn">🧪 Test Connectivity</button>
             <button class="btn btn-outline-brand" id="pull-btn">Pull from Xloud</button>
           </div>
         </div>
       </section>
 
-      <!-- TAB 3: LOCAL REGISTRY -->
+      <!-- TAB 3: REGISTRY MANAGEMENT -->
       <section id="tab-registry" class="tab-pane">
-        <div class="status-row">
-          <div class="status-dot" id="registry-dot" aria-hidden="true"></div>
-          <div>Status: <span id="registry-status">Checking…</span></div>
-        </div>
-        <div class="actions">
-          <button class="btn btn-outline-muted" id="run-registry-btn">Run Registry</button>
-          <button class="btn btn-outline-danger" id="stop-registry-btn">Stop Registry</button>
-          <button class="btn btn-outline-muted" id="restart-docker-btn" disabled>Restart Docker</button>
-          <button class="btn btn-outline-brand" id="check-status-btn">Re-check Status</button>
-        </div>
-        <div class="hint">
-          Creates/updates <code>/etc/docker/daemon.json</code> with
-          <code>"insecure-registries": ["docker-registry:4000"]</code>.
-          After writing, restart Docker to apply.
-        </div>
-      </section>
-
-      <!-- TAB 4: PUSH IMAGES -->
-      <section id="tab-push" class="tab-pane">
-        <p class="hint">
-          Tags images from <code>quay.io/xavs.images</code> to
-          <code>docker-registry:4000/xavs.images</code>, pushes, then removes the public-tagged local copies.
-          List is read from <code>/etc/xavs/images.list</code>.
-        </p>
-        <div class="actions">
-          <button class="btn btn-brand" id="push-btn" disabled>Push Images</button>
-        </div>
-      </section>
-
-      <!-- TAB 5: CATALOG -->
-      <section id="tab-catalog" class="tab-pane">
-        <div class="actions">
-          <button class="btn btn-outline-brand" id="refresh-catalog-btn">Refresh Catalog</button>
-        </div>
-        <ul id="catalog" class="catalog-list"></ul>
-      </section>
-
-      <!-- TAB 6: CONFIGURATION -->
-      <section id="tab-config" class="tab-pane">
-        <!-- Docker Configuration -->
-        <div class="config-section">
-          <h3><i class="fa fa-docker"></i> Docker Configuration</h3>
+        <!-- Registry Status & Control -->
+        <div class="registry-section">
+          <h3><i class="fa fa-server"></i> Registry Status & Control</h3>
           <div class="status-row">
-            <div class="status-dot" id="docker-config-dot" aria-hidden="true"></div>
-            <div>Docker daemon.json: <span id="docker-config-status">Checking…</span></div>
+            <div class="status-dot" id="registry-dot" aria-hidden="true"></div>
+            <div>Status: <span id="registry-status">Checking…</span></div>
           </div>
           <div class="actions">
-            <button class="btn btn-brand" id="apply-docker-config-btn">Apply Docker Config</button>
-            <button class="btn btn-outline-brand" id="check-docker-config-btn">Check Config</button>
+            <button class="btn btn-success" id="toggle-registry-btn">Run Registry</button>
+            <button class="btn btn-outline-muted" id="restart-docker-btn" disabled>Restart Docker</button>
+            <button class="btn btn-outline-brand" id="check-status-btn">Re-check Status</button>
           </div>
           <div class="hint">
-            Configures Docker daemon with insecure registry support for docker-registry:4000
+            Creates/updates <code>/etc/docker/daemon.json</code> with
+            <code>"insecure-registries": ["docker-registry:4000"]</code>.
+            After writing, restart Docker to apply.
           </div>
-          
-          <details class="config-details">
-            <summary>Current Docker Configuration</summary>
-            <pre id="current-docker-config" class="config-display">No configuration loaded</pre>
-          </details>
         </div>
 
-        <!-- Images List Management -->
-        <div class="config-section">
-          <h3><i class="fa fa-list-ul"></i> Images List Management</h3>
+        <!-- Push Images to Registry -->
+        <div class="registry-section">
+          <h3><i class="fa fa-upload"></i> Push Images to Registry</h3>
           <p class="hint">
-            Manage the hardcoded list of Docker images at <code>/etc/xavs/images.list</code>
+            Push locally available Docker images to the local registry at <code>docker-registry:4000</code>.
+            Images will be automatically tagged and pushed to the registry.
+          </p>
+          
+          <!-- Progress Indicator -->
+          <div id="push-progress-container" class="progress-container hidden">
+            <div class="progress-info">
+              <span id="push-progress-text">Preparing push operation...</span>
+              <span id="push-progress-count" class="progress-count">0/0</span>
+            </div>
+            <div class="progress-bar-container">
+              <div id="push-progress-bar" class="progress-bar"></div>
+            </div>
+          </div>
+          
+          <div class="actions">
+            <button class="btn btn-brand" id="push-btn">
+              <i class="fa fa-upload"></i> Push Images
+            </button>
+          </div>
+        </div>
+
+        <!-- Registry Catalog & Contents -->
+        <div class="registry-section">
+          <h3><i class="fa fa-list"></i> Registry Catalog & Contents</h3>
+          <p class="hint">
+            Browse and inspect images stored in the local registry.
           </p>
           <div class="actions">
-            <button class="btn btn-outline-brand" id="view-images-list-btn">View Current List</button>
-            <button class="btn btn-brand" id="update-images-list-btn">Update List</button>
+            <button class="btn btn-outline-brand" id="refresh-catalog-btn">
+              <i class="fa fa-refresh"></i> Refresh Catalog
+            </button>
+          </div>
+          <div class="catalog-container">
+            <ul id="catalog" class="catalog-list">
+              <li>Click "Refresh Catalog" to load registry contents</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Registry Administration -->
+        <div class="registry-section">
+          <h3><i class="fa fa-database"></i> Registry Administration</h3>
+          <p class="hint">
+            Advanced registry operations. <strong>Warning:</strong> Destructive operations cannot be undone.
+          </p>
+          
+          <div class="registry-actions">
+            <div class="action-group">
+              <h4><i class="fa fa-info-circle"></i> Registry Information</h4>
+              <div class="actions">
+                <button class="btn btn-outline-brand" id="registry-info-btn">Show Registry Info</button>
+                <button class="btn btn-outline-secondary" id="registry-storage-btn">Show Storage Usage</button>
+              </div>
+            </div>
+            
+            <div class="action-group danger-section">
+              <h4><i class="fa fa-exclamation-triangle"></i> Danger Zone</h4>
+              <div class="danger-warning">
+                <strong>⚠️ Destructive Operations:</strong> These actions will permanently delete data.
+              </div>
+              <div class="actions">
+                <button class="btn btn-outline-warning" id="clear-registry-content-btn">Clear Registry Content</button>
+                <button class="btn btn-outline-danger" id="delete-entire-registry-btn">Delete Entire Registry</button>
+              </div>
+              <div class="hint">
+                <strong>Clear Content:</strong> Removes all images but keeps registry container.<br>
+                <strong>Delete Registry:</strong> Removes container, volumes, and all data permanently.
+              </div>
+            </div>
           </div>
           
           <details class="config-details">
-            <summary>Current Images List</summary>
-            <pre id="images-list-content" class="config-display">Click "View Current List" to load</pre>
-          </details>
-          
-          <details class="config-details">
-            <summary>Edit Images List</summary>
-            <textarea id="images-list-editor" class="config-editor" placeholder="Enter one image per line, e.g.&#10;kolla/ubuntu-source-keystone:2024.1&#10;kolla/ubuntu-source-glance-api:2024.1"></textarea>
-            <div class="editor-hint">One image per line. Lines starting with # are comments.</div>
+            <summary>Registry Details</summary>
+            <pre id="registry-details" class="config-display">Click "Show Registry Info" to load details</pre>
           </details>
         </div>
       </section>
 
-      <!-- TAB 7: LOGS -->
+      <!-- TAB 4: LOGS -->
       <section id="tab-logs" class="tab-pane">
         <div class="card">
           <strong>Execution Log</strong>
