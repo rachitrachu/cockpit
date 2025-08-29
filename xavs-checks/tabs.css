@@ -1,0 +1,2 @@
+.tab-pane { display: none !important; }
+.tab-pane.active.show { display: block !important; }

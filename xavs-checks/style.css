@@ -35,14 +35,40 @@ body { margin:0; font-family: Tenorite,"Segoe UI",system-ui,-apple-system,"Helve
 .btn-outline-muted { background:transparent; color:var(--muted); border-color:var(--border); }
 .icon-btn { width:36px; height:36px; line-height:36px; text-align:center; border-radius:50%; border:1px solid var(--border); background:var(--surface); color:var(--text); font-weight:800; }
 
-/* Tabs (global) */
 .nav-tabs { list-style:none; padding-left:0; display:flex; gap:6px; border-bottom:1px solid var(--border); margin:6px 0 8px; padding-bottom:2px; }
-.nav-tabs .nav-link { border:1px solid transparent; background:transparent; color:var(--muted); padding:6px 10px; border-radius:8px 8px 0 0; font-weight:650; text-decoration:none; font-size:14px; }
-.nav-tabs .nav-link:hover { color:var(--text); background:var(--surface-2); }
+.nav-tabs .nav-link { border:1px solid transparent; background:transparent; color:var(--muted); padding:6px 10px; border-radius:8px 8px 0 0; font-weight:650; text-decoration:none; font-size:14px; cursor:pointer; display:inline-flex; align-items:center; gap:8px; transition:background .12s, color .12s, transform .08s; }
+.nav-tabs .nav-link:hover { color:var(--text); background:var(--surface-2); transform:translateY(-1px); }
 .nav-tabs .nav-link.active { background:var(--tab-active); color:#fff; border-color:var(--tab-active); box-shadow:0 2px 6px rgba(0,0,0,.08); }
 .tab-content { padding:6px 0 12px; }
-.tab-pane { display:none; }
-.tab-pane.show.active { display:block; }
+.tab-pane {
+    display: none !important;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.18s ease-in;
+    position: relative;
+    height: 0;
+    overflow: hidden;
+}
+
+.tab-pane.active,
+.tab-pane.show.active {
+    display: block !important;
+    opacity: 1;
+    visibility: visible;
+    height: auto;
+    overflow: visible;
+    position: relative;
+}
+
+/* Utility classes previously used as inline styles (moved here for CSP) */
+.hidden { display: none !important; }
+.mb8 { margin-bottom: 8px; }
+.mt8 { margin-top: 8px; }
+.mt10 { margin-top: 10px; }
+.mt12 { margin-top: 12px; }
+.flex-between { display:flex; justify-content:space-between; align-items:center; }
+.width320 { width: 320px; }
+
 
 /* In-pane nav (optional) */
 .tab-nav { display:flex; justify-content:space-between; gap:10px; margin-top:8px; border-top:1px solid var(--border); padding-top:10px; }

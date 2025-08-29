@@ -5,10 +5,9 @@
   <title>xDeploy Checks</title>
   <script src="../base1/cockpit.js"></script>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="tabs.css">
   <style>
     :root { --tab-border: var(--border, #e5e7eb); }
-    .panel { display: none !important; }
-    .panel.active { display: block !important; }
     .badge { padding: 2px 10px; border-radius: 999px; font-size: 12px; border: 1px solid var(--tab-border); }
     .ok   { background: #e8f5e9; color: #1b5e20; }
     .warn { background: #fff8e1; color: #8d6e00; }
@@ -24,6 +23,8 @@
     .nav-tabs { display:flex; gap:8px; margin-bottom:12px; padding:0; list-style:none; }
     .nav-tabs .nav-link { display:inline-block; padding:8px 14px; border:1px solid var(--tab-border); border-radius:8px; background:var(--surface,#fff); text-decoration:none; cursor:pointer; }
     .nav-tabs .nav-link.active { background: var(--brand,#0ea5a4); color:#fff; border-color: var(--brand,#0ea5a4); }
+
+  /* Tab pane visibility handled in external CSS to comply with CSP */
 
     .progress { width: 100%; height: 10px; background: var(--surface-2,#f7f7f8); border: 1px solid var(--tab-border); border-radius: 999px; overflow: hidden; }
     .progress-bar { height: 100%; width: 0%; background: var(--brand,#0ea5a4); transition: width .25s ease; }
@@ -45,18 +46,19 @@
       <li><a class="nav-link active" data-target="panel-overview">Overview</a></li>
       <li><a class="nav-link" data-target="panel-hw">Hardware</a></li>
       <li><a class="nav-link" data-target="panel-deps">Dependencies</a></li>
-      <li><a class="nav-link" data-target="panel-logs">Logs</a></li>
+  <li><a class="nav-link" data-target="panel-logs">Logs</a></li>
+  <li><a class="nav-link" data-target="panel-test">Test</a></li>
     </ul>
 
-    <!-- Overview -->
-    <section id="panel-overview" class="panel active">
-      <div class="alert" id="xos-reco" style="display:none;">
+  <!-- Overview -->
+  <section id="panel-overview" class="tab-pane active">
+  <div class="alert hidden" id="xos-reco">
         Using <strong>XOS</strong> is recommended for smooth installation and working. Check it out at
         <a href="https://xloud.tech" target="_blank" rel="noopener">xloud.tech</a>.
       </div>
 
       <div class="card">
-        <div style="margin-bottom:8px;"><b>Operating System</b></div>
+  <div class="mb8"><b>Operating System</b></div>
         <div class="kv">
           <div><b>OS</b></div><div id="os-name">—</div>
           <div><b>Kernel</b></div><div id="os-kernel" class="muted">—</div>
@@ -64,17 +66,17 @@
           <div><b>Mode</b></div><div id="os-mode" class="muted">—</div>
         </div>
 
-        <div class="toolbar" style="margin-top:12px;">
+  <div class="toolbar mt12" >
           <button class="btn btn-outline-brand" id="btn-detect-os" type="button">Detect OS</button>
           <button class="btn btn-brand" id="btn-run-hw-top" type="button">Run Hardware Checks</button>
         </div>
       </div>
     </section>
 
-    <!-- Hardware -->
-    <section id="panel-hw" class="panel">
+  <!-- Hardware -->
+  <section id="panel-hw" class="tab-pane">
       <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
+  <div class="flex-between">
           <strong>Hardware & Core Preconditions</strong>
           <button class="btn" id="btn-run-hw" type="button">Re-run</button>
         </div>
@@ -100,14 +102,14 @@
           <div class="value"><span id="chk-ram" class="badge">—</span></div>
         </div>
 
-        <div class="muted" id="hw-summary" style="margin-top:8px;"></div>
+  <div class="muted mt8" id="hw-summary"></div>
       </div>
     </section>
 
-    <!-- Dependencies -->
-    <section id="panel-deps" class="panel">
+  <!-- Dependencies -->
+  <section id="panel-deps" class="tab-pane">
       <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
+  <div class="flex-between">
           <strong>Dependencies</strong>
           <div>
             <button class="btn" id="btn-check-deps" type="button">Check</button>
@@ -115,12 +117,12 @@
           </div>
         </div>
 
-        <div class="kv" style="margin-top:8px;">
+  <div class="kv mt8">
           <div><b>Branch</b></div><div id="dep-branch" class="muted">—</div>
           <div><b>Status</b></div><div id="dep-status" class="muted">—</div>
         </div>
 
-        <div id="dep-grid" style="margin-top:10px;">
+  <div id="dep-grid" class="mt10">
           <div class="check-row"><div>Python dependencies</div><div class="value"><span id="dep-py" class="badge">—</span></div></div>
           <div class="check-row"><div>Environment (/opt/xenv)</div><div class="value"><span id="dep-env" class="badge">—</span></div></div>
           <div class="check-row"><div>xDeploy dependencies</div><div class="value"><span id="dep-xdep" class="badge">—</span></div></div>
@@ -128,8 +130,8 @@
           <div class="check-row"><div>Passwords ready</div><div class="value"><span id="dep-pwd" class="badge">—</span></div></div>
         </div>
 
-        <div class="toolbar" style="margin-top:12px;">
-          <div class="left" style="width:320px;">
+  <div class="toolbar mt12">
+          <div class="left width320">
             <div class="progress"><div class="progress-bar" id="dep-progress"></div></div>
           </div>
           <div class="right">
@@ -139,14 +141,23 @@
       </div>
     </section>
 
-    <!-- Logs -->
-    <section id="panel-logs" class="panel">
+  <!-- Logs -->
+  <section id="panel-logs" class="tab-pane">
       <div class="card">
         <strong>Execution Log</strong>
         <pre class="yaml-terminal" id="log"></pre>
         <div class="footer-actions">
           <button class="btn btn-outline-muted" id="btn-clear-log" type="button">Clear log</button>
         </div>
+      </div>
+    </section>
+
+  <!-- Test (debug) -->
+  <section id="panel-test" class="tab-pane">
+      <div class="card">
+        <strong>Test Pane</strong>
+        <p id="test-msg">This is a test pane to verify tabs and visibility.</p>
+        <div class="muted">Open the browser console to see tab debug logs.</div>
       </div>
     </section>
   </div>
