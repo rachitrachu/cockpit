@@ -1,134 +1,207 @@
 /*!
- * Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com
- * License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License)
- * Copyright 2023 Fonticons, Inc.
+ * Simple CSS Icons - Guaranteed to work everywhere
+ * Uses basic text and CSS shapes
  */
 
-/* Core styles */
-.fa, .fas, .far, .fal, .fad, .fab {
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-font-smoothing: antialiased;
+.icon {
   display: inline-block;
   font-style: normal;
   font-variant: normal;
-  line-height: 1;
   text-rendering: auto;
+  line-height: 1;
+  font-family: monospace;
+  font-weight: bold;
 }
 
-.fa {
-  font-family: "Font Awesome 6 Free";
-  font-weight: 900;
+/* Simple reliable icons using basic characters */
+.icon-refresh, .fa-sync { 
+  display: inline-block;
+  width: 1em; 
+  height: 1em;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  border-top-color: transparent;
+  position: relative;
+}
+.icon-refresh:before, .fa-sync:before { 
+  content: "";
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 0;
+  height: 0;
+  border-left: 4px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
 }
 
-.fas {
-  font-family: "Font Awesome 6 Free";
-  font-weight: 900;
+.icon-storage, .fa-hdd {
+  display: inline-block;
+  width: 1em;
+  height: 0.8em;
+  background: currentColor;
+  border-radius: 2px;
+  position: relative;
+}
+.icon-storage:before, .fa-hdd:before {
+  content: "";
+  position: absolute;
+  top: 20%;
+  left: 10%;
+  right: 10%;
+  height: 2px;
+  background: white;
 }
 
-.far {
-  font-family: "Font Awesome 6 Free";
-  font-weight: 400;
+.icon-network, .fa-network-wired {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-radius: 2px;
+  position: relative;
+}
+.icon-network:before, .fa-network-wired:before {
+  content: "";
+  position: absolute;
+  top: 25%;
+  left: 25%;
+  right: 25%;
+  bottom: 25%;
+  border: 1px solid currentColor;
 }
 
-/* Icon definitions */
-.fa-refresh:before, .fa-rotate:before { content: "\f2f1"; }
-.fa-sync:before { content: "\f021"; }
-.fa-network-wired:before { content: "\f6ff"; }
-.fa-hdd:before { content: "\f0a0"; }
-.fa-rocket:before { content: "\f135"; }
-.fa-search:before { content: "\f002"; }
-.fa-clipboard:before { content: "\f328"; }
-.fa-check:before { content: "\f00c"; }
-.fa-microchip:before { content: "\f2db"; }
-.fa-memory:before { content: "\f538"; }
-.fa-tools:before { content: "\f7d9"; }
-.fa-microscope:before { content: "\f610"; }
-.fa-server:before { content: "\f233"; }
-.fa-hard-drive:before { content: "\f0a0"; }
-.fa-ethernet:before { content: "\f796"; }
-.fa-desktop:before { content: "\f390"; }
-.fa-cog:before, .fa-gear:before { content: "\f013"; }
-.fa-play:before { content: "\f04b"; }
-.fa-stop:before { content: "\f04d"; }
-.fa-download:before { content: "\f019"; }
-.fa-upload:before { content: "\f093"; }
-.fa-file-text:before { content: "\f15c"; }
-.fa-terminal:before { content: "\f120"; }
-.fa-code:before { content: "\f121"; }
-.fa-database:before { content: "\f1c0"; }
-.fa-cloud:before { content: "\f0c2"; }
-.fa-shield:before { content: "\f132"; }
-.fa-lock:before { content: "\f023"; }
-.fa-key:before { content: "\f084"; }
-.fa-user:before { content: "\f007"; }
-.fa-users:before { content: "\f0c0"; }
-.fa-info-circle:before { content: "\f05a"; }
-.fa-exclamation-triangle:before { content: "\f071"; }
-.fa-times:before { content: "\f00d"; }
-.fa-plus:before { content: "\f067"; }
-.fa-minus:before { content: "\f068"; }
-.fa-edit:before { content: "\f044"; }
-.fa-trash:before { content: "\f1f8"; }
-.fa-eye:before { content: "\f06e"; }
-.fa-eye-slash:before { content: "\f070"; }
-.fa-power-off:before { content: "\f011"; }
-.fa-restart:before { content: "\f2f1"; }
+.icon-check, .fa-check {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  position: relative;
+}
+.icon-check:before, .fa-check:before {
+  content: "✓";
+  color: #22c55e;
+  font-weight: bold;
+}
+
+.icon-cpu, .fa-microchip {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  position: relative;
+}
+.icon-cpu:before, .fa-microchip:before {
+  content: "";
+  position: absolute;
+  top: 20%;
+  left: 20%;
+  right: 20%;
+  bottom: 20%;
+  border: 1px solid currentColor;
+}
+
+.icon-memory, .fa-memory {
+  display: inline-block;
+  width: 1em;
+  height: 0.8em;
+  background: linear-gradient(to right, currentColor 20%, transparent 20%, transparent 40%, currentColor 40%, currentColor 60%, transparent 60%, transparent 80%, currentColor 80%);
+  border: 1px solid currentColor;
+}
+
+.icon-tools, .fa-tools {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  position: relative;
+}
+.icon-tools:before, .fa-tools:before {
+  content: "⚙";
+  font-size: 1em;
+}
+
+.icon-database, .fa-database {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-radius: 50% 50% 10% 10%;
+  position: relative;
+}
+
+.icon-rocket, .fa-rocket {
+  display: inline-block;
+  width: 0.6em;
+  height: 1em;
+  background: currentColor;
+  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+
+.icon-search, .fa-search {
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  position: relative;
+}
+.icon-search:after, .fa-search:after {
+  content: "";
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  width: 6px;
+  height: 2px;
+  background: currentColor;
+  transform: rotate(45deg);
+}
+
+.icon-clipboard, .fa-clipboard {
+  display: inline-block;
+  width: 0.8em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-radius: 2px;
+  position: relative;
+}
+.icon-clipboard:before, .fa-clipboard:before {
+  content: "";
+  position: absolute;
+  top: -2px;
+  left: 20%;
+  right: 20%;
+  height: 4px;
+  background: currentColor;
+  border-radius: 2px;
+}
+
+.icon-microscope, .fa-microscope {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  position: relative;
+}
+.icon-microscope:before, .fa-microscope:before {
+  content: "🔬";
+  font-size: 1em;
+}
+
+/* Fallback for any missing icons */
+.fas:not([class*="icon-"]):before,
+.fa:not([class*="icon-"]):before {
+  content: "●";
+}
 
 /* Size modifiers */
-.fa-xs { font-size: 0.75em; }
-.fa-sm { font-size: 0.875em; }
-.fa-lg { font-size: 1.25em; }
-.fa-xl { font-size: 1.5em; }
-.fa-2x { font-size: 2em; }
-.fa-3x { font-size: 3em; }
-.fa-4x { font-size: 4em; }
-.fa-5x { font-size: 5em; }
+.fa-xs, .icon-xs { font-size: 0.75em; transform: scale(0.75); }
+.fa-sm, .icon-sm { font-size: 0.875em; transform: scale(0.875); }
+.fa-lg, .icon-lg { font-size: 1.25em; transform: scale(1.25); }
 
-/* Rotation and effects */
-.fa-spin {
-  animation: fa-spin 2s infinite linear;
+/* Animation */
+.fa-spin, .icon-spin {
+  animation: icon-spin 2s infinite linear;
 }
 
-.fa-pulse {
-  animation: fa-pulse 1s infinite steps(8);
-}
-
-@keyframes fa-spin {
+@keyframes icon-spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
-}
-
-@keyframes fa-pulse {
-  0% { opacity: 1; }
-  50% { opacity: 0.5; }
-  100% { opacity: 1; }
-}
-
-/* Font face - using system fallbacks for now */
-@font-face {
-  font-family: "Font Awesome 6 Free";
-  font-style: normal;
-  font-weight: 400;
-  font-display: block;
-  src: local("Font Awesome 6 Free Regular"), 
-       local("FontAwesome"), 
-       local("Font Awesome"),
-       /* Fallback to Unicode symbols */
-       local("Segoe UI Symbol"),
-       local("Apple Symbols"),
-       local("Noto Color Emoji");
-}
-
-@font-face {
-  font-family: "Font Awesome 6 Free";
-  font-style: normal;
-  font-weight: 900;
-  font-display: block;
-  src: local("Font Awesome 6 Free Solid"), 
-       local("FontAwesome"), 
-       local("Font Awesome"),
-       /* Fallback to Unicode symbols */
-       local("Segoe UI Symbol"),
-       local("Apple Symbols"),
-       local("Noto Color Emoji");
 }
