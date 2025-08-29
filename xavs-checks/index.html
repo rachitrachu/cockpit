@@ -2,43 +2,18 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>xDeploy Checks</title>
+          <title>xAVS Bootstrap</title>
   <script src="../base1/cockpit.js"></script>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="tabs.css">
-  <style>
-    :root { --tab-border: var(--border, #e5e7eb); }
-    .badge { padding: 2px 10px; border-radius: 999px; font-size: 12px; border: 1px solid var(--tab-border); }
-    .ok   { background: #e8f5e9; color: #1b5e20; }
-    .warn { background: #fff8e1; color: #8d6e00; }
-    .err  { background: #ffebee; color: #b71c1c; }
-    .card { border: 1px solid var(--tab-border); border-radius: 12px; padding: 16px; background: var(--surface,#fff); }
-    .check-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; padding: 8px 0; border-bottom: 1px dashed var(--tab-border); align-items: center; }
-    .check-row:last-child { border-bottom: 0; }
-    .value { text-align: right; white-space: nowrap; }
-    .muted { color: var(--muted,#6b7280); font-size: 12px; }
-    .kv { display: grid; grid-template-columns: 160px 1fr; row-gap: 6px; }
-
-    /* Tabs */
-    .nav-tabs { display:flex; gap:8px; margin-bottom:12px; padding:0; list-style:none; }
-    .nav-tabs .nav-link { display:inline-block; padding:8px 14px; border:1px solid var(--tab-border); border-radius:8px; background:var(--surface,#fff); text-decoration:none; cursor:pointer; }
-    .nav-tabs .nav-link.active { background: var(--brand,#0ea5a4); color:#fff; border-color: var(--brand,#0ea5a4); }
-
-  /* Tab pane visibility handled in external CSS to comply with CSP */
-
-    .progress { width: 100%; height: 10px; background: var(--surface-2,#f7f7f8); border: 1px solid var(--tab-border); border-radius: 999px; overflow: hidden; }
-    .progress-bar { height: 100%; width: 0%; background: var(--brand,#0ea5a4); transition: width .25s ease; }
-
-    pre.yaml-terminal { max-height: 320px; }
-    .toolbar .btn + .btn { margin-left: 8px; }
-  </style>
+  <link rel="stylesheet" href="fontawesome.css">
 </head>
 <body>
   <div class="container-fluid">
     <div class="topbar">
-      <h1 class="app-title">xDeploy Checks</h1>
+      <h1 class="app-title">xAVS Bootstrap</h1>
       <div class="toolbar right">
-        <button class="btn btn-outline-muted" id="btn-refresh" type="button">Re-run all detections</button>
+        <button class="btn btn-brand" id="btn-refresh" type="button"><i class="fas fa-sync"></i> Re-run all detections</button>
       </div>
     </div>
 
@@ -47,64 +22,241 @@
       <li><a class="nav-link" data-target="panel-hw">Hardware</a></li>
       <li><a class="nav-link" data-target="panel-deps">Dependencies</a></li>
   <li><a class="nav-link" data-target="panel-logs">Logs</a></li>
-  <li><a class="nav-link" data-target="panel-test">Test</a></li>
     </ul>
 
   <!-- Overview -->
   <section id="panel-overview" class="tab-pane active">
-  <div class="alert hidden" id="xos-reco">
-        Using <strong>XOS</strong> is recommended for smooth installation and working. Check it out at
-        <a href="https://xloud.tech" target="_blank" rel="noopener">xloud.tech</a>.
-      </div>
+    <div class="alert hidden" id="xos-reco">
+      Using <strong>XOS</strong> is recommended for smooth installation and working. Check it out at
+      <a href="https://xloud.tech" target="_blank" rel="noopener">xloud.tech</a>.
+    </div>
 
+    <!-- System Overview Cards -->
+    <div class="overview-grid">
+      <!-- Operating System Card -->
       <div class="card">
-  <div class="mb8"><b>Operating System</b></div>
-        <div class="kv">
-          <div><b>OS</b></div><div id="os-name">—</div>
-          <div><b>Kernel</b></div><div id="os-kernel" class="muted">—</div>
-          <div><b>Check Branch</b></div><div id="os-branch" class="muted">—</div>
-          <div><b>Mode</b></div><div id="os-mode" class="muted">—</div>
+        <div class="card-header">
+          <h3>🖥️ Operating System</h3>
+          <button class="btn btn-sm btn-outline-brand" id="btn-detect-os" type="button">Refresh</button>
         </div>
-
-  <div class="toolbar mt12" >
-          <button class="btn btn-outline-brand" id="btn-detect-os" type="button">Detect OS</button>
-          <button class="btn btn-brand" id="btn-run-hw-top" type="button">Run Hardware Checks</button>
+        <div class="kv">
+          <div><b>Distribution</b></div><div id="os-name">—</div>
+          <div><b>Kernel Version</b></div><div id="os-kernel" class="muted">—</div>
+          <div><b>Package Manager</b></div><div id="os-branch" class="muted">—</div>
+          <div><b>xDeploy Mode</b></div><div id="os-mode" class="muted">—</div>
         </div>
       </div>
-    </section>
+
+      <!-- System Status Card -->
+      <div class="card">
+        <div class="card-header">
+          <h3>📊 System Status</h3>
+          <button class="btn btn-sm btn-outline-brand" id="btn-refresh-status" type="button">Refresh</button>
+        </div>
+        <div class="kv">
+          <div><b>Uptime</b></div><div id="sys-uptime">—</div>
+          <div><b>Load Average</b></div><div id="sys-load" class="muted">—</div>
+          <div><b>CPU Usage</b></div><div id="sys-cpu" class="muted">—</div>
+          <div><b>Memory Usage</b></div><div id="sys-memory" class="muted">—</div>
+        </div>
+      </div>
+
+      <!-- Storage Overview Card -->
+      <div class="card">
+        <div class="card-header">
+          <h3><i class="fas fa-hdd"></i> Storage Overview</h3>
+          <button class="btn btn-sm btn-outline-brand" id="btn-refresh-storage" type="button">Refresh</button>
+        </div>
+        <div class="kv">
+          <div><b>Root Filesystem</b></div><div id="storage-root">—</div>
+          <div><b>Total Disks</b></div><div id="storage-disks" class="muted">—</div>
+          <div><b>Available Space</b></div><div id="storage-free" class="muted">—</div>
+          <div><b>Storage Type</b></div><div id="storage-type" class="muted">—</div>
+        </div>
+      </div>
+
+      <!-- Network Overview Card -->
+      <div class="card">
+        <div class="card-header">
+          <h3><i class="fas fa-network-wired"></i> Network Overview</h3>
+          <button class="btn btn-sm btn-outline-brand" id="btn-refresh-network" type="button">Refresh</button>
+        </div>
+        <div class="kv">
+          <div><b>Interfaces</b></div><div id="net-interfaces">—</div>
+          <div><b>Connectivity</b></div><div id="net-connectivity" class="muted">—</div>
+          <div><b>Primary IP</b></div><div id="net-primary-ip" class="muted">—</div>
+          <div><b>DNS Status</b></div><div id="net-dns" class="muted">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="card mt16">
+      <div class="card-header">
+        <h3><i class="fas fa-rocket"></i> Quick Actions</h3>
+      </div>
+      <div class="overview-actions">
+        <button class="btn btn-brand" id="btn-run-hw-top" type="button">
+          <i class="fas fa-search"></i> Run Hardware Checks
+        </button>
+        <button class="btn btn-outline-brand" id="btn-refresh-all" type="button">
+          <i class="fas fa-sync"></i> Refresh All Information
+        </button>
+        <button class="btn btn-outline-brand" id="btn-system-info" type="button">
+          <i class="fas fa-clipboard"></i> Export System Info
+        </button>
+      </div>
+    </div>
+  </section>
 
   <!-- Hardware -->
   <section id="panel-hw" class="tab-pane">
-      <div class="card">
-  <div class="flex-between">
-          <strong>Hardware & Core Preconditions</strong>
-          <button class="btn" id="btn-run-hw" type="button">Re-run</button>
-        </div>
-
-        <div class="check-row">
-          <div>Root free space ≥ 100 GB</div>
-          <div class="value"><span id="chk-root" class="badge">—</span></div>
-        </div>
-        <div class="check-row">
-          <div>Network interfaces (excluding lo) ≥ 2</div>
-          <div class="value"><span id="chk-nics" class="badge">—</span></div>
-        </div>
-        <div class="check-row">
-          <div>Additional disk OR blank VG</div>
-          <div class="value"><span id="chk-extra" class="badge">—</span></div>
-        </div>
-        <div class="check-row">
-          <div>CPU cores ≥ 4</div>
-          <div class="value"><span id="chk-cores" class="badge">—</span></div>
-        </div>
-        <div class="check-row">
-          <div>RAM ≥ 8 GB</div>
-          <div class="value"><span id="chk-ram" class="badge">—</span></div>
-        </div>
-
-  <div class="muted mt8" id="hw-summary"></div>
+    <!-- Hardware Requirements Card -->
+    <div class="card">
+      <div class="card-header">
+        <h3><i class="fas fa-check"></i> xDeploy Requirements</h3>
+        <button class="btn btn-sm btn-outline-brand" id="btn-run-hw" type="button">Re-check</button>
       </div>
-    </section>
+
+      <div class="hw-requirements">
+        <div class="hw-check-item">
+          <div class="hw-check-icon"><i class="fas fa-hdd"></i></div>
+          <div class="hw-check-content">
+            <div class="hw-check-title">Root filesystem free space ≥ 100 GB</div>
+            <div class="hw-check-description">Required for xAVS services, logs, and container images</div>
+          </div>
+          <div class="hw-check-result">
+            <span id="chk-root" class="badge">—</span>
+          </div>
+        </div>
+
+        <div class="hw-check-item">
+          <div class="hw-check-icon"><i class="fas fa-network-wired"></i></div>
+          <div class="hw-check-content">
+            <div class="hw-check-title">Network interfaces ≥ 2 (excluding loopback)</div>
+            <div class="hw-check-description">Management network + provider/external networks</div>
+          </div>
+          <div class="hw-check-result">
+            <span id="chk-nics" class="badge">—</span>
+          </div>
+        </div>
+
+        <div class="hw-check-item">
+          <div class="hw-check-icon"><i class="fas fa-database"></i></div>
+          <div class="hw-check-content">
+            <div class="hw-check-title">Additional disk or blank volume group</div>
+            <div class="hw-check-description">For Cinder block storage (optional - ephemeral storage available)</div>
+          </div>
+          <div class="hw-check-result">
+            <span id="chk-extra" class="badge">—</span>
+          </div>
+        </div>
+
+        <div class="hw-check-item">
+          <div class="hw-check-icon"><i class="fas fa-microchip"></i></div>
+          <div class="hw-check-content">
+            <div class="hw-check-title">CPU cores ≥ 4</div>
+            <div class="hw-check-description">Minimum for xAVS control plane and compute services</div>
+          </div>
+          <div class="hw-check-result">
+            <span id="chk-cores" class="badge">—</span>
+          </div>
+        </div>
+
+        <div class="hw-check-item">
+          <div class="hw-check-icon"><i class="fas fa-memory"></i></div>
+          <div class="hw-check-content">
+            <div class="hw-check-title">Memory (RAM) ≥ 8 GB</div>
+            <div class="hw-check-description">Required for xAVS services and virtual machines</div>
+          </div>
+          <div class="hw-check-result">
+            <span id="chk-ram" class="badge">—</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hw-summary-section">
+        <div id="hw-summary" class="hw-summary"></div>
+      </div>
+    </div>
+
+    <!-- Detailed Hardware Information -->
+    <div class="card mt16">
+      <div class="card-header">
+        <h3><i class="fas fa-tools"></i> Hardware Details</h3>
+        <button class="btn btn-sm btn-outline-brand" id="btn-hw-details" type="button">Scan</button>
+      </div>
+
+      <div class="hw-details-grid">
+        <!-- CPU Information -->
+        <div class="hw-detail-card">
+          <div class="hw-detail-header">
+            <h4><i class="fas fa-microchip"></i> CPU Information</h4>
+          </div>
+          <div class="kv">
+            <div><b>Model</b></div><div id="cpu-model">—</div>
+            <div><b>Cores</b></div><div id="cpu-cores">—</div>
+            <div><b>Threads</b></div><div id="cpu-threads">—</div>
+            <div><b>Architecture</b></div><div id="cpu-arch">—</div>
+            <div><b>Virtualization</b></div><div id="cpu-virt">—</div>
+          </div>
+        </div>
+
+        <!-- Memory Information -->
+        <div class="hw-detail-card">
+          <div class="hw-detail-header">
+            <h4><i class="fas fa-memory"></i> Memory Information</h4>
+          </div>
+          <div class="kv">
+            <div><b>Total RAM</b></div><div id="mem-total">—</div>
+            <div><b>Available</b></div><div id="mem-available">—</div>
+            <div><b>Used</b></div><div id="mem-used">—</div>
+            <div><b>Swap</b></div><div id="mem-swap">—</div>
+          </div>
+        </div>
+
+        <!-- Storage Information -->
+        <div class="hw-detail-card">
+          <div class="hw-detail-header">
+            <h4><i class="fas fa-hdd"></i> Storage Information</h4>
+          </div>
+          <div class="kv">
+            <div><b>Root FS Type</b></div><div id="disk-rootfs">—</div>
+            <div><b>Block Devices</b></div><div id="disk-devices">—</div>
+            <div><b>Volume Groups</b></div><div id="disk-vgs">—</div>
+            <div><b>Mount Points</b></div><div id="disk-mounts">—</div>
+          </div>
+        </div>
+
+        <!-- Network Information -->
+        <div class="hw-detail-card">
+          <div class="hw-detail-header">
+            <h4><i class="fas fa-network-wired"></i> Network Information</h4>
+          </div>
+          <div class="kv">
+            <div><b>Active Interfaces</b></div><div id="net-active">—</div>
+            <div><b>Link Types</b></div><div id="net-types">—</div>
+            <div><b>IP Addresses</b></div><div id="net-ips">—</div>
+            <div><b>Default Gateway</b></div><div id="net-gateway">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Virtualization Detection -->
+    <div class="card mt16">
+      <div class="card-header">
+        <h3><i class="fas fa-microscope"></i> Environment Detection</h3>
+        <button class="btn btn-sm btn-outline-brand" id="btn-virt-detect" type="button">Detect</button>
+      </div>
+      <div class="kv">
+        <div><b>Virtualization</b></div><div id="virt-type">—</div>
+        <div><b>Platform</b></div><div id="virt-platform">—</div>
+        <div><b>Hypervisor</b></div><div id="virt-hypervisor">—</div>
+        <div><b>Nested Support</b></div><div id="virt-nested">—</div>
+      </div>
+    </div>
+  </section>
 
   <!-- Dependencies -->
   <section id="panel-deps" class="tab-pane">
@@ -112,22 +264,121 @@
   <div class="flex-between">
           <strong>Dependencies</strong>
           <div>
-            <button class="btn" id="btn-check-deps" type="button">Check</button>
+            <button class="btn" id="btn-check-deps" type="button">Check All</button>
             <button class="btn btn-brand" id="btn-install-all" type="button">Install All</button>
           </div>
         </div>
 
   <div class="kv mt8">
-          <div><b>Branch</b></div><div id="dep-branch" class="muted">—</div>
+          <div><b>OS Type</b></div><div id="dep-branch" class="muted">—</div>
           <div><b>Status</b></div><div id="dep-status" class="muted">—</div>
         </div>
 
-  <div id="dep-grid" class="mt10">
-          <div class="check-row"><div>Python dependencies</div><div class="value"><span id="dep-py" class="badge">—</span></div></div>
-          <div class="check-row"><div>Environment (/opt/xenv)</div><div class="value"><span id="dep-env" class="badge">—</span></div></div>
-          <div class="check-row"><div>xDeploy dependencies</div><div class="value"><span id="dep-xdep" class="badge">—</span></div></div>
-          <div class="check-row"><div>Config prepared</div><div class="value"><span id="dep-cfg" class="badge">—</span></div></div>
-          <div class="check-row"><div>Passwords ready</div><div class="value"><span id="dep-pwd" class="badge">—</span></div></div>
+  <div id="dep-grid" class="mt12">
+          <!-- Python Dependencies Card -->
+          <div class="dep-card">
+            <div class="dep-card-header">
+              <h4>Python Dependencies</h4>
+              <span id="dep-py" class="badge">—</span>
+            </div>
+            <div class="dep-card-body">
+              <p class="dep-description">System packages required for Python development</p>
+              <div class="dep-details">git, python3-dev, libffi-dev, gcc, libssl-dev, python3-venv, python3-docker</div>
+            </div>
+            <div class="dep-card-footer">
+              <button class="btn btn-sm btn-outline-brand" id="btn-install-py" type="button">Install</button>
+            </div>
+          </div>
+
+          <!-- System Tools Card -->
+          <div class="dep-card">
+            <div class="dep-card-header">
+              <h4>System Tools</h4>
+              <span id="dep-tools" class="badge">—</span>
+            </div>
+            <div class="dep-card-body">
+              <p class="dep-description">Essential system tools and utilities for server management</p>
+              <div class="dep-details">Monitoring, networking, storage, virtualization tools (CLI clients installed separately)</div>
+            </div>
+            <div class="dep-card-footer">
+              <button class="btn btn-sm btn-outline-brand" id="btn-install-tools" type="button">Install</button>
+            </div>
+          </div>
+
+          <!-- Environment Card -->
+          <div class="dep-card">
+            <div class="dep-card-header">
+              <h4>Python Environment</h4>
+              <span id="dep-env" class="badge">—</span>
+            </div>
+            <div class="dep-card-body">
+              <p class="dep-description">Virtual environment for xavs deployment</p>
+              <div class="dep-details">/opt/xenv with Python 3.x</div>
+            </div>
+            <div class="dep-card-footer">
+              <button class="btn btn-sm btn-outline-brand" id="btn-install-env" type="button">Create</button>
+            </div>
+          </div>
+
+          <!-- xDeploy Dependencies Card -->
+          <div class="dep-card">
+            <div class="dep-card-header">
+              <h4>xDeploy Dependencies</h4>
+              <span id="dep-xdep" class="badge">—</span>
+            </div>
+            <div class="dep-card-body">
+              <p class="dep-description">xAVS deployment automation framework</p>
+              <div class="dep-details">ansible-core>=2.15,&lt;2.16.99, kolla-ansible</div>
+            </div>
+            <div class="dep-card-footer">
+              <button class="btn btn-sm btn-outline-brand" id="btn-install-xdep" type="button">Install</button>
+            </div>
+          </div>
+
+          <!-- xAVS CLI Clients Card -->
+          <div class="dep-card">
+            <div class="dep-card-header">
+              <h4>CLI Clients</h4>
+              <span id="dep-oscli" class="badge">—</span>
+            </div>
+            <div class="dep-card-body">
+              <p class="dep-description">CLI clients installed globally for direct command access</p>
+              <div class="dep-details">barbican, cinder, keystone, neutron, nova, swift, octavia, magnum, etc.</div>
+            </div>
+            <div class="dep-card-footer">
+              <button class="btn btn-sm btn-outline-brand" id="btn-install-oscli" type="button">Install</button>
+            </div>
+          </div>
+
+          <!-- Configuration Card -->
+          <div class="dep-card">
+            <div class="dep-card-header">
+              <h4>Configuration Setup</h4>
+              <span id="dep-cfg" class="badge">—</span>
+            </div>
+            <div class="dep-card-body">
+              <p class="dep-description">Directory structure for xavs configuration</p>
+              <div class="dep-details">/etc/xavs with proper permissions</div>
+            </div>
+            <div class="dep-card-footer">
+              <button class="btn btn-sm btn-outline-brand" id="btn-install-cfg" type="button">Setup</button>
+            </div>
+          </div>
+
+          <!-- Passwords Card -->
+          <div class="dep-card">
+            <div class="dep-card-header">
+              <h4>Password Configuration</h4>
+              <span id="dep-pwd" class="badge">—</span>
+            </div>
+            <div class="dep-card-body">
+              <p class="dep-description">Generate secure passwords for deployment</p>
+              <div class="dep-details">passwords.yml in /etc/xavs or /etc/kolla</div>
+            </div>
+            <div class="dep-card-footer">
+              <button class="btn btn-sm btn-outline-brand" id="btn-install-pwd" type="button">Generate</button>
+            </div>
+          </div>
         </div>
 
   <div class="toolbar mt12">
@@ -149,15 +400,6 @@
         <div class="footer-actions">
           <button class="btn btn-outline-muted" id="btn-clear-log" type="button">Clear log</button>
         </div>
-      </div>
-    </section>
-
-  <!-- Test (debug) -->
-  <section id="panel-test" class="tab-pane">
-      <div class="card">
-        <strong>Test Pane</strong>
-        <p id="test-msg">This is a test pane to verify tabs and visibility.</p>
-        <div class="muted">Open the browser console to see tab debug logs.</div>
       </div>
     </section>
   </div>

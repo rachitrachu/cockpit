@@ -1,2 +1,9 @@
-.tab-pane { display: none !important; }
-.tab-pane.active.show { display: block !important; }
+.tab-pane { 
+    display: none !important; 
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+}
+.tab-pane.active.show { 
+    display: block !important; 
+    opacity: 1;
+}

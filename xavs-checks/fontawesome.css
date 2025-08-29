@@ -1,0 +1,134 @@
+/*!
+ * Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com
+ * License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License)
+ * Copyright 2023 Fonticons, Inc.
+ */
+
+/* Core styles */
+.fa, .fas, .far, .fal, .fad, .fab {
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: antialiased;
+  display: inline-block;
+  font-style: normal;
+  font-variant: normal;
+  line-height: 1;
+  text-rendering: auto;
+}
+
+.fa {
+  font-family: "Font Awesome 6 Free";
+  font-weight: 900;
+}
+
+.fas {
+  font-family: "Font Awesome 6 Free";
+  font-weight: 900;
+}
+
+.far {
+  font-family: "Font Awesome 6 Free";
+  font-weight: 400;
+}
+
+/* Icon definitions */
+.fa-refresh:before, .fa-rotate:before { content: "\f2f1"; }
+.fa-sync:before { content: "\f021"; }
+.fa-network-wired:before { content: "\f6ff"; }
+.fa-hdd:before { content: "\f0a0"; }
+.fa-rocket:before { content: "\f135"; }
+.fa-search:before { content: "\f002"; }
+.fa-clipboard:before { content: "\f328"; }
+.fa-check:before { content: "\f00c"; }
+.fa-microchip:before { content: "\f2db"; }
+.fa-memory:before { content: "\f538"; }
+.fa-tools:before { content: "\f7d9"; }
+.fa-microscope:before { content: "\f610"; }
+.fa-server:before { content: "\f233"; }
+.fa-hard-drive:before { content: "\f0a0"; }
+.fa-ethernet:before { content: "\f796"; }
+.fa-desktop:before { content: "\f390"; }
+.fa-cog:before, .fa-gear:before { content: "\f013"; }
+.fa-play:before { content: "\f04b"; }
+.fa-stop:before { content: "\f04d"; }
+.fa-download:before { content: "\f019"; }
+.fa-upload:before { content: "\f093"; }
+.fa-file-text:before { content: "\f15c"; }
+.fa-terminal:before { content: "\f120"; }
+.fa-code:before { content: "\f121"; }
+.fa-database:before { content: "\f1c0"; }
+.fa-cloud:before { content: "\f0c2"; }
+.fa-shield:before { content: "\f132"; }
+.fa-lock:before { content: "\f023"; }
+.fa-key:before { content: "\f084"; }
+.fa-user:before { content: "\f007"; }
+.fa-users:before { content: "\f0c0"; }
+.fa-info-circle:before { content: "\f05a"; }
+.fa-exclamation-triangle:before { content: "\f071"; }
+.fa-times:before { content: "\f00d"; }
+.fa-plus:before { content: "\f067"; }
+.fa-minus:before { content: "\f068"; }
+.fa-edit:before { content: "\f044"; }
+.fa-trash:before { content: "\f1f8"; }
+.fa-eye:before { content: "\f06e"; }
+.fa-eye-slash:before { content: "\f070"; }
+.fa-power-off:before { content: "\f011"; }
+.fa-restart:before { content: "\f2f1"; }
+
+/* Size modifiers */
+.fa-xs { font-size: 0.75em; }
+.fa-sm { font-size: 0.875em; }
+.fa-lg { font-size: 1.25em; }
+.fa-xl { font-size: 1.5em; }
+.fa-2x { font-size: 2em; }
+.fa-3x { font-size: 3em; }
+.fa-4x { font-size: 4em; }
+.fa-5x { font-size: 5em; }
+
+/* Rotation and effects */
+.fa-spin {
+  animation: fa-spin 2s infinite linear;
+}
+
+.fa-pulse {
+  animation: fa-pulse 1s infinite steps(8);
+}
+
+@keyframes fa-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes fa-pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+
+/* Font face - using system fallbacks for now */
+@font-face {
+  font-family: "Font Awesome 6 Free";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: local("Font Awesome 6 Free Regular"), 
+       local("FontAwesome"), 
+       local("Font Awesome"),
+       /* Fallback to Unicode symbols */
+       local("Segoe UI Symbol"),
+       local("Apple Symbols"),
+       local("Noto Color Emoji");
+}
+
+@font-face {
+  font-family: "Font Awesome 6 Free";
+  font-style: normal;
+  font-weight: 900;
+  font-display: block;
+  src: local("Font Awesome 6 Free Solid"), 
+       local("FontAwesome"), 
+       local("Font Awesome"),
+       /* Fallback to Unicode symbols */
+       local("Segoe UI Symbol"),
+       local("Apple Symbols"),
+       local("Noto Color Emoji");
+}

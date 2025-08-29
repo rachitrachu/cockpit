@@ -4,9 +4,134 @@
    - Font: Tenorite + safe fallbacks
    - Follows Cockpit theme (PatternFly) + compact UI
    ========================================================= */
-:root { --brand: #197560; --brand-600: #166551; --surface: #ffffff; --surface-2: #f6f7f9; --text: #1f2937; --muted: #6b7280; --border: #d1d5db; --code-bg: #0f172a; --code-fg: #e5e7eb; --focus: rgba(25,117,96,.35); --tab-active: var(--brand); }
+:root { 
+    --brand: #197560; 
+    --brand-600: #166551; 
+    --surface: #ffffff; 
+    --surface-2: #f6f7f9; 
+    --text: #1f2937; 
+    --muted: #6b7280; 
+    --border: #d1d5db; 
+    --code-bg: #0f172a; 
+    --code-fg: #e5e7eb; 
+    --focus: rgba(25,117,96,.35); 
+    --tab-active: var(--brand);
+    --tab-border: var(--border, #e5e7eb); 
+}
+
 /* Light */ .pf-theme-light :root, .pf-theme-light, body[data-theme="light"] { --surface:#fff; --surface-2:#f6f7f9; --text:#1f2937; --muted:#6b7280; --border:#d1d5db; --code-bg:#0f172a; --code-fg:#e5e7eb; }
 /* Dark */  .pf-theme-dark :root, .pf-theme-dark, body[data-theme="dark"] { --surface:#0b0e13; --surface-2:#12161d; --text:#e5e7eb; --muted:#94a3b8; --border:#2a3340; --code-bg:#0b1220; --code-fg:#e5e7eb; }
+
+/* Badge styles */
+.badge { 
+    padding: 2px 10px; 
+    border-radius: 999px; 
+    font-size: 12px; 
+    border: 1px solid var(--tab-border); 
+}
+.ok   { background: #e8f5e9; color: #1b5e20; }
+.warn { background: #fff8e1; color: #8d6e00; }
+.err  { background: #ffebee; color: #b71c1c; }
+
+/* Card and layout styles */
+.card { 
+    border: 1px solid var(--tab-border); 
+    border-radius: 12px; 
+    padding: 16px; 
+    background: var(--surface,#fff); 
+}
+.check-row { 
+    display: grid; 
+    grid-template-columns: 1fr auto; 
+    gap: 12px; 
+    padding: 8px 0; 
+    border-bottom: 1px dashed var(--tab-border); 
+    align-items: center; 
+}
+.check-row:last-child { border-bottom: 0; }
+.value { text-align: right; white-space: nowrap; }
+.muted { color: var(--muted,#6b7280); font-size: 12px; }
+.kv { 
+    display: grid; 
+    grid-template-columns: 160px 1fr; 
+    row-gap: 6px; 
+    word-break: break-word;
+    overflow-wrap: break-word;
+}
+
+/* Handle long content in key-value pairs */
+.kv > div:nth-child(even) {
+    overflow: hidden;
+    word-wrap: break-word;
+    hyphens: auto;
+    line-height: 1.4;
+}
+
+/* Special handling for network IPs that can be very long */
+#net-ips, #net-active, #net-types {
+    font-size: 13px;
+    line-height: 1.4;
+    white-space: pre-line; /* Preserve line breaks */
+    word-break: break-all; /* Break long IPs if needed */
+    max-height: 6em; /* Show up to 4-5 lines */
+    overflow-y: auto; /* Add scroll if too many IPs */
+    overflow-x: hidden;
+    font-family: 'Courier New', monospace; /* Monospace for better IP formatting */
+}
+
+/* Remove fade-out effect since we're using scroll now */
+#net-ips::after, #net-active::after, #net-types::after {
+    display: none;
+}
+
+/* Progress bar styles */
+.progress { 
+    width: 100%; 
+    height: 10px; 
+    background: var(--surface-2,#f7f7f8); 
+    border: 1px solid var(--tab-border); 
+    border-radius: 999px; 
+    overflow: hidden; 
+}
+.progress-bar { 
+    height: 100%; 
+    width: 0%; 
+    background: var(--brand,#0ea5a4); 
+    transition: width .25s ease; 
+}
+
+/* YAML terminal and toolbar styles */
+pre.yaml-terminal { max-height: 320px; }
+.toolbar .btn + .btn { margin-left: 8px; }
+
+/* FontAwesome icon spacing and styling */
+.fas, .far, .fa {
+    margin-right: 6px;
+}
+
+/* Icon spacing in buttons */
+.btn .fas, .btn .far, .btn .fa {
+    margin-right: 6px;
+}
+
+/* Icon spacing in headers */
+h3 .fas, h3 .far, h3 .fa,
+h4 .fas, h4 .far, h4 .fa {
+    margin-right: 8px;
+}
+
+/* Hardware check icons */
+.hw-check-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    background: var(--surface-2);
+    color: var(--brand);
+    font-size: 18px;
+}
 
 html, body { height:100%; }
 body { margin:0; font-family: Tenorite,"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,"Noto Sans","Liberation Sans",sans-serif; color:var(--text); background:var(--surface); line-height:1.5; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
@@ -35,19 +160,55 @@ body { margin:0; font-family: Tenorite,"Segoe UI",system-ui,-apple-system,"Helve
 .btn-outline-muted { background:transparent; color:var(--muted); border-color:var(--border); }
 .icon-btn { width:36px; height:36px; line-height:36px; text-align:center; border-radius:50%; border:1px solid var(--border); background:var(--surface); color:var(--text); font-weight:800; }
 
-.nav-tabs { list-style:none; padding-left:0; display:flex; gap:6px; border-bottom:1px solid var(--border); margin:6px 0 8px; padding-bottom:2px; }
-.nav-tabs .nav-link { border:1px solid transparent; background:transparent; color:var(--muted); padding:6px 10px; border-radius:8px 8px 0 0; font-weight:650; text-decoration:none; font-size:14px; cursor:pointer; display:inline-flex; align-items:center; gap:8px; transition:background .12s, color .12s, transform .08s; }
-.nav-tabs .nav-link:hover { color:var(--text); background:var(--surface-2); transform:translateY(-1px); }
-.nav-tabs .nav-link.active { background:var(--tab-active); color:#fff; border-color:var(--tab-active); box-shadow:0 2px 6px rgba(0,0,0,.08); }
+.nav-tabs { 
+    list-style:none; 
+    padding-left:0; 
+    display:flex; 
+    gap:8px; 
+    border-bottom:1px solid var(--border); 
+    margin:12px 0 8px; 
+    padding:0; 
+}
+.nav-tabs .nav-link { 
+    display:inline-block; 
+    padding:8px 14px; 
+    border:1px solid var(--tab-border); 
+    border-radius:8px; 
+    background:var(--surface,#fff); 
+    text-decoration:none; 
+    cursor:pointer; 
+    color:var(--muted); 
+    font-weight:650; 
+    font-size:14px; 
+    transition:background .12s, color .12s, transform .08s; 
+}
+.nav-tabs .nav-link:hover { 
+    color:var(--text); 
+    background:var(--surface-2); 
+    transform:translateY(-1px); 
+}
+.nav-tabs .nav-link.active { 
+    background: var(--brand,#0ea5a4); 
+    color:#fff; 
+    border-color: var(--brand,#0ea5a4); 
+    box-shadow:0 2px 6px rgba(0,0,0,.08); 
+}
 .tab-content { padding:6px 0 12px; }
 .tab-pane {
     display: none !important;
     opacity: 0;
     visibility: hidden;
-    transition: all 0.18s ease-in;
+    transition: opacity 0.3s ease-in-out;
     position: relative;
-    height: 0;
-    overflow: hidden;
+    height: auto;
+    overflow: visible;
+}
+.tab-pane.active.show {
+    display: block !important;
+    opacity: 1;
+    visibility: visible;
+    height: auto;
+    overflow: visible;
 }
 
 .tab-pane.active,
@@ -68,6 +229,136 @@ body { margin:0; font-family: Tenorite,"Segoe UI",system-ui,-apple-system,"Helve
 .mt12 { margin-top: 12px; }
 .flex-between { display:flex; justify-content:space-between; align-items:center; }
 .width320 { width: 320px; }
+
+/* Loading spinner */
+.spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--muted);
+    border-radius: 50%;
+    border-top-color: var(--brand);
+    animation: spin 1s ease-in-out infinite;
+    margin-right: 8px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Progress bar animations */
+.progress-bar {
+    transition: width 0.6s ease;
+}
+
+/* Status indicators */
+.status-working {
+    color: var(--brand) !important;
+    font-weight: 600;
+}
+
+.status-error {
+    color: #dc3545 !important;
+    font-weight: 600;
+}
+
+.status-success {
+    color: #28a745 !important;
+    font-weight: 600;
+}
+
+/* Dependency Cards */
+#dep-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+}
+
+.dep-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0;
+    background: var(--surface);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    overflow: hidden;
+}
+
+.dep-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    border-color: var(--brand);
+}
+
+.dep-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 16px 8px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+}
+
+.dep-card-header h4 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.dep-card-body {
+    padding: 12px 16px;
+}
+
+.dep-description {
+    margin: 0 0 8px 0;
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.dep-details {
+    background: var(--code-bg);
+    color: var(--code-fg);
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.3;
+    margin: 8px 0;
+    word-break: break-all;
+}
+
+.dep-card-footer {
+    padding: 8px 16px 16px 16px;
+}
+
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+/* Card state indicators */
+.dep-card.dep-ready {
+    border-color: #28a745;
+    background: #f8fff9;
+}
+
+.dep-card.dep-error {
+    border-color: #dc3545;
+    background: #fff8f8;
+}
+
+.dep-card.dep-warning {
+    border-color: #ffc107;
+    background: #fffef8;
+}
+
+.dep-card.dep-working {
+    border-color: var(--brand);
+    background: #f8fffe;
+}
 
 
 /* In-pane nav (optional) */
@@ -112,3 +403,48 @@ select option:checked { background:var(--brand); color:#fff; }
 .switch-flat .switch-handle:before { background:#eceeef; }
 .switch-flat .switch-input:checked ~ .switch-label { background:#FFF; border-color:#0088cc; }
 .switch-flat .switch-input:checked ~ .switch-handle { left:72px; background:#0088cc; box-shadow:none; }
+
+/* Enhanced Overview and Hardware Styles */
+.card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; border-bottom:1px solid var(--border); padding-bottom:12px; }
+.card-header h3, .card-header h4 { margin:0; font-size:16px; font-weight:600; display:flex; align-items:center; gap:8px; }
+.card-header h3 { font-size:18px; }
+
+/* Overview Grid Layout */
+.overview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 16px; }
+.overview-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.overview-actions .btn { display: flex; align-items: center; gap: 8px; }
+
+/* Hardware Checks */
+.hw-requirements { display: flex; flex-direction: column; gap: 12px; }
+.hw-check-item { display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: flex-start; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+.hw-check-icon { font-size: 20px; text-align: center; line-height: 1; }
+.hw-check-content { flex: 1; }
+.hw-check-title { font-weight: 600; margin-bottom: 4px; }
+.hw-check-description { font-size: 13px; color: var(--muted); line-height: 1.4; }
+.hw-check-result { display: flex; align-items: center; }
+
+/* Hardware Details */
+.hw-details-grid { 
+    display: grid; 
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); 
+    gap: 16px; 
+    overflow: hidden;
+}
+.hw-detail-card { 
+    border: 1px solid var(--border); 
+    border-radius: 8px; 
+    padding: 16px; 
+    background: var(--surface-2); 
+    overflow: hidden;
+    min-width: 0; /* Allow flex item to shrink */
+}
+.hw-detail-header { margin-bottom: 12px; }
+.hw-detail-header h4 { margin: 0; font-size: 14px; font-weight: 600; }
+
+/* Summary section */
+.hw-summary-section { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.hw-summary { padding: 12px; background: var(--surface-2); border-radius: 8px; font-weight: 500; }
+
+/* Utility classes */
+.mt16 { margin-top: 16px; }
+.mb16 { margin-bottom: 16px; }
