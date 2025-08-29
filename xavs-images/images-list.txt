@@ -1,0 +1,5 @@
+keystone:2024.1-ubuntu-jammy
+glance-api:2024.1-ubuntu-jammy
+nova-api:2024.1-ubuntu-jammy
+neutron-server:2024.1-ubuntu-jammy
+cinder-api:2024.1-ubuntu-jammy

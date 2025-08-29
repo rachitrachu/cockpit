@@ -1,10 +1,10 @@
 {
   "version": 1,
   "tools": {
-    "xdeploy-checks": {
+    "xavs-images": {
       "label": "xAVS Images",
       "path": "index.html",
-      "icon": "fa-clipboard-check"
+      "icon": "fa-docker"
     }
   }
 }
