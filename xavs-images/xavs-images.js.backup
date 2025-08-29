@@ -2,52 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const $ = (id) => document.getElementById(id);
 
   // ---- Helpers ----
-  const logEl = $("log");
-  const log = (t="") => {
-    if (!logEl) return;
-    const timestamp = new Date().toLocaleTimeString();
-    const logEntry = `[${timestamp}] ${t}`;
-    logEl.textContent += logEntry + "\n";
-    logEl.scrollTop = logEl.scrollHeight;
-    
-    // Update status bar
-    const statusElement = $('status-text');
-    if (statusElement) statusElement.textContent = t || "Ready";
-    
-    // Store logs for persistence across tabs (localStorage for better cross-tab sync)
-    try {
-        const existingLogs = localStorage.getItem('xavs-images-logs') || '';
-        localStorage.setItem('xavs-images-logs', existingLogs + logEntry + '\n');
-    } catch (e) {
-        // Fallback to sessionStorage if localStorage fails
-        console.warn('localStorage failed, trying sessionStorage:', e);
-        try {
-            const existingLogs = sessionStorage.getItem('xavs-images-logs') || '';
-            sessionStorage.setItem('xavs-images-logs', existingLogs + logEntry + '\n');
-        } catch (e2) {
-            console.warn('Could not store logs:', e2);
-        }
-    }
-  };
-  
-  // Load existing logs from storage on page load
-  const loadStoredLogs = () => {
-    try {
-        let storedLogs = localStorage.getItem('xavs-images-logs');
-        
-        // Fallback to sessionStorage if localStorage is empty
-        if (!storedLogs) {
-            storedLogs = sessionStorage.getItem('xavs-images-logs');
-        }
-        
-        if (storedLogs && logEl) {
-            logEl.textContent = storedLogs;
-            logEl.scrollTop = logEl.scrollHeight;
-        }
-    } catch (e) {
-        console.warn('Could not load stored logs:', e);
-    }
-  };
+  const log = (msg) => { $('log-output').textContent = msg; };
 
   // Cockpit API helper for running commands with superuser privileges
   async function runCommand(args, options = {}) {
@@ -140,8 +95,34 @@ document.addEventListener('DOMContentLoaded', () => {
     countElement.textContent = '(Loading...)';
     
     try {
-      // Use the priority-based image list loading
-      const imagesList = await getImagesList();
+      let imagesList;
+      let isFromUserFile = false;
+      
+      try {
+        // First try to load from user's custom list
+        imagesList = await readFile(IMAGE_LIST_PATH);
+        if (imagesList && imagesList.trim() !== '') {
+          isFromUserFile = true;
+        } else {
+          throw new Error('User file is empty');
+        }
+      } catch (error) {
+        // Fallback: load from module images list
+        try {
+          const moduleImages = await loadModuleImagesList();
+          if (moduleImages && moduleImages.length > 0) {
+            imagesList = moduleImages.join('\n');
+            isFromUserFile = false;
+          } else {
+            throw new Error('Module images list is empty');
+          }
+        } catch (moduleError) {
+          imagesList = '';
+        }
+      }
+      
+      // Update the count element to show source
+      const sourceText = isFromUserFile ? '(custom list)' : '(module default)';
       
       if (!imagesList || imagesList.trim() === '') {
         listElement.innerHTML = '<li class="empty-state">No images configured</li>';
@@ -159,7 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       
-      countElement.textContent = `(${images.length} images)`;
+      countElement.textContent = `(${images.length} images ${sourceText})`;
       listElement.innerHTML = '';
       
       images.forEach((image, index) => {
@@ -167,9 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
         li.innerHTML = `
           <span class="image-name">${image}</span>
           <div class="image-actions">
-            <button class="btn-icon delete" onclick="deleteImage(${index}, '${image.replace(/'/g, "\\'")}')">
-              🗑️
-            </button>
+            ${isFromUserFile ? `<button class="btn-icon delete" onclick="deleteImage(${index}, '${image.replace(/'/g, "\\'")}')">🗑️</button>` : `<button class="btn-icon" onclick="copyToUserList()">📋 Copy to Custom List</button>`}
           </div>
         `;
         listElement.appendChild(li);
@@ -181,14 +160,35 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Copy module list to user's custom list
+  window.copyToUserList = async function() {
+    try {
+      const moduleImages = await loadModuleImagesList();
+      if (moduleImages && moduleImages.length > 0) {
+        const content = `# xAVS Container Images List
+# One image per line - these will be pulled from quay.io/xavs.images/
+${moduleImages.join('\n')}`;
+        
+        await runCommand(['mkdir', '-p', '/etc/xavs']);
+        await writeFile(IMAGE_LIST_PATH, content);
+        log(`Copied ${moduleImages.length} images to custom list\n`);
+        
+        // Refresh the list and counts
+        await loadCurrentImagesList();
+        await countImagesList();
+      }
+    } catch (e) {
+      log(`Error copying to custom list: ${e.message}\n`);
+    }
+  }
+
   // Delete specific image
   window.deleteImage = async function(index, imageName) {
     if (!confirm(`Delete image "${imageName}"?`)) return;
     
     try {
-      // Get current images list using priority system
-      const currentImagesList = await getImagesList();
-      let images = currentImagesList.split('\n')
+      let imagesList = await readFile(IMAGE_LIST_PATH);
+      let images = imagesList.split('\n')
         .map(line => line.trim())
         .filter(line => line && !line.startsWith('#'));
       
@@ -198,17 +198,15 @@ document.addEventListener('DOMContentLoaded', () => {
 # One image per line - these will be pulled from quay.io/xavs.images/
 ${images.join('\n')}`;
       
-      // Save to system file to persist changes
-      await runCommand(['mkdir', '-p', '/etc/xavs']);
       await writeFile(IMAGE_LIST_PATH, newContent);
-      log(`Deleted image: ${imageName}`);
+      log(`Deleted image: ${imageName}\n`);
       
       // Refresh the list and counts
       await loadCurrentImagesList();
       await countImagesList();
       
     } catch (e) {
-      log(`Error deleting image: ${e.message}`);
+      log(`Error deleting image: ${e.message}\n`);
     }
   }
 
@@ -228,14 +226,14 @@ ${images.join('\n')}`;
 # List is currently empty`;
       
       await writeFile(IMAGE_LIST_PATH, emptyContent);
-      log('All images cleared from list');
+      log('All images cleared from list\n');
       
       // Refresh the list and counts
       await loadCurrentImagesList();
       await countImagesList();
       
     } catch (e) {
-      log(`Error clearing images: ${e.message}`);
+      log(`Error clearing images: ${e.message}\n`);
     }
   });
 
@@ -266,34 +264,6 @@ ${images.join('\n')}`;
   const PUBLIC_REG = 'quay.io';
   const LOCAL_REG_HOST = 'docker-registry:4000';
   const REGISTRY_CONTAINER_NAME = 'docker-registry';
-
-  // ---- Helper to get images list with priority order ----
-  async function getImagesList() {
-    // Priority order: 1. Module file, 2. System file, 3. Generate default
-    const paths = [
-      '/usr/share/cockpit/xavs-images/images-list.txt',  // Module file (highest priority)
-      './images-list.txt',                                // Development path
-      'images-list.txt',                                  // Relative path
-      '/etc/xavs/images.list'                            // System file (fallback)
-    ];
-    
-    for (const path of paths) {
-      try {
-        const content = await readFile(path);
-        if (content && content.trim()) {
-          console.log(`Reading images list from: ${path}`);
-          return content.trim();
-        }
-      } catch (error) {
-        console.log(`Could not read from ${path}: ${error.message}`);
-        continue;
-      }
-    }
-    
-    // If no file found, generate default
-    console.log('No images list file found, generating default');
-    return await generateDefaultImagesList();
-  }
 
   // Global variable to track current pull process
   let currentPullProcess = null;
@@ -422,10 +392,22 @@ ${imagesWithTags.join('\n')}`;
 
   // Test connectivity button
   $('test-connectivity-btn').addEventListener('click', async () => {
-    log('🧪 CONNECTIVITY & PREREQUISITES TEST\n');
-    log('═══════════════════════════════════════════════════════════════\n\n');
+    log('🧪 Testing connectivity... ');
     
-    const testResults = {
+    try {
+      // Quick Docker check
+      await runCommand(['docker', 'version']);
+      
+      // Quick network check
+      await runCommand(['ping', '-c', '1', 'quay.io'], { timeout: 5000 });
+      
+      // Quick registry check
+      await runCommand(['docker', 'manifest', 'inspect', 'quay.io/xavs.images/keystone:2024.1-ubuntu-jammy']);
+      
+      log('✅ All tests passed!\n');
+    } catch (e) {
+      log(`❌ Failed: ${e.message}\n`);
+    }
       docker: { status: 'pending', details: '' },
       network: { status: 'pending', details: '' },
       dockerPull: { status: 'pending', details: '' },
@@ -646,8 +628,39 @@ ${imagesWithTags.join('\n')}`;
       }
 
     log('📋 Reading images list...\n');
-      // Use the priority-based image list loading
-      const imagesList = await getImagesList();
+      // Read images list - prioritize user's custom list, fallback to module
+      let imagesList;
+      let isFromUserFile = false;
+      
+      try {
+        // First try to load from user's custom list
+        imagesList = await readFile(IMAGE_LIST_PATH);
+        if (imagesList && imagesList.trim() !== '' && !imagesList.includes('List is currently empty')) {
+          isFromUserFile = true;
+          log(`✅ Using custom images list (${imagesList.split('\n').filter(l => l.trim() && !l.startsWith('#')).length} images)\n`);
+        } else {
+          throw new Error('User file is empty or not found');
+        }
+      } catch (error) {
+        // Fallback: load from module images list
+        log(`Custom list not available: ${error.message}\n`);
+        log('Loading from module default list...\n');
+        try {
+          const moduleImages = await loadModuleImagesList();
+          if (moduleImages && moduleImages.length > 0) {
+            imagesList = moduleImages.join('\n');
+            isFromUserFile = false;
+            log(`✅ Using module images list (${moduleImages.length} images)\n`);
+          } else {
+            throw new Error('Module images list is empty');
+          }
+        } catch (moduleError) {
+          log(`Module list also failed: ${moduleError.message}\n`);
+          const defaultContent = await generateDefaultImagesList();
+          imagesList = defaultContent;
+          log('✅ Using generated default images list\n');
+        }
+      }
       
       // Parse and pull images
       const images = imagesList && imagesList.trim() ? 
@@ -656,8 +669,8 @@ ${imagesWithTags.join('\n')}`;
           .filter(line => line && !line.startsWith('#')) : [];
       
       if (images.length === 0) {
-        log('No images found in any images list file.\n');
-        log('Please add images to the module images-list.txt file or create /etc/xavs/images.list\n');
+        log('No images found in the images list. Check /etc/xavs/images.list file.\n');
+        log(`imagesList content: "${imagesList}"\n`);
         return;
       }
       
@@ -702,12 +715,12 @@ ${imagesWithTags.join('\n')}`;
       }
       
       if (isPulling) {
-        log(`🎉 Pull operation completed!`);
-        log(`✅ Success: ${successCount} images`);
+        log(`\n🎉 Pull operation completed!\n`);
+        log(`✅ Success: ${successCount} images\n`);
         if (failCount > 0) {
-          log(`❌ Failed: ${failCount} images`);
+          log(`❌ Failed: ${failCount} images\n`);
         }
-        log(`📊 Total processed: ${successCount + failCount}/${images.length} images`);
+        log(`📊 Total processed: ${successCount + failCount}/${images.length} images\n`);
         $('push-btn').disabled = false;
         
         // Refresh images list and counts
@@ -763,7 +776,7 @@ ${imagesWithTags.join('\n')}`;
       await writeFile(DOCKER_DAEMON_JSON, JSON.stringify(DOCKER_CONFIG_TEMPLATE, null, 2));
       log('✅ Applied Docker daemon configuration\n');
       
-      log('🎉 Registry started successfully!');
+      log('🎉 Registry started successfully!\n');
       log('Registry is accessible at: http://docker-registry:4000\n');
       $('restart-docker-btn').disabled = false;
       await checkStatus();
@@ -771,6 +784,23 @@ ${imagesWithTags.join('\n')}`;
       // Container might already exist, that's okay
       if (e.message.includes('already in use')) {
         log('Registry container already exists, checking status...\n');
+        
+        // Check if the existing container is running
+        try {
+          const { stdout } = await runCommand(['docker', 'ps', '--format', '{{.Names}}', '--filter', `name=${REGISTRY_CONTAINER_NAME}`]);
+          const running = stdout.trim() === REGISTRY_CONTAINER_NAME;
+          
+          if (!running) {
+            log('Container exists but is not running, starting it...\n');
+            await runCommand(['docker', 'start', REGISTRY_CONTAINER_NAME]);
+            log('✅ Registry container started successfully!\n');
+          } else {
+            log('✅ Registry container is already running!\n');
+          }
+        } catch (startError) {
+          log(`❌ Error starting existing container: ${startError.message}\n`);
+        }
+        
         await checkStatus();
       } else {
         log(`❌ Error: ${e.message}\n`);
@@ -800,7 +830,7 @@ ${imagesWithTags.join('\n')}`;
       log('Note: /etc/hosts entry for docker-registry is kept for future use\n');
       log('If you want to remove it, manually edit /etc/hosts\n');
       
-      log('🎉 Registry stopped successfully!');
+      log('🎉 Registry stopped successfully!\n');
       await checkStatus();
     } catch (e) {
       log(`❌ Error stopping registry: ${e.message}\n`);
@@ -830,8 +860,8 @@ ${imagesWithTags.join('\n')}`;
   $('push-btn').addEventListener('click', async () => {
     log('Pushing images to local registry…');
     try {
-      // Use the priority-based image list loading
-      const imagesList = await getImagesList();
+      // Read images list
+      const imagesList = await readFile(IMAGE_LIST_PATH);
       const images = imagesList && imagesList.trim() ? 
         imagesList.split('\n')
           .map(line => line.trim())
@@ -919,8 +949,15 @@ ${imagesWithTags.join('\n')}`;
 
   $('view-images-list-btn').addEventListener('click', async () => {
     try {
-      // Use the priority-based image list loading for viewing
-      const content = await getImagesList();
+      let content;
+      try {
+        content = await readFile(IMAGE_LIST_PATH);
+      } catch {
+        content = await generateDefaultImagesList();
+        // Create the file with default content
+        await runCommand(['mkdir', '-p', '/etc/xavs']);
+        await writeFile(IMAGE_LIST_PATH, content);
+      }
       $('images-list-content').textContent = content || 'No images list found';
     } catch (e) {
       log(`Error getting images list: ${e.message}`);
@@ -1199,8 +1236,20 @@ ${imagesWithTags.join('\n')}`;
 
   async function countImagesList() {
     try {
-      // Use the priority-based image list loading
-      const content = await getImagesList();
+      let content;
+      try {
+        // First try to read the actual images list file
+        content = await readFile(IMAGE_LIST_PATH);
+      } catch {
+        // If it doesn't exist, try to read from module file
+        try {
+          const moduleImages = await loadModuleImagesList();
+          content = moduleImages ? moduleImages.join('\n') : '';
+        } catch {
+          // If that fails too, generate default
+          content = await generateDefaultImagesList();
+        }
+      }
       
       if (content) {
         const lines = content.split('\n')
@@ -1242,45 +1291,7 @@ ${imagesWithTags.join('\n')}`;
   $('refresh-overview-btn').addEventListener('click', refreshOverview);
   $('quick-setup-btn').addEventListener('click', quickSetup);
 
-  // ---- Logs Event Listeners ----
-  $('clear-logs-btn').addEventListener('click', () => {
-    $('log').textContent = 'Logs cleared.\n';
-    log('Logs cleared');
-  });
-
-  // Status bar link to logs
-  document.addEventListener('click', (e) => {
-    if (e.target.matches('.status-link[data-tab]')) {
-      e.preventDefault();
-      const tabId = e.target.getAttribute('data-tab');
-      
-      // Switch to the logs tab
-      document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
-      document.querySelectorAll('.tab-pane').forEach(pane => {
-        pane.classList.remove('show', 'active');
-      });
-      
-      document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
-      document.getElementById(tabId).classList.add('show', 'active');
-    }
-  });
-
-  // Clear log functionality
-  $("btn-clear-log").addEventListener("click", () => {
-    if (logEl) logEl.textContent = "";
-    // Clear stored logs too
-    try {
-        sessionStorage.removeItem('xavs-images-logs');
-        localStorage.removeItem('xavs-images-logs');
-    } catch (e) {
-        console.warn('Could not clear stored logs:', e);
-    }
-  });
-
   // initial checks on load
   checkStatus();
   refreshOverview();
-  
-  // Load stored logs after DOM is ready
-  setTimeout(loadStoredLogs, 100);
 });

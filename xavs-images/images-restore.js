@@ -2,52 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const $ = (id) => document.getElementById(id);
 
   // ---- Helpers ----
-  const logEl = $("log");
-  const log = (t="") => {
-    if (!logEl) return;
-    const timestamp = new Date().toLocaleTimeString();
-    const logEntry = `[${timestamp}] ${t}`;
-    logEl.textContent += logEntry + "\n";
-    logEl.scrollTop = logEl.scrollHeight;
-    
-    // Update status bar
-    const statusElement = $('status-text');
-    if (statusElement) statusElement.textContent = t || "Ready";
-    
-    // Store logs for persistence across tabs (localStorage for better cross-tab sync)
-    try {
-        const existingLogs = localStorage.getItem('xavs-images-logs') || '';
-        localStorage.setItem('xavs-images-logs', existingLogs + logEntry + '\n');
-    } catch (e) {
-        // Fallback to sessionStorage if localStorage fails
-        console.warn('localStorage failed, trying sessionStorage:', e);
-        try {
-            const existingLogs = sessionStorage.getItem('xavs-images-logs') || '';
-            sessionStorage.setItem('xavs-images-logs', existingLogs + logEntry + '\n');
-        } catch (e2) {
-            console.warn('Could not store logs:', e2);
-        }
-    }
-  };
-  
-  // Load existing logs from storage on page load
-  const loadStoredLogs = () => {
-    try {
-        let storedLogs = localStorage.getItem('xavs-images-logs');
-        
-        // Fallback to sessionStorage if localStorage is empty
-        if (!storedLogs) {
-            storedLogs = sessionStorage.getItem('xavs-images-logs');
-        }
-        
-        if (storedLogs && logEl) {
-            logEl.textContent = storedLogs;
-            logEl.scrollTop = logEl.scrollHeight;
-        }
-    } catch (e) {
-        console.warn('Could not load stored logs:', e);
-    }
-  };
+  const log = (msg) => { $('log-output').textContent = msg; };
 
   // Cockpit API helper for running commands with superuser privileges
   async function runCommand(args, options = {}) {
@@ -140,8 +95,34 @@ document.addEventListener('DOMContentLoaded', () => {
     countElement.textContent = '(Loading...)';
     
     try {
-      // Use the priority-based image list loading
-      const imagesList = await getImagesList();
+      let imagesList;
+      let isFromUserFile = false;
+      
+      try {
+        // First try to load from user's custom list
+        imagesList = await readFile(IMAGE_LIST_PATH);
+        if (imagesList && imagesList.trim() !== '') {
+          isFromUserFile = true;
+        } else {
+          throw new Error('User file is empty');
+        }
+      } catch (error) {
+        // Fallback: load from module images list
+        try {
+          const moduleImages = await loadModuleImagesList();
+          if (moduleImages && moduleImages.length > 0) {
+            imagesList = moduleImages.join('\n');
+            isFromUserFile = false;
+          } else {
+            throw new Error('Module images list is empty');
+          }
+        } catch (moduleError) {
+          imagesList = '';
+        }
+      }
+      
+      // Update the count element to show source
+      const sourceText = isFromUserFile ? '(custom list)' : '(module default)';
       
       if (!imagesList || imagesList.trim() === '') {
         listElement.innerHTML = '<li class="empty-state">No images configured</li>';
@@ -159,7 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       
-      countElement.textContent = `(${images.length} images)`;
+      countElement.textContent = `(${images.length} images ${sourceText})`;
       listElement.innerHTML = '';
       
       images.forEach((image, index) => {
@@ -167,9 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
         li.innerHTML = `
           <span class="image-name">${image}</span>
           <div class="image-actions">
-            <button class="btn-icon delete" onclick="deleteImage(${index}, '${image.replace(/'/g, "\\'")}')">
-              🗑️
-            </button>
+            ${isFromUserFile ? `<button class="btn-icon delete" onclick="deleteImage(${index}, '${image.replace(/'/g, "\\'")}')">ðŸ—‘ï¸</button>` : `<button class="btn-icon" onclick="copyToUserList()">ðŸ“‹ Copy to Custom List</button>`}
           </div>
         `;
         listElement.appendChild(li);
@@ -181,14 +160,35 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Copy module list to user's custom list
+  window.copyToUserList = async function() {
+    try {
+      const moduleImages = await loadModuleImagesList();
+      if (moduleImages && moduleImages.length > 0) {
+        const content = `# xAVS Container Images List
+# One image per line - these will be pulled from quay.io/xavs.images/
+${moduleImages.join('\n')}`;
+        
+        await runCommand(['mkdir', '-p', '/etc/xavs']);
+        await writeFile(IMAGE_LIST_PATH, content);
+        log(`Copied ${moduleImages.length} images to custom list\n`);
+        
+        // Refresh the list and counts
+        await loadCurrentImagesList();
+        await countImagesList();
+      }
+    } catch (e) {
+      log(`Error copying to custom list: ${e.message}\n`);
+    }
+  }
+
   // Delete specific image
   window.deleteImage = async function(index, imageName) {
     if (!confirm(`Delete image "${imageName}"?`)) return;
     
     try {
-      // Get current images list using priority system
-      const currentImagesList = await getImagesList();
-      let images = currentImagesList.split('\n')
+      let imagesList = await readFile(IMAGE_LIST_PATH);
+      let images = imagesList.split('\n')
         .map(line => line.trim())
         .filter(line => line && !line.startsWith('#'));
       
@@ -198,17 +198,15 @@ document.addEventListener('DOMContentLoaded', () => {
 # One image per line - these will be pulled from quay.io/xavs.images/
 ${images.join('\n')}`;
       
-      // Save to system file to persist changes
-      await runCommand(['mkdir', '-p', '/etc/xavs']);
       await writeFile(IMAGE_LIST_PATH, newContent);
-      log(`Deleted image: ${imageName}`);
+      log(`Deleted image: ${imageName}\n`);
       
       // Refresh the list and counts
       await loadCurrentImagesList();
       await countImagesList();
       
     } catch (e) {
-      log(`Error deleting image: ${e.message}`);
+      log(`Error deleting image: ${e.message}\n`);
     }
   }
 
@@ -228,14 +226,14 @@ ${images.join('\n')}`;
 # List is currently empty`;
       
       await writeFile(IMAGE_LIST_PATH, emptyContent);
-      log('All images cleared from list');
+      log('All images cleared from list\n');
       
       // Refresh the list and counts
       await loadCurrentImagesList();
       await countImagesList();
       
     } catch (e) {
-      log(`Error clearing images: ${e.message}`);
+      log(`Error clearing images: ${e.message}\n`);
     }
   });
 
@@ -266,34 +264,6 @@ ${images.join('\n')}`;
   const PUBLIC_REG = 'quay.io';
   const LOCAL_REG_HOST = 'docker-registry:4000';
   const REGISTRY_CONTAINER_NAME = 'docker-registry';
-
-  // ---- Helper to get images list with priority order ----
-  async function getImagesList() {
-    // Priority order: 1. Module file, 2. System file, 3. Generate default
-    const paths = [
-      '/usr/share/cockpit/xavs-images/images-list.txt',  // Module file (highest priority)
-      './images-list.txt',                                // Development path
-      'images-list.txt',                                  // Relative path
-      '/etc/xavs/images.list'                            // System file (fallback)
-    ];
-    
-    for (const path of paths) {
-      try {
-        const content = await readFile(path);
-        if (content && content.trim()) {
-          console.log(`Reading images list from: ${path}`);
-          return content.trim();
-        }
-      } catch (error) {
-        console.log(`Could not read from ${path}: ${error.message}`);
-        continue;
-      }
-    }
-    
-    // If no file found, generate default
-    console.log('No images list file found, generating default');
-    return await generateDefaultImagesList();
-  }
 
   // Global variable to track current pull process
   let currentPullProcess = null;
@@ -388,7 +358,7 @@ ${imagesWithTags.join('\n')}`;
       return log('Please enter a valid .tar.gz path.');
     }
     
-    log('Extracting and loading images…');
+    log('Extracting and loading imagesâ€¦');
     try {
       // Create xdeploy directory
       await runCommand(['mkdir', '-p', '/root/xdeploy/xdeploy-images']);
@@ -406,7 +376,7 @@ ${imagesWithTags.join('\n')}`;
         log('No .tar files found in the extracted archive\n');
       } else {
         for (const tarFile of tarFiles) {
-          log(`Loading ${tarFile}…\n`);
+          log(`Loading ${tarFile}â€¦\n`);
           await runCommand(['docker', 'load', '-i', tarFile]);
           await runCommand(['rm', tarFile]);
           log(`Removed ${tarFile}\n`);
@@ -422,8 +392,8 @@ ${imagesWithTags.join('\n')}`;
 
   // Test connectivity button
   $('test-connectivity-btn').addEventListener('click', async () => {
-    log('🧪 CONNECTIVITY & PREREQUISITES TEST\n');
-    log('═══════════════════════════════════════════════════════════════\n\n');
+    log('ðŸ§ª CONNECTIVITY & PREREQUISITES TEST\n');
+    log('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n\n');
     
     const testResults = {
       docker: { status: 'pending', details: '' },
@@ -434,19 +404,19 @@ ${imagesWithTags.join('\n')}`;
     };
     
     // Test 1: Docker daemon
-    log('🐳 TEST 1: Docker Daemon Status\n');
-    log('─────────────────────────────────\n');
+    log('ðŸ³ TEST 1: Docker Daemon Status\n');
+    log('â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n');
     try {
       const result = await runCommand(['docker', 'version']);
       const dockerVersion = result.stdout.split('\n')[0];
       testResults.docker = { status: 'pass', details: dockerVersion };
-      log('✅ PASS: Docker daemon is running and accessible\n');
-      log(`   📋 Version: ${dockerVersion}\n\n`);
+      log('âœ… PASS: Docker daemon is running and accessible\n');
+      log(`   ðŸ“‹ Version: ${dockerVersion}\n\n`);
     } catch (e) {
       testResults.docker = { status: 'fail', details: e.message };
-      log('❌ FAIL: Docker daemon is not running or not accessible\n');
-      log(`   ⚠️ Error: ${e.message}\n`);
-      log('   💡 Solution: Start Docker Desktop or run "systemctl start docker"\n\n');
+      log('âŒ FAIL: Docker daemon is not running or not accessible\n');
+      log(`   âš ï¸ Error: ${e.message}\n`);
+      log('   ðŸ’¡ Solution: Start Docker Desktop or run "systemctl start docker"\n\n');
       
       // If Docker fails, show summary and exit
       showTestSummary(testResults);
@@ -454,92 +424,92 @@ ${imagesWithTags.join('\n')}`;
     }
 
     // Test 2: Network connectivity
-    log('🌐 TEST 2: Internet & Registry Connectivity\n');
-    log('─────────────────────────────────────────────\n');
+    log('ðŸŒ TEST 2: Internet & Registry Connectivity\n');
+    log('â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n');
     try {
-      log('   🔍 Pinging quay.io...\n');
+      log('   ðŸ” Pinging quay.io...\n');
       await runCommand(['ping', '-c', '1', 'quay.io'], { timeout: 10000 });
       testResults.network = { status: 'pass', details: 'quay.io reachable' };
-      log('✅ PASS: Can reach quay.io registry\n');
-      log('   📡 Internet connectivity confirmed\n\n');
+      log('âœ… PASS: Can reach quay.io registry\n');
+      log('   ðŸ“¡ Internet connectivity confirmed\n\n');
     } catch (e) {
       testResults.network = { status: 'fail', details: e.message };
-      log('❌ FAIL: Cannot reach quay.io registry\n');
-      log(`   ⚠️ Error: ${e.message}\n`);
-      log('   💡 Solution: Check internet connection and firewall settings\n\n');
+      log('âŒ FAIL: Cannot reach quay.io registry\n');
+      log(`   âš ï¸ Error: ${e.message}\n`);
+      log('   ðŸ’¡ Solution: Check internet connection and firewall settings\n\n');
     }
 
     // Test 3: Docker pull functionality
-    log('📦 TEST 3: Docker Pull Functionality\n');
-    log('─────────────────────────────────────\n');
+    log('ðŸ“¦ TEST 3: Docker Pull Functionality\n');
+    log('â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n');
     try {
-      log('   🔍 Testing with hello-world image...\n');
+      log('   ðŸ” Testing with hello-world image...\n');
       await runCommand(['docker', 'pull', 'hello-world:latest']);
       testResults.dockerPull = { status: 'pass', details: 'hello-world pulled successfully' };
-      log('✅ PASS: Docker pull functionality works\n');
-      log('   📦 Successfully pulled test image\n');
+      log('âœ… PASS: Docker pull functionality works\n');
+      log('   ðŸ“¦ Successfully pulled test image\n');
       
       // Clean up test image
       try {
-        log('   🧹 Cleaning up test image...\n');
+        log('   ðŸ§¹ Cleaning up test image...\n');
         await runCommand(['docker', 'rmi', 'hello-world:latest']);
-        log('   ✅ Test image removed\n\n');
+        log('   âœ… Test image removed\n\n');
       } catch (e) {
-        log('   ⚠️ Test image cleanup skipped\n\n');
+        log('   âš ï¸ Test image cleanup skipped\n\n');
       }
     } catch (e) {
       testResults.dockerPull = { status: 'fail', details: e.message };
-      log('❌ FAIL: Docker pull test failed\n');
-      log(`   ⚠️ Error: ${e.message}\n`);
-      log('   💡 Solution: Check Docker daemon and registry access\n\n');
+      log('âŒ FAIL: Docker pull test failed\n');
+      log(`   âš ï¸ Error: ${e.message}\n`);
+      log('   ðŸ’¡ Solution: Check Docker daemon and registry access\n\n');
     }
 
     // Test 4: /etc/hosts validation
-    log('🏠 TEST 4: Local Registry Hostname Resolution\n');
-    log('───────────────────────────────────────────────\n');
+    log('ðŸ  TEST 4: Local Registry Hostname Resolution\n');
+    log('â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n');
     try {
       const hostsContent = await readFile('/etc/hosts');
       if (hostsContent.includes('docker-registry')) {
         testResults.hostsFile = { status: 'pass', details: 'docker-registry entry exists' };
-        log('✅ PASS: docker-registry entry found in /etc/hosts\n');
-        log('   🏠 Local registry hostname will resolve correctly\n\n');
+        log('âœ… PASS: docker-registry entry found in /etc/hosts\n');
+        log('   ðŸ  Local registry hostname will resolve correctly\n\n');
       } else {
         testResults.hostsFile = { status: 'warning', details: 'docker-registry entry missing' };
-        log('⚠️ WARNING: docker-registry entry NOT found in /etc/hosts\n');
-        log('   � Impact: "docker-registry:4000" may not be resolvable\n');
-        log('   💡 Solution: Click "Run Registry" to add the entry automatically\n\n');
+        log('âš ï¸ WARNING: docker-registry entry NOT found in /etc/hosts\n');
+        log('   ï¿½ Impact: "docker-registry:4000" may not be resolvable\n');
+        log('   ðŸ’¡ Solution: Click "Run Registry" to add the entry automatically\n\n');
       }
     } catch (e) {
       testResults.hostsFile = { status: 'fail', details: e.message };
-      log('❌ FAIL: Could not read /etc/hosts\n');
-      log(`   ⚠️ Error: ${e.message}\n`);
-      log('   💡 Solution: Check file permissions\n\n');
+      log('âŒ FAIL: Could not read /etc/hosts\n');
+      log(`   âš ï¸ Error: ${e.message}\n`);
+      log('   ðŸ’¡ Solution: Check file permissions\n\n');
     }
 
     // Test 5: xAVS registry validation
-    log('🏗️ TEST 5: xAVS Registry & Image Availability\n');
-    log('──────────────────────────────────────────────\n');
+    log('ðŸ—ï¸ TEST 5: xAVS Registry & Image Availability\n');
+    log('â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n');
     try {
-      log('   🔍 Checking keystone image manifest...\n');
+      log('   ðŸ” Checking keystone image manifest...\n');
       await runCommand(['docker', 'manifest', 'inspect', 'quay.io/xavs.images/keystone:2024.1-ubuntu-jammy']);
       testResults.xavsRegistry = { status: 'pass', details: 'keystone manifest accessible' };
-      log('✅ PASS: xAVS registry is accessible\n');
-      log('   📋 Image manifests are available\n');
-      log('   🎯 Images can be pulled successfully\n\n');
+      log('âœ… PASS: xAVS registry is accessible\n');
+      log('   ðŸ“‹ Image manifests are available\n');
+      log('   ðŸŽ¯ Images can be pulled successfully\n\n');
     } catch (e) {
       testResults.xavsRegistry = { status: 'fail', details: e.message };
-      log('❌ FAIL: Could not access xAVS image manifests\n');
-      log(`   ⚠️ Error: ${e.message}\n`);
+      log('âŒ FAIL: Could not access xAVS image manifests\n');
+      log(`   âš ï¸ Error: ${e.message}\n`);
       
       if (e.message.includes('manifest unknown') || e.message.includes('not found')) {
-        log('   💡 Cause: Image may not exist in the registry\n');
-        log('   � Check: https://quay.io/repository/xavs.images/keystone\n');
+        log('   ðŸ’¡ Cause: Image may not exist in the registry\n');
+        log('   ï¿½ Check: https://quay.io/repository/xavs.images/keystone\n');
       } else if (e.message.includes('unauthorized')) {
-        log('   💡 Cause: Authentication required\n');
-        log('   🔧 Solution: Run "docker login quay.io"\n');
+        log('   ðŸ’¡ Cause: Authentication required\n');
+        log('   ðŸ”§ Solution: Run "docker login quay.io"\n');
       } else {
-        log('   💡 Cause: Network or registry issue\n');
-        log('   🔧 Solution: Check internet connection and try again\n');
+        log('   ðŸ’¡ Cause: Network or registry issue\n');
+        log('   ðŸ”§ Solution: Check internet connection and try again\n');
       }
       log('\n');
     }
@@ -550,15 +520,15 @@ ${imagesWithTags.join('\n')}`;
 
   // Function to display test summary
   function showTestSummary(results) {
-    log('📊 TEST RESULTS SUMMARY\n');
-    log('═══════════════════════════════════════════════════════════════\n');
+    log('ðŸ“Š TEST RESULTS SUMMARY\n');
+    log('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n');
     
     const tests = [
-      { name: 'Docker Daemon', key: 'docker', icon: '🐳' },
-      { name: 'Network Connectivity', key: 'network', icon: '🌐' },
-      { name: 'Docker Pull Function', key: 'dockerPull', icon: '📦' },
-      { name: 'Hosts File Setup', key: 'hostsFile', icon: '🏠' },
-      { name: 'xAVS Registry Access', key: 'xavsRegistry', icon: '🏗️' }
+      { name: 'Docker Daemon', key: 'docker', icon: 'ðŸ³' },
+      { name: 'Network Connectivity', key: 'network', icon: 'ðŸŒ' },
+      { name: 'Docker Pull Function', key: 'dockerPull', icon: 'ðŸ“¦' },
+      { name: 'Hosts File Setup', key: 'hostsFile', icon: 'ðŸ ' },
+      { name: 'xAVS Registry Access', key: 'xavsRegistry', icon: 'ðŸ—ï¸' }
     ];
     
     let passCount = 0;
@@ -571,22 +541,22 @@ ${imagesWithTags.join('\n')}`;
       
       switch (result.status) {
         case 'pass':
-          statusIcon = '✅';
+          statusIcon = 'âœ…';
           statusText = 'PASS';
           passCount++;
           break;
         case 'warning':
-          statusIcon = '⚠️';
+          statusIcon = 'âš ï¸';
           statusText = 'WARN';
           warnCount++;
           break;
         case 'fail':
-          statusIcon = '❌';
+          statusIcon = 'âŒ';
           statusText = 'FAIL';
           failCount++;
           break;
         default:
-          statusIcon = '⏳';
+          statusIcon = 'â³';
           statusText = 'SKIP';
       }
       
@@ -594,20 +564,20 @@ ${imagesWithTags.join('\n')}`;
     });
     
     log('\n');
-    log(`📈 OVERALL STATUS: ${passCount} passed, ${warnCount} warnings, ${failCount} failed\n`);
+    log(`ðŸ“ˆ OVERALL STATUS: ${passCount} passed, ${warnCount} warnings, ${failCount} failed\n`);
     
     if (failCount === 0 && warnCount === 0) {
-      log('� EXCELLENT: All tests passed! Ready to pull images.\n');
+      log('ï¿½ EXCELLENT: All tests passed! Ready to pull images.\n');
     } else if (failCount === 0) {
-      log('✅ GOOD: Core functionality working. Warnings can be ignored or fixed.\n');
+      log('âœ… GOOD: Core functionality working. Warnings can be ignored or fixed.\n');
     } else if (failCount === 1 && results.hostsFile.status === 'fail') {
-      log('⚠️ MINOR ISSUE: Only hosts file issue detected. Use "Run Registry" to fix.\n');
+      log('âš ï¸ MINOR ISSUE: Only hosts file issue detected. Use "Run Registry" to fix.\n');
     } else {
-      log('❌ ISSUES DETECTED: Please resolve the failed tests before pulling images.\n');
+      log('âŒ ISSUES DETECTED: Please resolve the failed tests before pulling images.\n');
     }
     
-    log('─────────────────────────────────────────────────────────────────\n');
-    log('💡 TIP: If tests pass, the "Pull Images" operation should work smoothly!\n');
+    log('â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€\n');
+    log('ðŸ’¡ TIP: If tests pass, the "Pull Images" operation should work smoothly!\n');
   }
 
   $('pull-btn').addEventListener('click', async () => {
@@ -621,7 +591,7 @@ ${imagesWithTags.join('\n')}`;
       return;
     }
 
-    log('🔍 Checking prerequisites...\n');
+    log('ðŸ” Checking prerequisites...\n');
     isPulling = true;
     $('pull-btn').textContent = 'Stop Pull';
     $('pull-btn').className = 'btn btn-danger';
@@ -631,7 +601,7 @@ ${imagesWithTags.join('\n')}`;
       log('Checking Docker daemon...\n');
       try {
         await runCommand(['docker', 'version']);
-        log('✅ Docker daemon is running\n');
+        log('âœ… Docker daemon is running\n');
       } catch (e) {
         throw new Error('Docker daemon is not running. Please start Docker first.');
       }
@@ -640,14 +610,45 @@ ${imagesWithTags.join('\n')}`;
       log('Testing registry connectivity...\n');
       try {
         await runCommand(['docker', 'pull', '--help'], { timeout: 5000 });
-        log('✅ Docker pull command is available\n');
+        log('âœ… Docker pull command is available\n');
       } catch (e) {
-        log('⚠️ Docker pull command test failed, but continuing...\n');
+        log('âš ï¸ Docker pull command test failed, but continuing...\n');
       }
 
-    log('📋 Reading images list...\n');
-      // Use the priority-based image list loading
-      const imagesList = await getImagesList();
+    log('ðŸ“‹ Reading images list...\n');
+      // Read images list - prioritize user's custom list, fallback to module
+      let imagesList;
+      let isFromUserFile = false;
+      
+      try {
+        // First try to load from user's custom list
+        imagesList = await readFile(IMAGE_LIST_PATH);
+        if (imagesList && imagesList.trim() !== '' && !imagesList.includes('List is currently empty')) {
+          isFromUserFile = true;
+          log(`âœ… Using custom images list (${imagesList.split('\n').filter(l => l.trim() && !l.startsWith('#')).length} images)\n`);
+        } else {
+          throw new Error('User file is empty or not found');
+        }
+      } catch (error) {
+        // Fallback: load from module images list
+        log(`Custom list not available: ${error.message}\n`);
+        log('Loading from module default list...\n');
+        try {
+          const moduleImages = await loadModuleImagesList();
+          if (moduleImages && moduleImages.length > 0) {
+            imagesList = moduleImages.join('\n');
+            isFromUserFile = false;
+            log(`âœ… Using module images list (${moduleImages.length} images)\n`);
+          } else {
+            throw new Error('Module images list is empty');
+          }
+        } catch (moduleError) {
+          log(`Module list also failed: ${moduleError.message}\n`);
+          const defaultContent = await generateDefaultImagesList();
+          imagesList = defaultContent;
+          log('âœ… Using generated default images list\n');
+        }
+      }
       
       // Parse and pull images
       const images = imagesList && imagesList.trim() ? 
@@ -656,8 +657,8 @@ ${imagesWithTags.join('\n')}`;
           .filter(line => line && !line.startsWith('#')) : [];
       
       if (images.length === 0) {
-        log('No images found in any images list file.\n');
-        log('Please add images to the module images-list.txt file or create /etc/xavs/images.list\n');
+        log('No images found in the images list. Check /etc/xavs/images.list file.\n');
+        log(`imagesList content: "${imagesList}"\n`);
         return;
       }
       
@@ -668,33 +669,33 @@ ${imagesWithTags.join('\n')}`;
       
       for (let i = 0; i < images.length; i++) {
         if (!isPulling) {
-          log('\n🛑 Pull operation was stopped by user.\n');
+          log('\nðŸ›‘ Pull operation was stopped by user.\n');
           break;
         }
         
         const image = images[i];
         const ref = `${PUBLIC_REG}/xavs.images/${image}`;
-        log(`📦 [${i + 1}/${images.length}] Pulling ${image}...\n`);
-        log(`🔗 Full reference: ${ref}\n`);
+        log(`ðŸ“¦ [${i + 1}/${images.length}] Pulling ${image}...\n`);
+        log(`ðŸ”— Full reference: ${ref}\n`);
         
         try {
           await runCommand(['docker', 'pull', ref]);
           successCount++;
-          log(`✅ [${i + 1}/${images.length}] Successfully pulled ${image}\n\n`);
+          log(`âœ… [${i + 1}/${images.length}] Successfully pulled ${image}\n\n`);
         } catch (error) {
           failCount++;
-          log(`❌ [${i + 1}/${images.length}] Failed to pull ${image}\n`);
-          log(`🔍 Error details: ${error.message}\n`);
+          log(`âŒ [${i + 1}/${images.length}] Failed to pull ${image}\n`);
+          log(`ðŸ” Error details: ${error.message}\n`);
           
           // Provide specific error diagnostics
           if (error.message.includes('manifest unknown') || error.message.includes('not found')) {
-            log(`💡 This image may not exist in the registry. Check: https://quay.io/repository/xavs.images/${image.split(':')[0]}\n`);
+            log(`ðŸ’¡ This image may not exist in the registry. Check: https://quay.io/repository/xavs.images/${image.split(':')[0]}\n`);
           } else if (error.message.includes('connection') || error.message.includes('network')) {
-            log(`💡 Network connectivity issue. Check internet connection and registry access.\n`);
+            log(`ðŸ’¡ Network connectivity issue. Check internet connection and registry access.\n`);
           } else if (error.message.includes('unauthorized') || error.message.includes('authentication')) {
-            log(`💡 Authentication issue. You may need to login: docker login quay.io\n`);
+            log(`ðŸ’¡ Authentication issue. You may need to login: docker login quay.io\n`);
           } else if (error.message.includes('timeout')) {
-            log(`💡 Request timeout. The registry may be slow or overloaded.\n`);
+            log(`ðŸ’¡ Request timeout. The registry may be slow or overloaded.\n`);
           }
           log('\n');
           // Continue with next image instead of stopping
@@ -702,12 +703,12 @@ ${imagesWithTags.join('\n')}`;
       }
       
       if (isPulling) {
-        log(`🎉 Pull operation completed!`);
-        log(`✅ Success: ${successCount} images`);
+        log(`\nðŸŽ‰ Pull operation completed!\n`);
+        log(`âœ… Success: ${successCount} images\n`);
         if (failCount > 0) {
-          log(`❌ Failed: ${failCount} images`);
+          log(`âŒ Failed: ${failCount} images\n`);
         }
-        log(`📊 Total processed: ${successCount + failCount}/${images.length} images`);
+        log(`ðŸ“Š Total processed: ${successCount + failCount}/${images.length} images\n`);
         $('push-btn').disabled = false;
         
         // Refresh images list and counts
@@ -718,7 +719,7 @@ ${imagesWithTags.join('\n')}`;
       }
       
     } catch (e) {
-      log(`❌ Error: ${e.message}\n`);
+      log(`âŒ Error: ${e.message}\n`);
     } finally {
       isPulling = false;
       currentPullProcess = null;
@@ -728,7 +729,7 @@ ${imagesWithTags.join('\n')}`;
   });
 
   $('run-registry-btn').addEventListener('click', async () => {
-    log('Starting docker-registry (host network, port 4000)…\n');
+    log('Starting docker-registry (host network, port 4000)â€¦\n');
     try {
       // Check if hosts entry exists and add if needed
       log('Checking /etc/hosts for docker-registry entry...\n');
@@ -738,12 +739,12 @@ ${imagesWithTags.join('\n')}`;
           log('Adding docker-registry entry to /etc/hosts...\n');
           const newHostsContent = hostsContent.trim() + '\n127.0.0.1\tdocker-registry\n';
           await writeFile('/etc/hosts', newHostsContent);
-          log('✅ Added docker-registry to /etc/hosts\n');
+          log('âœ… Added docker-registry to /etc/hosts\n');
         } else {
-          log('✅ docker-registry entry already exists in /etc/hosts\n');
+          log('âœ… docker-registry entry already exists in /etc/hosts\n');
         }
       } catch (e) {
-        log(`⚠️ Could not update /etc/hosts: ${e.message}\n`);
+        log(`âš ï¸ Could not update /etc/hosts: ${e.message}\n`);
         log('Registry may not be accessible via hostname docker-registry\n');
       }
 
@@ -761,9 +762,9 @@ ${imagesWithTags.join('\n')}`;
       log('Updating Docker daemon configuration...\n');
       await runCommand(['mkdir', '-p', '/etc/docker']);
       await writeFile(DOCKER_DAEMON_JSON, JSON.stringify(DOCKER_CONFIG_TEMPLATE, null, 2));
-      log('✅ Applied Docker daemon configuration\n');
+      log('âœ… Applied Docker daemon configuration\n');
       
-      log('🎉 Registry started successfully!');
+      log('ðŸŽ‰ Registry started successfully!\n');
       log('Registry is accessible at: http://docker-registry:4000\n');
       $('restart-docker-btn').disabled = false;
       await checkStatus();
@@ -771,9 +772,26 @@ ${imagesWithTags.join('\n')}`;
       // Container might already exist, that's okay
       if (e.message.includes('already in use')) {
         log('Registry container already exists, checking status...\n');
+        
+        // Check if the existing container is running
+        try {
+          const { stdout } = await runCommand(['docker', 'ps', '--format', '{{.Names}}', '--filter', `name=${REGISTRY_CONTAINER_NAME}`]);
+          const running = stdout.trim() === REGISTRY_CONTAINER_NAME;
+          
+          if (!running) {
+            log('Container exists but is not running, starting it...\n');
+            await runCommand(['docker', 'start', REGISTRY_CONTAINER_NAME]);
+            log('âœ… Registry container started successfully!\n');
+          } else {
+            log('âœ… Registry container is already running!\n');
+          }
+        } catch (startError) {
+          log(`âŒ Error starting existing container: ${startError.message}\n`);
+        }
+        
         await checkStatus();
       } else {
-        log(`❌ Error: ${e.message}\n`);
+        log(`âŒ Error: ${e.message}\n`);
       }
     }
   });
@@ -784,31 +802,31 @@ ${imagesWithTags.join('\n')}`;
       // Stop and remove the registry container
       try {
         await runCommand(['docker', 'stop', REGISTRY_CONTAINER_NAME]);
-        log('✅ Registry container stopped\n');
+        log('âœ… Registry container stopped\n');
       } catch (e) {
-        log(`⚠️ Could not stop container (may not be running): ${e.message}\n`);
+        log(`âš ï¸ Could not stop container (may not be running): ${e.message}\n`);
       }
       
       try {
         await runCommand(['docker', 'rm', REGISTRY_CONTAINER_NAME]);
-        log('✅ Registry container removed\n');
+        log('âœ… Registry container removed\n');
       } catch (e) {
-        log(`⚠️ Could not remove container: ${e.message}\n`);
+        log(`âš ï¸ Could not remove container: ${e.message}\n`);
       }
 
       // Optionally remove hosts entry (ask user or just inform)
       log('Note: /etc/hosts entry for docker-registry is kept for future use\n');
       log('If you want to remove it, manually edit /etc/hosts\n');
       
-      log('🎉 Registry stopped successfully!');
+      log('ðŸŽ‰ Registry stopped successfully!\n');
       await checkStatus();
     } catch (e) {
-      log(`❌ Error stopping registry: ${e.message}\n`);
+      log(`âŒ Error stopping registry: ${e.message}\n`);
     }
   });
 
   $('restart-docker-btn').addEventListener('click', async () => {
-    log('Restarting Docker…');
+    log('Restarting Dockerâ€¦');
     try {
       await runCommand(['systemctl', 'restart', 'docker']);
       
@@ -828,10 +846,10 @@ ${imagesWithTags.join('\n')}`;
   $('check-status-btn').addEventListener('click', checkStatus);
 
   $('push-btn').addEventListener('click', async () => {
-    log('Pushing images to local registry…');
+    log('Pushing images to local registryâ€¦');
     try {
-      // Use the priority-based image list loading
-      const imagesList = await getImagesList();
+      // Read images list
+      const imagesList = await readFile(IMAGE_LIST_PATH);
       const images = imagesList && imagesList.trim() ? 
         imagesList.split('\n')
           .map(line => line.trim())
@@ -846,10 +864,10 @@ ${imagesWithTags.join('\n')}`;
         const src = `${PUBLIC_REG}/xavs.images/${image}`;
         const dest = `${LOCAL_REG_HOST}/xavs.images/${image}`;
         
-        log(`Tagging ${src} -> ${dest}…\n`);
+        log(`Tagging ${src} -> ${dest}â€¦\n`);
         await runCommand(['docker', 'tag', src, dest]);
         
-        log(`Pushing ${dest}…\n`);
+        log(`Pushing ${dest}â€¦\n`);
         await runCommand(['docker', 'push', dest]);
         
         // Remove source image to save space
@@ -871,7 +889,7 @@ ${imagesWithTags.join('\n')}`;
 
   // ---- Docker Configuration Actions ----
   $('apply-docker-config-btn').addEventListener('click', async () => {
-    log('Applying Docker daemon configuration…');
+    log('Applying Docker daemon configurationâ€¦');
     try {
       // Ensure directory exists
       await runCommand(['mkdir', '-p', '/etc/docker']);
@@ -901,7 +919,7 @@ ${imagesWithTags.join('\n')}`;
       log(`Applied Docker configuration to ${DOCKER_DAEMON_JSON}\n`);
       
       // Restart Docker service
-      log('Restarting Docker service…\n');
+      log('Restarting Docker serviceâ€¦\n');
       await runCommand(['systemctl', 'restart', 'docker']);
       
       // Wait and check status
@@ -919,8 +937,15 @@ ${imagesWithTags.join('\n')}`;
 
   $('view-images-list-btn').addEventListener('click', async () => {
     try {
-      // Use the priority-based image list loading for viewing
-      const content = await getImagesList();
+      let content;
+      try {
+        content = await readFile(IMAGE_LIST_PATH);
+      } catch {
+        content = await generateDefaultImagesList();
+        // Create the file with default content
+        await runCommand(['mkdir', '-p', '/etc/xavs']);
+        await writeFile(IMAGE_LIST_PATH, content);
+      }
       $('images-list-content').textContent = content || 'No images list found';
     } catch (e) {
       log(`Error getting images list: ${e.message}`);
@@ -931,7 +956,7 @@ ${imagesWithTags.join('\n')}`;
     const content = $('images-list-editor').value.trim();
     if (!content) return log('Please enter image list content');
     
-    log('Updating images list…');
+    log('Updating images listâ€¦');
     try {
       // Ensure directory exists
       await runCommand(['mkdir', '-p', '/etc/xavs']);
@@ -969,7 +994,7 @@ ${imagesWithTags.join('\n')}`;
 
   async function refreshCatalog() {
     const ul = $('catalog');
-    ul.innerHTML = '<li>🔍 Checking local registry...</li>';
+    ul.innerHTML = '<li>ðŸ” Checking local registry...</li>';
     
     try {
       // First check if the local registry container is running
@@ -979,11 +1004,11 @@ ${imagesWithTags.join('\n')}`;
         if (!stdout || !stdout.includes(REGISTRY_CONTAINER_NAME)) {
           throw new Error('Local registry container is not running');
         }
-        log('✅ Local registry container is running\n');
+        log('âœ… Local registry container is running\n');
       } catch (e) {
         ul.innerHTML = `
           <li class="registry-error">
-            <div>❌ Local registry is not running</div>
+            <div>âŒ Local registry is not running</div>
             <div class="error-hint">Start the local registry first using the "Start Registry" button in the Registry tab</div>
           </li>`;
         log(`Registry status check failed: ${e.message}\n`);
@@ -991,14 +1016,14 @@ ${imagesWithTags.join('\n')}`;
       }
 
       // Test registry connectivity
-      ul.innerHTML = '<li>🌐 Testing registry connectivity...</li>';
+      ul.innerHTML = '<li>ðŸŒ Testing registry connectivity...</li>';
       try {
         await runCommand(['curl', '-f', '-s', '--connect-timeout', '5', `http://${LOCAL_REG_HOST}/v2/`]);
-        log('✅ Registry API is accessible\n');
+        log('âœ… Registry API is accessible\n');
       } catch (e) {
         ul.innerHTML = `
           <li class="registry-error">
-            <div>❌ Registry API not accessible</div>
+            <div>âŒ Registry API not accessible</div>
             <div class="error-hint">Registry may be starting up or there's a network issue</div>
           </li>`;
         log(`Registry connectivity test failed: ${e.message}\n`);
@@ -1006,7 +1031,7 @@ ${imagesWithTags.join('\n')}`;
       }
 
       // Get registry catalog
-      ul.innerHTML = '<li>📋 Loading catalog...</li>';
+      ul.innerHTML = '<li>ðŸ“‹ Loading catalog...</li>';
       const { stdout } = await runCommand(['curl', '-s', `http://${LOCAL_REG_HOST}/v2/_catalog`]);
       const data = JSON.parse(stdout);
       const repositories = data.repositories || [];
@@ -1015,7 +1040,7 @@ ${imagesWithTags.join('\n')}`;
       if (repositories.length === 0) {
         ul.innerHTML = `
           <li class="registry-empty">
-            <div>📦 Registry is empty</div>
+            <div>ðŸ“¦ Registry is empty</div>
             <div class="empty-hint">Push some images to see them listed here</div>
           </li>`;
         log('Local registry is running but contains no images\n');
@@ -1025,7 +1050,7 @@ ${imagesWithTags.join('\n')}`;
           const li = document.createElement('li');
           li.innerHTML = `
             <div class="repo-item">
-              <span class="repo-name">📦 ${repo}</span>
+              <span class="repo-name">ðŸ“¦ ${repo}</span>
               <span class="repo-actions">
                 <button class="btn-small" onclick="inspectImage('${repo}')">Inspect</button>
               </span>
@@ -1037,7 +1062,7 @@ ${imagesWithTags.join('\n')}`;
       // If catalog fetch fails, show detailed error
       ul.innerHTML = `
         <li class="registry-error">
-          <div>❌ Failed to load catalog</div>
+          <div>âŒ Failed to load catalog</div>
           <div class="error-details">${e.message}</div>
           <div class="error-hint">
             Check if the local registry is running and accessible at ${LOCAL_REG_HOST}
@@ -1049,7 +1074,7 @@ ${imagesWithTags.join('\n')}`;
 
   // Function to inspect an image in the local registry
   window.inspectImage = async function(imageName) {
-    log(`🔍 Inspecting image: ${imageName}\n`);
+    log(`ðŸ” Inspecting image: ${imageName}\n`);
     try {
       // Get image tags
       const { stdout } = await runCommand(['curl', '-s', `http://${LOCAL_REG_HOST}/v2/${imageName}/tags/list`]);
@@ -1199,8 +1224,20 @@ ${imagesWithTags.join('\n')}`;
 
   async function countImagesList() {
     try {
-      // Use the priority-based image list loading
-      const content = await getImagesList();
+      let content;
+      try {
+        // First try to read the actual images list file
+        content = await readFile(IMAGE_LIST_PATH);
+      } catch {
+        // If it doesn't exist, try to read from module file
+        try {
+          const moduleImages = await loadModuleImagesList();
+          content = moduleImages ? moduleImages.join('\n') : '';
+        } catch {
+          // If that fails too, generate default
+          content = await generateDefaultImagesList();
+        }
+      }
       
       if (content) {
         const lines = content.split('\n')
@@ -1242,45 +1279,7 @@ ${imagesWithTags.join('\n')}`;
   $('refresh-overview-btn').addEventListener('click', refreshOverview);
   $('quick-setup-btn').addEventListener('click', quickSetup);
 
-  // ---- Logs Event Listeners ----
-  $('clear-logs-btn').addEventListener('click', () => {
-    $('log').textContent = 'Logs cleared.\n';
-    log('Logs cleared');
-  });
-
-  // Status bar link to logs
-  document.addEventListener('click', (e) => {
-    if (e.target.matches('.status-link[data-tab]')) {
-      e.preventDefault();
-      const tabId = e.target.getAttribute('data-tab');
-      
-      // Switch to the logs tab
-      document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
-      document.querySelectorAll('.tab-pane').forEach(pane => {
-        pane.classList.remove('show', 'active');
-      });
-      
-      document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
-      document.getElementById(tabId).classList.add('show', 'active');
-    }
-  });
-
-  // Clear log functionality
-  $("btn-clear-log").addEventListener("click", () => {
-    if (logEl) logEl.textContent = "";
-    // Clear stored logs too
-    try {
-        sessionStorage.removeItem('xavs-images-logs');
-        localStorage.removeItem('xavs-images-logs');
-    } catch (e) {
-        console.warn('Could not clear stored logs:', e);
-    }
-  });
-
   // initial checks on load
   checkStatus();
   refreshOverview();
-  
-  // Load stored logs after DOM is ready
-  setTimeout(loadStoredLogs, 100);
 });

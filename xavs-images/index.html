@@ -30,6 +30,7 @@
       <li><a href="#" class="nav-link" data-tab="tab-push"><i class="fa fa-upload"></i> Push Images</a></li>
       <li><a href="#" class="nav-link" data-tab="tab-catalog"><i class="fa fa-list"></i> Catalog</a></li>
       <li><a href="#" class="nav-link" data-tab="tab-config"><i class="fa fa-cog"></i> Configuration</a></li>
+      <li><a href="#" class="nav-link" data-tab="tab-logs"><i class="fa fa-terminal"></i> Logs</a></li>
     </ul>
 
     <main class="tab-content">
@@ -146,6 +147,21 @@
             Reads image names from <code>/etc/xavs/images.list</code> and pulls from
             <code>quay.io/xavs.images/&lt;name&gt;:&lt;tag&gt;</code>.
           </p>
+          
+          <!-- Current Images List -->
+          <div class="images-list-section">
+            <h4>📦 Current Images List <span id="current-images-count">(Loading...)</span></h4>
+            <div class="images-list-container">
+              <ul id="current-images-list" class="images-list">
+                <li>Loading images...</li>
+              </ul>
+            </div>
+            <div class="images-list-actions">
+              <button class="btn btn-outline-secondary" id="refresh-images-list-btn">🔄 Refresh List</button>
+              <button class="btn btn-outline-danger" id="clear-all-images-btn">🗑️ Clear All</button>
+            </div>
+          </div>
+          
           <div class="actions">
             <button class="btn btn-outline-secondary" id="test-connectivity-btn">Test Connectivity</button>
             <button class="btn btn-outline-brand" id="pull-btn">Pull from Xloud</button>
@@ -161,6 +177,7 @@
         </div>
         <div class="actions">
           <button class="btn btn-outline-muted" id="run-registry-btn">Run Registry</button>
+          <button class="btn btn-outline-danger" id="stop-registry-btn">Stop Registry</button>
           <button class="btn btn-outline-muted" id="restart-docker-btn" disabled>Restart Docker</button>
           <button class="btn btn-outline-brand" id="check-status-btn">Re-check Status</button>
         </div>
@@ -237,10 +254,26 @@
           </details>
         </div>
       </section>
+
+      <!-- TAB 7: LOGS -->
+      <section id="tab-logs" class="tab-pane">
+        <div class="card">
+          <strong>Execution Log</strong>
+          <pre class="yaml-terminal" id="log"></pre>
+          <div class="footer-actions">
+            <button class="btn btn-outline-muted" id="btn-clear-log" type="button">Clear log</button>
+          </div>
+        </div>
+      </section>
     </main>
 
-    <!-- Log -->
-    <div class="alert" id="log-output">Ready.</div>
+    <!-- Status Bar -->
+    <div class="status-bar">
+      <span id="status-text">Ready</span>
+      <span class="status-actions">
+        <a href="#" class="status-link" data-tab="tab-logs">View Logs</a>
+      </span>
+    </div>
   </div>
 
   <script src="xavs-images.js"></script>
