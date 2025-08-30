@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>XAVS Deploy - Fixed Issues Test</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="page-wrap">
+    <h1>Issues Fixed - Test Page</h1>
+
+    <div class="card controls-card">
+      <div class="body">
+        <div class="controls-grid">
+          <!-- Command Selection -->
+          <div class="flex-col">
+            <div class="hdr">Command</div>
+            <select id="command" class="btn ghost">
+              <option value="bootstrap-servers">bootstrap-servers (Services disabled)</option>
+              <option value="deploy">deploy (Services enabled)</option>
+              <option value="install-deps">install-deps (Services disabled)</option>
+              <option value="reconfigure">reconfigure (Services enabled)</option>
+            </select>
+          </div>
+
+          <!-- Services Section -->
+          <div class="flex-col" id="services-section">
+            <div class="hdr">Services</div>
+            <div id="services-grid" class="services-grid">
+              <span class="chip" data-svc="keystone">keystone</span>
+              <span class="chip" data-svc="glance">glance</span>
+              <span class="chip" data-svc="nova">nova</span>
+              <span class="chip" data-svc="neutron">neutron</span>
+              <span class="chip" data-svc="cinder">cinder</span>
+            </div>
+            <input id="custom-services" class="btn ghost mono" placeholder="Other services">
+          </div>
+
+          <!-- Host Selection -->
+          <div class="flex-col">
+            <div class="hdr">Host Management Test</div>
+            
+            <!-- Host selection tabs -->
+            <div class="host-tabs">
+              <button class="host-tab active" data-tab="all">All Hosts</button>
+              <button class="host-tab" data-tab="limit">Limit Hosts</button>
+              <button class="host-tab" data-tab="tags">Host Patterns</button>
+            </div>
+            
+            <!-- All hosts mode -->
+            <div id="all-hosts-tab" class="host-tab-content active">
+              <div class="host-option">
+                <label><input type="radio" name="host-mode" value="all" checked> Use all hosts from inventory</label>
+              </div>
+            </div>
+            
+            <!-- Limit hosts mode -->
+            <div id="limit-hosts-tab" class="host-tab-content">
+              <div class="host-option">
+                <label><input type="radio" name="host-mode" value="limit"> Limit to specific hosts:</label>
+              </div>
+              <div style="font-size: 11px; color: #666; margin: 4px 0; font-style: italic;">
+                ✓ Check the boxes below to select specific hosts:
+              </div>
+              <div id="limit-hosts-box" class="host-selection-box brand-outline">
+                <label><input type="checkbox" class="bxc" value="controller-1"> controller-1</label>
+                <label><input type="checkbox" class="bxc" value="controller-2"> controller-2</label>
+                <label><input type="checkbox" class="bxc" value="compute-1"> compute-1</label>
+                <label><input type="checkbox" class="bxc" value="compute-2"> compute-2</label>
+              </div>
+            </div>
+            
+            <!-- Tag hosts mode -->
+            <div id="tags-hosts-tab" class="host-tab-content">
+              <div class="host-option">
+                <label><input type="radio" name="host-mode" value="tags"> Target hosts by patterns:</label>
+              </div>
+              <div style="font-size: 11px; color: #666; margin: 4px 0; font-style: italic;">
+                ✓ Enter host patterns in the field below:
+              </div>
+              <div class="tag-selection">
+                <input id="tag-input" class="btn ghost mono" placeholder="e.g., control,compute,controller-*" disabled>
+              </div>
+            </div>
+            
+            <div class="hdr">Available Hosts (Info Only)</div>
+            <div id="available-hosts" class="host-list">
+              <div class="host-info-header" style="font-size: 11px; color: #666; margin-bottom: 4px; font-style: italic;">
+                📋 Inventory hosts (for reference - use tabs above to select):
+              </div>
+              <div class="host-container" style="background: #f8f9fa; padding: 8px; border-radius: 4px; border: 1px solid #e9ecef;">
+                <span class="host-item" style="color: #495057; font-weight: 500;">controller-1</span>
+                <span class="host-separator" style="color: #6c757d;">, </span>
+                <span class="host-item" style="color: #495057; font-weight: 500;">controller-2</span>
+                <span class="host-separator" style="color: #6c757d;">, </span>
+                <span class="host-item" style="color: #495057; font-weight: 500;">compute-1</span>
+                <span class="host-separator" style="color: #6c757d;">, </span>
+                <span class="host-item" style="color: #495057; font-weight: 500;">compute-2</span>
+              </div>
+            </div>
+            
+            <div class="hdr">Selected Configuration</div>
+            <div id="selected-hosts">
+              <span class="pill success">✓ All hosts (4 hosts from inventory)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top: 20px; padding: 16px; background: #f8f9fa; border-radius: 8px;">
+      <h3>Test Instructions:</h3>
+      <ol>
+        <li><strong>Services Section:</strong> Change command to "bootstrap-servers" - services should become disabled with gray overlay and message</li>
+        <li><strong>Host Selection:</strong> Click different host tabs - only the active tab should be highlighted</li>
+        <li><strong>Limit Hosts:</strong> Click "Limit Hosts" tab and check some boxes - configuration should update</li>
+        <li><strong>Host Patterns:</strong> Click "Host Patterns" tab and enter text - configuration should update</li>
+        <li><strong>Available Hosts:</strong> Should show info message and not be clickable for selection</li>
+      </ol>
+    </div>
+  </div>
+
+  <script>
+    // Simple test implementation of the core functionality
+    const selectedServices = new Set();
+    const selectedHosts = new Set();
+    let hostMode = 'all';
+    const availableHostsList = ['controller-1', 'controller-2', 'compute-1', 'compute-2'];
+    
+    const NO_TAG_COMMANDS = new Set(['bootstrap-servers', 'install-deps']);
+    
+    const els = {
+      command: document.getElementById('command'),
+      servicesSection: document.getElementById('services-section'),
+      servicesGrid: document.getElementById('services-grid'),
+      customServices: document.getElementById('custom-services'),
+      selectedHosts: document.getElementById('selected-hosts'),
+      tagInput: document.getElementById('tag-input'),
+      limitHostsBox: document.getElementById('limit-hosts-box')
+    };
+
+    function grayServices(disabled) {
+      els.servicesSection.style.opacity = disabled ? 0.4 : 1;
+      els.servicesSection.style.pointerEvents = disabled ? "none" : "auto";
+      els.customServices.disabled = disabled;
+      
+      els.servicesGrid.querySelectorAll(".chip").forEach(chip => {
+        chip.setAttribute("aria-disabled", disabled ? "true" : "false");
+        if (disabled) {
+          chip.classList.remove("active");
+          selectedServices.delete(chip.dataset.svc);
+          chip.style.opacity = "0.5";
+          chip.style.cursor = "not-allowed";
+        } else {
+          chip.style.opacity = "1";
+          chip.style.cursor = "pointer";
+        }
+      });
+      
+      const existingMessage = els.servicesSection.querySelector('.disabled-message');
+      if (disabled) {
+        if (!existingMessage) {
+          const message = document.createElement('div');
+          message.className = 'disabled-message';
+          message.style.cssText = 'color: #666; font-size: 12px; margin-top: 8px; font-style: italic;';
+          message.textContent = 'Service selection disabled for this command';
+          els.servicesSection.appendChild(message);
+        }
+      } else if (existingMessage) {
+        existingMessage.remove();
+      }
+    }
+
+    function updateSelectedConfiguration() {
+      let configText = '';
+      let statusClass = 'info';
+      
+      switch (hostMode) {
+        case 'all':
+          configText = `✓ All hosts (${availableHostsList.length} hosts from inventory)`;
+          statusClass = 'success';
+          break;
+        case 'limit':
+          const limitedHosts = [...selectedHosts];
+          if (limitedHosts.length === 0) {
+            configText = '⚠ No hosts selected - please check hosts in "Limit Hosts" tab above';
+            statusClass = 'warning';
+          } else {
+            configText = `✓ Limited to: ${limitedHosts.join(', ')} (${limitedHosts.length} hosts)`;
+            statusClass = 'success';
+          }
+          break;
+        case 'tags':
+          const tags = els.tagInput?.value.trim();
+          if (!tags) {
+            configText = '⚠ No host patterns specified - enter patterns in "Host Patterns" tab above';
+            statusClass = 'warning';
+          } else {
+            configText = `✓ Host patterns: ${tags}`;
+            statusClass = 'success';
+          }
+          break;
+      }
+      
+      const pillClass = `pill ${statusClass}`;
+      els.selectedHosts.innerHTML = `<span class="${pillClass}">${configText}</span>`;
+    }
+
+    function updateHostInputStates() {
+      if (els.tagInput) {
+        els.tagInput.disabled = hostMode !== 'tags';
+      }
+      
+      if (hostMode !== 'limit') {
+        selectedHosts.clear();
+        els.limitHostsBox?.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+          cb.checked = false;
+        });
+      }
+      
+      if (hostMode !== 'tags') {
+        if (els.tagInput) {
+          els.tagInput.value = '';
+        }
+      }
+      
+      // Highlight active tab
+      const allTab = document.querySelector('[data-tab="all"]');
+      const limitTab = document.querySelector('[data-tab="limit"]');
+      const tagsTab = document.querySelector('[data-tab="tags"]');
+      
+      [allTab, limitTab, tagsTab].forEach(tab => {
+        if (tab) {
+          tab.style.backgroundColor = '';
+          tab.style.color = '';
+        }
+      });
+      
+      const activeTab = document.querySelector(`[data-tab="${hostMode}"]`);
+      if (activeTab) {
+        activeTab.style.backgroundColor = '#197560';
+        activeTab.style.color = 'white';
+      }
+    }
+
+    // Event listeners
+    els.command.addEventListener('change', () => {
+      grayServices(NO_TAG_COMMANDS.has(els.command.value));
+    });
+
+    // Host tabs
+    document.querySelectorAll('.host-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const tabId = tab.dataset.tab;
+        
+        // Update tab appearance
+        document.querySelectorAll('.host-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        
+        // Update tab content
+        document.querySelectorAll('.host-tab-content').forEach(content => content.classList.remove('active'));
+        document.getElementById(`${tabId}-hosts-tab`).classList.add('active');
+        
+        // Update radio button
+        const radio = document.querySelector(`input[name="host-mode"][value="${tabId}"]`);
+        if (radio) {
+          radio.checked = true;
+          hostMode = tabId;
+        }
+        
+        updateHostInputStates();
+        updateSelectedConfiguration();
+      });
+    });
+
+    // Host checkboxes
+    els.limitHostsBox.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        const host = e.target.value;
+        if (e.target.checked) {
+          selectedHosts.add(host);
+        } else {
+          selectedHosts.delete(host);
+        }
+        updateSelectedConfiguration();
+      });
+    });
+
+    // Tag input
+    if (els.tagInput) {
+      els.tagInput.addEventListener('input', updateSelectedConfiguration);
+    }
+
+    // Radio buttons
+    document.querySelectorAll('input[name="host-mode"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        hostMode = radio.value;
+        updateHostInputStates();
+        updateSelectedConfiguration();
+      });
+    });
+
+    // Service chips
+    els.servicesGrid.addEventListener('click', (e) => {
+      const chip = e.target.closest('.chip');
+      if (!chip || els.servicesSection.style.pointerEvents === 'none') return;
+      chip.classList.toggle('active');
+    });
+
+    // Initialize
+    grayServices(NO_TAG_COMMANDS.has(els.command.value));
+    updateHostInputStates();
+    updateSelectedConfiguration();
+  </script>
+</body>
+</html>

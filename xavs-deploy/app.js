@@ -1,21 +1,44 @@
 /*
- * Streaming approach (plain spawn, no colors, no PTY) + UX fixes:
- * - Services & hosts wrap responsively (CSS change in index.html)
- * - Shows "Stopped" (not "Completed") when user cancels
- * - Never prints an error line if the process succeeds
- * - bootstrap-servers default; services disabled for commands without -t
+ * XAVS Deploy - Kolla Ansible GUI
+ * Production version - Complete SOP integration with safety features
+ * Copyright 2025 - XAVS Project
  */
+
+// @ts-nocheck
+/* global cockpit */
+/* eslint-env browser */
 
 (() => {
   const INVENTORY = "/root/xdeploy/nodes";
   const VENV_ACTIVATE = "/opt/xenv/bin/activate";
 
-  // Commands that DO NOT support -t (services)
+  // Commands that DO NOT support -t (services/tags) based on SOP
   const NO_TAG_COMMANDS = new Set([
+    "install-deps",
     "bootstrap-servers",
     "mariadb_recovery",
+    "mariadb_backup",
+    "rabbitmq-reset-state",
+    "rabbitmq-upgrade",
+    "deploy-bifrost",
+    "deploy-servers", 
+    "upgrade-bifrost",
+    "certificates",
+    "octavia-certificates",
     "prune-images",
-    "gather-facts"
+    "nova-libvirt-cleanup",
+    "genconfig",
+    "validate-config",
+    "gather-facts",
+    "stop",
+    "destroy"
+  ]);
+
+  // Commands that require --yes-i-really-really-mean-it flag
+  const DANGEROUS_COMMANDS = new Set([
+    "stop",
+    "destroy", 
+    "prune-images"
   ]);
 
   const els = {
@@ -39,7 +62,11 @@
     playbookProgress: document.getElementById("playbook-progress"),
     tasksList: document.getElementById("tasks-list"),
     summaryStats: document.getElementById("summary-stats"),
-    taskCount: document.getElementById("task-count")
+    taskCount: document.getElementById("task-count"),
+    dryRunCheck: document.getElementById("dryRunCheck"),
+    backupType: document.getElementById("backupType"),
+    backupOptions: document.getElementById("backup-options"),
+    dangerWarning: document.getElementById("danger-warning")
   };
 
   let runningProc = null;
@@ -63,6 +90,7 @@
 
   /* ---------- console ---------- */
   function appendConsole(text) {
+    if (!els.console) return;
     els.console.textContent += text;
     els.console.scrollTop = els.console.scrollHeight;
   }
@@ -124,7 +152,9 @@
     
     // Auto-scroll to bottom to show latest task
     requestAnimationFrame(() => {
-      els.tasksList.scrollTop = els.tasksList.scrollHeight;
+      if (els.tasksList) {
+        els.tasksList.scrollTop = els.tasksList.scrollHeight;
+      }
     });
   }
 
@@ -269,9 +299,6 @@
         if (match) {
           const host = match[1];
           
-          // Debug logging
-          console.log(`[DEBUG] Matched result: status=${status}, host=${host}, line="${lineText}"`);
-          
           // Try to extract additional message information
           let msg = '';
           if ((status === 'failed') && lineText.includes('=>')) {
@@ -295,7 +322,6 @@
             msg: msg
           };
           
-          console.log(`[DEBUG] Adding task with status: ${status}`, taskData);
           addTaskToDisplay(taskData);
           playbookStats[status]++;
           playbookStats.total++;
@@ -311,22 +337,57 @@
 
   /* ---------- services ---------- */
   function grayServices(disabled) {
+    if (!els.servicesSection) return;
+    
     els.servicesSection.style.opacity = disabled ? 0.4 : 1;
     els.servicesSection.style.pointerEvents = disabled ? "none" : "auto";
-    els.customServices.disabled = disabled;
-    els.servicesGrid.querySelectorAll(".chip")
-      .forEach(c => c.setAttribute("aria-disabled", disabled ? "true" : "false"));
+    
+    if (els.customServices) {
+      els.customServices.disabled = disabled;
+    }
+    
+    // Add visual feedback to service chips
+    if (els.servicesGrid) {
+      els.servicesGrid.querySelectorAll(".chip").forEach(chip => {
+        chip.setAttribute("aria-disabled", disabled ? "true" : "false");
+        if (disabled) {
+          chip.classList.remove("active");
+          selectedServices.delete(chip.dataset.svc);
+          chip.style.opacity = "0.5";
+          chip.style.cursor = "not-allowed";
+        } else {
+          chip.style.opacity = "1";
+          chip.style.cursor = "pointer";
+        }
+      });
+    }
+    
+    // Add disabled state message
+    if (els.servicesSection) {
+      const existingMessage = els.servicesSection.querySelector('.disabled-message');
+      if (disabled) {
+        if (!existingMessage) {
+          const message = document.createElement('div');
+          message.className = 'disabled-message';
+          message.style.cssText = 'color: #666; font-size: 12px; margin-top: 8px; font-style: italic;';
+          message.textContent = 'Service selection disabled for this command';
+          els.servicesSection.appendChild(message);
+        }
+      } else if (existingMessage) {
+        existingMessage.remove();
+      }
+    }
   }
   function onChipClick(e) {
     const chip = e.target.closest(".chip");
-    if (!chip || els.servicesSection.style.pointerEvents === "none") return;
+    if (!chip || !els.servicesSection || els.servicesSection.style.pointerEvents === "none") return;
     const svc = chip.dataset.svc;
     chip.classList.toggle("active");
     if (chip.classList.contains("active")) selectedServices.add(svc);
     else selectedServices.delete(svc);
   }
   function getSelectedServices() {
-    const extra = els.customServices.value.split(",").map(s => s.trim()).filter(Boolean);
+    const extra = els.customServices?.value ? els.customServices.value.split(",").map(s => s.trim()).filter(Boolean) : [];
     return [...selectedServices, ...extra];
   }
 
@@ -380,36 +441,75 @@
     if (els.tagInput) {
       els.tagInput.disabled = hostMode !== 'tags';
     }
+    
+    // Clear selections when switching modes for better UX
+    if (hostMode !== 'limit') {
+      selectedHosts.clear();
+      // Uncheck all checkboxes in limit hosts
+      els.limitHostsBox?.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        cb.checked = false;
+      });
+    }
+    
+    if (hostMode !== 'tags') {
+      if (els.tagInput) {
+        els.tagInput.value = '';
+      }
+    }
+    
+    // Add visual feedback to show which tab is active
+    const allTab = document.querySelector('[data-tab="all"]');
+    const limitTab = document.querySelector('[data-tab="limit"]');
+    const tagsTab = document.querySelector('[data-tab="tags"]');
+    
+    // Reset all tabs
+    [allTab, limitTab, tagsTab].forEach(tab => {
+      if (tab) tab.style.backgroundColor = '';
+    });
+    
+    // Highlight active tab
+    const activeTab = document.querySelector(`[data-tab="${hostMode}"]`);
+    if (activeTab) {
+      activeTab.style.backgroundColor = '#197560';
+      activeTab.style.color = 'white';
+    }
   }
   
   function updateSelectedConfiguration() {
     if (!els.selectedHosts) return;
     
     let configText = '';
+    let statusClass = 'info';
     
     switch (hostMode) {
       case 'all':
-        configText = `All hosts (${availableHostsList.length} hosts)`;
+        configText = `✓ All hosts (${availableHostsList.length} hosts from inventory)`;
+        statusClass = 'success';
         break;
       case 'limit':
         const limitedHosts = [...selectedHosts];
         if (limitedHosts.length === 0) {
-          configText = 'No hosts selected for limit';
+          configText = '⚠ No hosts selected - please check hosts in "Limit Hosts" tab above';
+          statusClass = 'warning';
         } else {
-          configText = `Limited to: ${limitedHosts.join(', ')}`;
+          configText = `✓ Limited to: ${limitedHosts.join(', ')} (${limitedHosts.length} hosts)`;
+          statusClass = 'success';
         }
         break;
       case 'tags':
         const tags = els.tagInput?.value.trim();
         if (!tags) {
-          configText = 'No tags specified';
+          configText = '⚠ No host patterns specified - enter patterns in "Host Patterns" tab above';
+          statusClass = 'warning';
         } else {
-          configText = `Hosts with tags: ${tags}`;
+          configText = `✓ Host patterns: ${tags}`;
+          statusClass = 'success';
         }
         break;
     }
     
-    els.selectedHosts.innerHTML = `<span class="pill">${configText}</span>`;
+    const pillClass = `pill ${statusClass}`;
+    els.selectedHosts.innerHTML = `<span class="${pillClass}">${configText}</span>`;
   }
 
   function renderSelectedPills() {
@@ -467,21 +567,31 @@
       return;
     }
     
-    els.availableHosts.innerHTML = '';
+    // Add header with clear explanation
+    els.availableHosts.innerHTML = '<div class="host-info-header" style="font-size: 11px; color: #666; margin-bottom: 4px; font-style: italic;">📋 Inventory hosts (for reference - use tabs above to select):</div>';
+    
+    const hostContainer = document.createElement('div');
+    hostContainer.className = 'host-container';
+    hostContainer.style.cssText = 'background: #f8f9fa; padding: 8px; border-radius: 4px; border: 1px solid #e9ecef;';
+    
     hosts.forEach((host, index) => {
       const hostSpan = document.createElement('span');
       hostSpan.className = 'host-item';
+      hostSpan.style.cssText = 'color: #495057; font-weight: 500;';
       hostSpan.textContent = host;
-      els.availableHosts.appendChild(hostSpan);
+      hostContainer.appendChild(hostSpan);
       
       // Add comma separator except for last item
       if (index < hosts.length - 1) {
         const separator = document.createElement('span');
         separator.className = 'host-separator';
         separator.textContent = ', ';
-        els.availableHosts.appendChild(separator);
+        separator.style.color = '#6c757d';
+        hostContainer.appendChild(separator);
       }
     });
+    
+    els.availableHosts.appendChild(hostContainer);
   }
 
   /* ---------- inventory parsing ---------- */
@@ -489,8 +599,6 @@
     const hosts = new Set();
     const lines = text.split(/\r?\n/);
     let currentSection = null;
-    
-    console.log("[DEBUG] Parsing inventory file...");
     
     for (const raw of lines) {
       const line = raw.replace(/[#;].*$/, "").trim();
@@ -500,7 +608,6 @@
       const sectionMatch = line.match(/^\[([^\]]+)\]$/);
       if (sectionMatch) {
         currentSection = sectionMatch[1].trim();
-        console.log(`[DEBUG] Found section: [${currentSection}]`);
         continue;
       }
       
@@ -514,34 +621,27 @@
         const host = line.split(/\s+/)[0];
         if (host && !host.startsWith("[")) {
           hosts.add(host);
-          console.log(`[DEBUG] Added host: ${host} from section [${currentSection}]`);
         }
       }
     }
     
     const hostList = [...hosts].sort((a,b)=>a.localeCompare(b));
-    console.log(`[DEBUG] Total hosts found: ${hostList.length}`, hostList);
     return hostList;
   }
   async function loadHosts() {
-    console.log(`[DEBUG] Loading hosts from inventory: ${INVENTORY}`);
     try {
       const file = cockpit.file(INVENTORY, { superuser:"try" });
       const txt = await file.read();
-      console.log(`[DEBUG] Inventory file content length: ${txt.length} characters`);
       
       if (!txt.trim()) {
-        console.log("[DEBUG] Inventory file is empty");
         renderHostCheckboxes([]);
         appendConsole(`(warn) Inventory file is empty. Using all hosts.\n`);
         return;
       }
       
       const hosts = parseInventory(txt);
-      console.log(`[DEBUG] Parsed ${hosts.length} hosts from inventory`);
       
       if (hosts.length === 0) {
-        console.log("[DEBUG] No hosts found in inventory");
         appendConsole(`(warn) No hosts found in inventory file. Using all hosts.\n`);
       } else {
         appendConsole(`(info) Loaded ${hosts.length} hosts from inventory: ${hosts.join(', ')}\n`);
@@ -549,7 +649,6 @@
       
       renderHostCheckboxes(hosts);
     } catch (error) {
-      console.log(`[DEBUG] Error loading inventory:`, error);
       renderHostCheckboxes([]); // at least show (all)
       appendConsole(`(warn) Unable to read hosts from inventory file: ${error.message || error}. Using all hosts.\n`);
     }
@@ -557,33 +656,102 @@
 
   /* ---------- collapsible sections ---------- */
   function initCollapsibleSections() {
-    if (els.toggleTasksBtn) {
+    if (els.toggleTasksBtn && els.tasksList) {
       els.toggleTasksBtn.addEventListener('click', () => {
-        const isCollapsed = els.tasksList.style.display === 'none';
-        els.tasksList.style.display = isCollapsed ? 'block' : 'none';
-        els.toggleTasksBtn.textContent = isCollapsed ? '−' : '+';
+        // Check if element is currently visible using computed style
+        const currentDisplay = window.getComputedStyle(els.tasksList).display;
+        const isCurrentlyVisible = currentDisplay !== 'none';
+        
+        els.tasksList.style.display = isCurrentlyVisible ? 'none' : '';
+        els.toggleTasksBtn.textContent = isCurrentlyVisible ? '+' : '−';
+        
+        // Toggle minimized class on the tasks container for proper collapsing
+        const tasksContainer = els.tasksList.closest('.tasks-container');
+        if (tasksContainer) {
+          tasksContainer.classList.toggle('minimized', isCurrentlyVisible);
+        }
+        
+        // Add some visual feedback
+        els.toggleTasksBtn.style.transform = 'scale(0.95)';
+        setTimeout(() => {
+          els.toggleTasksBtn.style.transform = '';
+        }, 100);
       });
     }
     
-    if (els.toggleConsoleBtn) {
+    if (els.toggleConsoleBtn && els.consoleBody) {
       els.toggleConsoleBtn.addEventListener('click', () => {
-        const isCollapsed = els.consoleBody.style.display === 'none';
-        els.consoleBody.style.display = isCollapsed ? 'block' : 'none';
-        els.toggleConsoleBtn.textContent = isCollapsed ? '−' : '+';
-        els.toggleConsoleBtn.parentElement.parentElement.parentElement.classList.toggle('minimized', !isCollapsed);
+        // Check if element is currently visible using computed style
+        const currentDisplay = window.getComputedStyle(els.consoleBody).display;
+        const isCurrentlyVisible = currentDisplay !== 'none';
+        
+        els.consoleBody.style.display = isCurrentlyVisible ? 'none' : '';
+        els.toggleConsoleBtn.textContent = isCurrentlyVisible ? '+' : '−';
+        
+        // Toggle minimized class on the card
+        const card = els.toggleConsoleBtn.closest('.card');
+        if (card) {
+          card.classList.toggle('minimized', isCurrentlyVisible);
+        }
+        
+        // Add some visual feedback
+        els.toggleConsoleBtn.style.transform = 'scale(0.95)';
+        setTimeout(() => {
+          els.toggleConsoleBtn.style.transform = '';
+        }, 100);
       });
+    }
+  }
+
+  /* ---------- options handling ---------- */
+  function updateOptionsVisibility() {
+    const cmd = els.command.value;
+    
+    // Show backup options only for mariadb_backup command
+    if (els.backupOptions) {
+      els.backupOptions.style.display = cmd === "mariadb_backup" ? "block" : "none";
+    }
+    
+    // Show warning for dangerous commands
+    if (els.dangerWarning) {
+      if (DANGEROUS_COMMANDS.has(cmd)) {
+        els.dangerWarning.style.display = "block";
+        els.dangerWarning.innerHTML = `
+          <div class="warning-box">
+            ⚠️ <strong>Dangerous Operation!</strong><br>
+            <small>This command will automatically include --yes-i-really-really-mean-it</small>
+          </div>
+        `;
+      } else {
+        els.dangerWarning.style.display = "none";
+      }
     }
   }
 
   /* ---------- build command ---------- */
   function buildCommand() {
+    if (!els.command) {
+      console.error("Command element not found");
+      return '';
+    }
+    
     const cmd = els.command.value;
     const services = getSelectedServices();
-    const dryRun = els.dryRunFlag && els.dryRunFlag.checked;
+    let extraFlags = "";
     
+    // Add --check flag if dry run is selected
+    if (els.dryRunCheck && els.dryRunCheck.checked) {
+      extraFlags += " --check";
+    }
+
+    // Add dangerous command confirmation flag
+    if (DANGEROUS_COMMANDS.has(cmd)) {
+      extraFlags += " --yes-i-really-really-mean-it";
+    }
+
     // Build --tags argument for service-specific operations
     const tagsArg = NO_TAG_COMMANDS.has(cmd) ? "" : (services.length ? ` --tags ${services.join(",")}` : "");
-    
+
     // Build --limit argument for host targeting
     let limitArg = "";
     switch (hostMode) {
@@ -603,31 +771,38 @@
         // No limit argument for all hosts mode
         break;
     }
+
+    // Special handling for specific commands
+    let specialArgs = "";
     
-    // Add --check for dry run
-    const checkArg = dryRun ? " --check" : "";
+    // MariaDB backup type
+    if (cmd === "mariadb_backup") {
+      const backupType = els.backupType?.value || "full";
+      if (backupType === "incremental") {
+        specialArgs += " --incremental";
+      } else {
+        specialArgs += " --full";
+      }
+    }
     
+    // RabbitMQ upgrade version (example)
+    if (cmd === "rabbitmq-upgrade") {
+      // Could add UI for version selection
+      specialArgs += " 3.13";
+    }
+    
+    // Octavia certificate expiry check
+    if (cmd === "octavia-certificates" && els.dryRunCheck && els.dryRunCheck.checked) {
+      specialArgs += " --check-expiry 30";
+    }
+
     // Build command to match manual execution format
-    return `source ${VENV_ACTIVATE} && kolla-ansible -i ${INVENTORY} ${cmd}${tagsArg}${limitArg}${checkArg}`.trim();
+    return `source ${VENV_ACTIVATE} && kolla-ansible -i ${INVENTORY} ${cmd}${tagsArg}${limitArg}${specialArgs}${extraFlags}`.trim();
   }
 
-  // Backup button logic
-  if (els.backupFullBtn) {
-    els.backupFullBtn.addEventListener('click', () => {
-      const backupCmd = `source ${VENV_ACTIVATE} && kolla-ansible -i ${INVENTORY} mariadb_backup --full`;
-      appendConsole(`▶ Full DB backup: ${backupCmd}\n`);
-      // ...run backupCmd logic here...
-    });
-  }
-  if (els.backupIncBtn) {
-    els.backupIncBtn.addEventListener('click', () => {
-      const backupCmd = `source ${VENV_ACTIVATE} && kolla-ansible -i ${INVENTORY} mariadb_backup --incremental`;
-      appendConsole(`▶ Incremental DB backup: ${backupCmd}\n`);
-      // ...run backupCmd logic here...
-    });
-  }
   /* ---------- run / stop ---------- */
   function setRunningUI(on){
+    if (!els.runBtn) return;
     if (on){ els.runBtn.classList.remove("primary"); els.runBtn.classList.add("danger"); els.runBtn.textContent="Stop"; }
     else   { els.runBtn.classList.remove("danger");  els.runBtn.classList.add("primary"); els.runBtn.textContent="Run"; }
   }
@@ -637,9 +812,12 @@
     userStopped = false;
     resetProgress();
     setRunningUI(true);
-    appendConsole(`▶ ${els.command.value} started at ${new Date().toLocaleString()}\n`);
-    appendConsole(`Debug - hostMode: ${hostMode}, selectedHosts.size: ${selectedHosts.size}\n`);
-    appendConsole(`Debug - Command: ${finalCmd}\n\n`);
+    
+    if (els.command && els.command.value) {
+      appendConsole(`▶ ${els.command.value} started at ${new Date().toLocaleString()}\n`);
+    } else {
+      appendConsole(`▶ Command started at ${new Date().toLocaleString()}\n`);
+    }
 
     const opts = { err:"out", superuser:"try" };
     runningProc = cockpit.spawn(["bash","-lc", finalCmd], opts);
@@ -697,12 +875,22 @@
 
   /* ---------- init ---------- */
   function init() {
-    els.servicesGrid.addEventListener("click", onChipClick);
-    els.runBtn.addEventListener("click", () => runningProc ? stop() : start());
-    els.clearBtn.addEventListener("click", () => { 
-      els.console.textContent = "";
-      resetProgress();
-    });
+    if (els.servicesGrid) {
+      els.servicesGrid.addEventListener("click", onChipClick);
+    }
+    
+    if (els.runBtn) {
+      els.runBtn.addEventListener("click", () => runningProc ? stop() : start());
+    }
+    
+    if (els.clearBtn) {
+      els.clearBtn.addEventListener("click", () => { 
+        if (els.console) {
+          els.console.textContent = "";
+        }
+        resetProgress();
+      });
+    }
     
     // Add refresh hosts button
     if (els.refreshHostsBtn) {
@@ -713,9 +901,13 @@
       });
     }
 
-    els.command.addEventListener("change", () => grayServices(NO_TAG_COMMANDS.has(els.command.value)));
+    els.command.addEventListener("change", () => {
+      grayServices(NO_TAG_COMMANDS.has(els.command.value));
+      updateOptionsVisibility();
+    });
 
     grayServices(NO_TAG_COMMANDS.has(els.command.value)); // bootstrap-servers disables -t
+    updateOptionsVisibility(); // Initialize options visibility
     resetProgress(); // Initialize progress display
     
     // Initialize new features

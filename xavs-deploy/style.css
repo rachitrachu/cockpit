@@ -140,7 +140,7 @@ h1 {
   border: 1px solid var(--border);
   border-bottom: none;
   border-radius: 4px 4px 0 0;
-  color: var(--muted);
+  color: #333; /* Use darker color for better contrast on light background */
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -149,6 +149,8 @@ h1 {
 .host-tab:hover {
   background: var(--surface);
   color: var(--text);
+  border-color: var(--brand);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .host-tab.active {
@@ -208,6 +210,44 @@ h1 {
   color: var(--muted);
   font-style: italic;
   margin-top: 4px;
+}
+
+.option-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  margin: 0;
+}
+
+.backup-options {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.warning-box {
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid #ffc107;
+  border-radius: 4px;
+  padding: 12px;
+  margin-top: 12px;
+  color: #856404;
+  font-size: 13px;
+}
+
+.warning-box strong {
+  color: #b45309;
 }
 
 .example-command {
@@ -499,6 +539,21 @@ input[type="checkbox"].bxc:disabled {
   gap: 4px;
 }
 
+.pill.success {
+  background: var(--ok);
+  color: white;
+}
+
+.pill.warning {
+  background: var(--changed);
+  color: white;
+}
+
+.pill.info {
+  background: var(--brand);
+  color: white;
+}
+
 .pill .x {
   margin-left: 6px;
   cursor: pointer;
@@ -596,6 +651,16 @@ input[type="checkbox"].bxc:disabled {
   height: 400px; /* Fixed height for better layout */
   display: flex;
   flex-direction: column;
+  transition: height 0.3s ease, min-height 0.3s ease;
+}
+
+.tasks-container.minimized {
+  height: auto;
+  min-height: auto;
+}
+
+.tasks-container.minimized .tasks-header {
+  border-bottom: none;
 }
 
 .tasks-header {
@@ -850,17 +915,4 @@ input[type="checkbox"].bxc:disabled {
 
 .brand-outline {
   border-color: var(--brand) !important;
-}
-
-.backup-options {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-.dryrun-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 500;
-  margin-top: 8px;
 }

@@ -19,23 +19,72 @@
           <div class="flex-col">
             <div class="hdr">Action</div>
             <select id="command" class="btn" aria-label="xAVS command">
-              <!-- default + order -->
-              <option value="bootstrap-servers" selected>bootstrap-servers</option>
+              <!-- Core Deployment Workflow -->
+              <option value="install-deps">install-deps</option>
               <option value="prechecks">prechecks</option>
+              <option value="bootstrap-servers" selected>bootstrap-servers</option>
               <option value="deploy">deploy</option>
               <option value="post-deploy">post-deploy</option>
-
-              <!-- others -->
+              
+              <!-- Service Management -->
               <option value="pull">pull</option>
               <option value="reconfigure">reconfigure</option>
               <option value="upgrade">upgrade</option>
               <option value="stop">stop</option>
+              <option value="destroy">destroy</option>
+              
+              <!-- Container Operations -->
               <option value="deploy-containers">deploy-containers</option>
               <option value="prune-images">prune-images</option>
-              <option value="genconfig">genconfig</option>
-              <option value="gather-facts">gather-facts</option>
+              <option value="nova-libvirt-cleanup">nova-libvirt-cleanup</option>
+              
+              <!-- Database Operations -->
               <option value="mariadb_recovery">mariadb_recovery</option>
+              <option value="mariadb_backup">mariadb_backup</option>
+              
+              <!-- Message Queue Operations -->
+              <option value="rabbitmq-reset-state">rabbitmq-reset-state</option>
+              <option value="rabbitmq-upgrade">rabbitmq-upgrade</option>
+              
+              <!-- Bifrost Operations -->
+              <option value="deploy-bifrost">deploy-bifrost</option>
+              <option value="deploy-servers">deploy-servers</option>
+              <option value="upgrade-bifrost">upgrade-bifrost</option>
+              
+              <!-- Certificate Management -->
+              <option value="certificates">certificates</option>
+              <option value="octavia-certificates">octavia-certificates</option>
+              
+              <!-- Configuration Management -->
+              <option value="genconfig">genconfig</option>
+              <option value="validate-config">validate-config</option>
+              <option value="gather-facts">gather-facts</option>
             </select>
+          </div>
+
+          <!-- Options -->
+          <div class="flex-col">
+            <div class="hdr">Options</div>
+            <div class="option-controls">
+              <label class="checkbox-label">
+                <input type="checkbox" id="dryRunCheck" class="bxc">
+                <span>Dry Run (--check)</span>
+              </label>
+              <small class="help-text">Preview changes without applying them</small>
+            </div>
+            
+            <!-- Backup type (only shown for mariadb_backup) -->
+            <div id="backup-options" class="backup-options" style="display: none;">
+              <div class="hdr">Backup Type</div>
+              <select id="backupType" class="btn">
+                <option value="full" selected>Full Backup (--full)</option>
+                <option value="incremental">Incremental Backup (--incremental)</option>
+              </select>
+              <small class="help-text">Full backup is recommended before major changes</small>
+            </div>
+            
+            <!-- Danger warning (shown for dangerous commands) -->
+            <div id="danger-warning" style="display: none;"></div>
           </div>
 
           <!-- service chips (--tags) -->
@@ -43,6 +92,7 @@
             <div class="hdr">Services (optional)</div>
             <small class="help-text">Select services to target with --tags</small>
             <div id="services-grid" class="services-grid">
+              <!-- Core OpenStack Services -->
               <span class="chip" data-svc="keystone">keystone</span>
               <span class="chip" data-svc="glance">glance</span>
               <span class="chip" data-svc="nova">nova</span>
@@ -50,12 +100,26 @@
               <span class="chip" data-svc="placement">placement</span>
               <span class="chip" data-svc="cinder">cinder</span>
               <span class="chip" data-svc="horizon">horizon</span>
+              
+              <!-- Additional OpenStack Services -->
               <span class="chip" data-svc="heat">heat</span>
               <span class="chip" data-svc="swift">swift</span>
               <span class="chip" data-svc="barbican">barbican</span>
               <span class="chip" data-svc="magnum">magnum</span>
               <span class="chip" data-svc="octavia">octavia</span>
               <span class="chip" data-svc="masakari">masakari</span>
+              
+              <!-- Infrastructure Services -->
+              <span class="chip" data-svc="mariadb">mariadb</span>
+              <span class="chip" data-svc="rabbitmq">rabbitmq</span>
+              <span class="chip" data-svc="haproxy">haproxy</span>
+              <span class="chip" data-svc="memcached">memcached</span>
+              
+              <!-- Monitoring & Logging -->
+              <span class="chip" data-svc="prometheus">prometheus</span>
+              <span class="chip" data-svc="fluentd">fluentd</span>
+              <span class="chip" data-svc="grafana">grafana</span>
+              <span class="chip" data-svc="elasticsearch">elasticsearch</span>
             </div>
             <input id="custom-services" class="btn ghost mono" placeholder="Other services (comma separated)">
           </div>
@@ -86,6 +150,9 @@
               <div class="host-option">
                 <label><input type="radio" name="host-mode" value="limit"> Limit to specific hosts (--limit):</label>
               </div>
+              <div style="font-size: 11px; color: #666; margin: 4px 0; font-style: italic;">
+                ✓ Check the boxes below to select specific hosts for deployment:
+              </div>
               <div id="limit-hosts-box" class="host-selection-box brand-outline"></div>
             </div>
             
@@ -93,6 +160,9 @@
             <div id="tags-hosts-tab" class="host-tab-content">
               <div class="host-option">
                 <label><input type="radio" name="host-mode" value="tags"> Target hosts by patterns (--limit):</label>
+              </div>
+              <div style="font-size: 11px; color: #666; margin: 4px 0; font-style: italic;">
+                ✓ Enter host patterns in the field below:
               </div>
               <div class="tag-selection">
                 <input id="tag-input" class="btn ghost mono" placeholder="Enter host patterns (e.g., control,compute,controller-*)" disabled>
@@ -104,20 +174,6 @@
             <div id="available-hosts" class="host-list"></div>
             <div class="hdr">Selected Configuration</div>
             <div id="selected-hosts"></div>
-          </div>
-
-          <div class="flex-col">
-            <div class="hdr">Database Backup</div>
-            <small class="help-text">Recommended before upgrade, reconfigure, or major changes</small>
-            <div class="backup-options">
-              <button id="backupFullBtn" class="btn ghost">Full Backup</button>
-              <button id="backupIncBtn" class="btn ghost">Incremental Backup</button>
-            </div>
-            <small class="help-text">Command: <code>kolla-ansible -i inventory mariadb_backup --full</code> or <code>--incremental</code></small>
-          </div>
-
-          <div class="flex-col">
-            <label class="dryrun-label"><input type="checkbox" id="dryRunFlag"> Dry Run <span class="help-text">(--check)</span></label>
           </div>
 
           <div class="controls-actions">
