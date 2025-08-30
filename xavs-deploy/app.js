@@ -4,17 +4,12 @@
  * Copyright 2025 - XAVS Project
  */
 
-// @ts-nocheck
-/* global cockpit */
-/* eslint-env browser */
-
 (() => {
   const INVENTORY = "/root/xdeploy/nodes";
   const VENV_ACTIVATE = "/opt/xenv/bin/activate";
 
   // Commands that DO NOT support -t (services/tags) based on SOP
   const NO_TAG_COMMANDS = new Set([
-    "install-deps",
     "bootstrap-servers",
     "mariadb_recovery",
     "mariadb_backup",
@@ -25,7 +20,6 @@
     "upgrade-bifrost",
     "certificates",
     "octavia-certificates",
-    "prune-images",
     "nova-libvirt-cleanup",
     "genconfig",
     "validate-config",
@@ -37,8 +31,7 @@
   // Commands that require --yes-i-really-really-mean-it flag
   const DANGEROUS_COMMANDS = new Set([
     "stop",
-    "destroy", 
-    "prune-images"
+    "destroy"
   ]);
 
   const els = {
@@ -46,6 +39,8 @@
     servicesSection: document.getElementById("services-section"),
     servicesGrid: document.getElementById("services-grid"),
     customServices: document.getElementById("custom-services"),
+    serviceStatus: document.getElementById("service-status"),
+    servicesSummary: document.getElementById("services-summary"),
     limitHostsBox: document.getElementById("limit-hosts-box"),
     tagInput: document.getElementById("tag-input"),
     availableHosts: document.getElementById("available-hosts"),
@@ -336,6 +331,52 @@
   }
 
   /* ---------- services ---------- */
+  function updateServiceStatus() {
+    if (!els.serviceStatus) return;
+    
+    const cmd = els.command?.value;
+    const selectedCount = selectedServices.size;
+    const customCount = els.customServices?.value ? els.customServices.value.split(",").filter(Boolean).length : 0;
+    const totalSelected = selectedCount + customCount;
+    
+    if (NO_TAG_COMMANDS.has(cmd)) {
+      els.serviceStatus.innerHTML = '<span class="pill warning">Services disabled for this command</span>';
+      updateServicesSummary('disabled');
+    } else if (totalSelected === 0) {
+      els.serviceStatus.innerHTML = '<span class="pill info">All services (default)</span>';
+      updateServicesSummary('all');
+    } else {
+      els.serviceStatus.innerHTML = `<span class="pill success">${totalSelected} service${totalSelected > 1 ? 's' : ''} selected</span>`;
+      updateServicesSummary('selected', totalSelected);
+    }
+  }
+  
+  function updateServicesSummary(state, count = 0) {
+    if (!els.servicesSummary) return;
+    
+    let content = '';
+    let className = 'services-summary';
+    
+    switch (state) {
+      case 'disabled':
+        content = '⚠️ Service selection is disabled for this command. The operation will apply to all relevant services automatically.';
+        className += ' disabled';
+        break;
+      case 'all':
+        content = '🌐 No specific services selected. The command will apply to all relevant services (default behavior).';
+        break;
+      case 'selected':
+        const services = [...selectedServices];
+        const customServices = els.customServices?.value ? els.customServices.value.split(",").map(s => s.trim()).filter(Boolean) : [];
+        const allSelected = [...services, ...customServices];
+        content = `🎯 Selected services: <strong>${allSelected.join(', ')}</strong> (${count} service${count > 1 ? 's' : ''})`;
+        break;
+    }
+    
+    els.servicesSummary.innerHTML = content;
+    els.servicesSummary.className = className;
+  }
+  
   function grayServices(disabled) {
     if (!els.servicesSection) return;
     
@@ -362,21 +403,7 @@
       });
     }
     
-    // Add disabled state message
-    if (els.servicesSection) {
-      const existingMessage = els.servicesSection.querySelector('.disabled-message');
-      if (disabled) {
-        if (!existingMessage) {
-          const message = document.createElement('div');
-          message.className = 'disabled-message';
-          message.style.cssText = 'color: #666; font-size: 12px; margin-top: 8px; font-style: italic;';
-          message.textContent = 'Service selection disabled for this command';
-          els.servicesSection.appendChild(message);
-        }
-      } else if (existingMessage) {
-        existingMessage.remove();
-      }
-    }
+    updateServiceStatus();
   }
   function onChipClick(e) {
     const chip = e.target.closest(".chip");
@@ -385,6 +412,7 @@
     chip.classList.toggle("active");
     if (chip.classList.contains("active")) selectedServices.add(svc);
     else selectedServices.delete(svc);
+    updateServiceStatus();
   }
   function getSelectedServices() {
     const extra = els.customServices?.value ? els.customServices.value.split(",").map(s => s.trim()).filter(Boolean) : [];
@@ -434,6 +462,11 @@
     if (els.tagInput) {
       els.tagInput.addEventListener('input', updateSelectedConfiguration);
     }
+    
+    // Custom services input handling  
+    if (els.customServices) {
+      els.customServices.addEventListener('input', updateServiceStatus);
+    }
   }
   
   function updateHostInputStates() {
@@ -480,36 +513,48 @@
     
     let configText = '';
     let statusClass = 'info';
+    let hostCount = 0;
     
     switch (hostMode) {
       case 'all':
-        configText = `✓ All hosts (${availableHostsList.length} hosts from inventory)`;
-        statusClass = 'success';
+        hostCount = availableHostsList.length;
+        configText = `🌐 All hosts from inventory (${hostCount} hosts)`;
+        if (hostCount === 0) {
+          configText = '⚠️ No hosts found in inventory - check inventory file';
+          statusClass = 'warning';
+        } else {
+          statusClass = 'success';
+        }
         break;
       case 'limit':
         const limitedHosts = [...selectedHosts];
-        if (limitedHosts.length === 0) {
-          configText = '⚠ No hosts selected - please check hosts in "Limit Hosts" tab above';
+        hostCount = limitedHosts.length;
+        if (hostCount === 0) {
+          configText = '⚠️ No hosts selected - please select hosts in the "Select Hosts" tab above';
           statusClass = 'warning';
         } else {
-          configText = `✓ Limited to: ${limitedHosts.join(', ')} (${limitedHosts.length} hosts)`;
+          configText = `🎯 Selected hosts: ${limitedHosts.join(', ')} (${hostCount} hosts)`;
           statusClass = 'success';
         }
         break;
       case 'tags':
         const tags = els.tagInput?.value.trim();
         if (!tags) {
-          configText = '⚠ No host patterns specified - enter patterns in "Host Patterns" tab above';
+          configText = '⚠️ No host patterns specified - enter patterns in the "Host Patterns" tab above';
           statusClass = 'warning';
         } else {
-          configText = `✓ Host patterns: ${tags}`;
+          configText = `🏷️ Host patterns: ${tags}`;
           statusClass = 'success';
         }
         break;
     }
     
     const pillClass = `pill ${statusClass}`;
-    els.selectedHosts.innerHTML = `<span class="${pillClass}">${configText}</span>`;
+    const hostInfo = hostCount > 0 ? `<div class="host-count-info">Targeting ${hostCount} host${hostCount !== 1 ? 's' : ''}</div>` : '';
+    els.selectedHosts.innerHTML = `
+      <div class="${pillClass}">${configText}</div>
+      ${hostInfo}
+    `;
   }
 
   function renderSelectedPills() {
@@ -731,7 +776,7 @@
   /* ---------- build command ---------- */
   function buildCommand() {
     if (!els.command) {
-      console.error("Command element not found");
+      appendConsole("Error: Command element not found\n");
       return '';
     }
     
@@ -904,10 +949,12 @@
     els.command.addEventListener("change", () => {
       grayServices(NO_TAG_COMMANDS.has(els.command.value));
       updateOptionsVisibility();
+      updateServiceStatus();
     });
 
     grayServices(NO_TAG_COMMANDS.has(els.command.value)); // bootstrap-servers disables -t
     updateOptionsVisibility(); // Initialize options visibility
+    updateServiceStatus(); // Initialize service status
     resetProgress(); // Initialize progress display
     
     // Initialize new features

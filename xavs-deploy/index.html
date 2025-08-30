@@ -20,7 +20,6 @@
             <div class="hdr">Action</div>
             <select id="command" class="btn" aria-label="xAVS command">
               <!-- Core Deployment Workflow -->
-              <option value="install-deps">install-deps</option>
               <option value="prechecks">prechecks</option>
               <option value="bootstrap-servers" selected>bootstrap-servers</option>
               <option value="deploy">deploy</option>
@@ -35,7 +34,6 @@
               
               <!-- Container Operations -->
               <option value="deploy-containers">deploy-containers</option>
-              <option value="prune-images">prune-images</option>
               <option value="nova-libvirt-cleanup">nova-libvirt-cleanup</option>
               
               <!-- Database Operations -->
@@ -89,69 +87,83 @@
 
           <!-- service chips (--tags) -->
           <div id="services-section" class="flex-col">
-            <div class="hdr">Services (optional)</div>
-            <small class="help-text">Select services to target with --tags</small>
+            <div class="hdr">Services (--tags)</div>
+            <div class="service-status-info">
+              <small class="help-text" id="service-help">Select OpenStack services to target deployment operations</small>
+              <div id="service-status" class="service-status-indicator"></div>
+            </div>
             <div id="services-grid" class="services-grid">
               <!-- Core OpenStack Services -->
-              <span class="chip" data-svc="keystone">keystone</span>
-              <span class="chip" data-svc="glance">glance</span>
-              <span class="chip" data-svc="nova">nova</span>
-              <span class="chip" data-svc="neutron">neutron</span>
-              <span class="chip" data-svc="placement">placement</span>
-              <span class="chip" data-svc="cinder">cinder</span>
-              <span class="chip" data-svc="horizon">horizon</span>
+              <span class="chip" data-svc="keystone" title="Identity Service">keystone</span>
+              <span class="chip" data-svc="glance" title="Image Service">glance</span>
+              <span class="chip" data-svc="nova" title="Compute Service">nova</span>
+              <span class="chip" data-svc="neutron" title="Networking Service">neutron</span>
+              <span class="chip" data-svc="placement" title="Placement Service">placement</span>
+              <span class="chip" data-svc="cinder" title="Block Storage Service">cinder</span>
+              <span class="chip" data-svc="horizon" title="Dashboard Service">horizon</span>
               
               <!-- Additional OpenStack Services -->
-              <span class="chip" data-svc="heat">heat</span>
-              <span class="chip" data-svc="swift">swift</span>
-              <span class="chip" data-svc="barbican">barbican</span>
-              <span class="chip" data-svc="magnum">magnum</span>
-              <span class="chip" data-svc="octavia">octavia</span>
-              <span class="chip" data-svc="masakari">masakari</span>
+              <span class="chip" data-svc="heat" title="Orchestration Service">heat</span>
+              <span class="chip" data-svc="swift" title="Object Storage Service">swift</span>
+              <span class="chip" data-svc="barbican" title="Key Manager Service">barbican</span>
+              <span class="chip" data-svc="magnum" title="Container Infrastructure Management">magnum</span>
+              <span class="chip" data-svc="octavia" title="Load Balancer Service">octavia</span>
+              <span class="chip" data-svc="masakari" title="Instance High Availability">masakari</span>
               
               <!-- Infrastructure Services -->
-              <span class="chip" data-svc="mariadb">mariadb</span>
-              <span class="chip" data-svc="rabbitmq">rabbitmq</span>
-              <span class="chip" data-svc="haproxy">haproxy</span>
-              <span class="chip" data-svc="memcached">memcached</span>
+              <span class="chip" data-svc="mariadb" title="Database Service">mariadb</span>
+              <span class="chip" data-svc="rabbitmq" title="Message Queue Service">rabbitmq</span>
+              <span class="chip" data-svc="haproxy" title="Load Balancer">haproxy</span>
+              <span class="chip" data-svc="memcached" title="Caching Service">memcached</span>
               
               <!-- Monitoring & Logging -->
-              <span class="chip" data-svc="prometheus">prometheus</span>
-              <span class="chip" data-svc="fluentd">fluentd</span>
-              <span class="chip" data-svc="grafana">grafana</span>
-              <span class="chip" data-svc="elasticsearch">elasticsearch</span>
+              <span class="chip" data-svc="prometheus" title="Monitoring Service">prometheus</span>
+              <span class="chip" data-svc="fluentd" title="Log Collector">fluentd</span>
+              <span class="chip" data-svc="grafana" title="Analytics & Monitoring">grafana</span>
+              <span class="chip" data-svc="elasticsearch" title="Search & Analytics">elasticsearch</span>
             </div>
-            <input id="custom-services" class="btn ghost mono" placeholder="Other services (comma separated)">
+            <input id="custom-services" class="btn ghost mono" placeholder="Additional services (comma separated, e.g., manila,designate)">
+            <div id="services-summary" class="services-summary"></div>
           </div>
 
           <!-- hosts -->
           <div class="flex-col">
             <div class="hdr">
-              Hosts
+              Host Targeting (--limit)
               <button id="refreshHostsBtn" class="btn ghost small" style="margin-left: 8px;">↻ Refresh</button>
+            </div>
+            <div class="host-guidance">
+              <small class="help-text">Choose how to target hosts for deployment operations</small>
             </div>
             
             <!-- Host selection tabs -->
             <div class="host-tabs">
               <button class="host-tab active" data-tab="all">All Hosts</button>
-              <button class="host-tab" data-tab="limit">Limit Hosts</button>
+              <button class="host-tab" data-tab="limit">Select Hosts</button>
               <button class="host-tab" data-tab="tags">Host Patterns</button>
             </div>
             
             <!-- All hosts mode -->
             <div id="all-hosts-tab" class="host-tab-content active">
               <div class="host-option">
-                <label><input type="radio" name="host-mode" value="all" checked> Use all hosts from inventory</label>
+                <label><input type="radio" name="host-mode" value="all" checked> 🌐 Deploy to all hosts in inventory</label>
+                <div class="host-description">
+                  <small>This will run the command on all hosts defined in your inventory file. Recommended for initial deployments and updates.</small>
+                </div>
               </div>
             </div>
             
             <!-- Limit hosts mode -->
             <div id="limit-hosts-tab" class="host-tab-content">
               <div class="host-option">
-                <label><input type="radio" name="host-mode" value="limit"> Limit to specific hosts (--limit):</label>
+                <label><input type="radio" name="host-mode" value="limit"> 🎯 Deploy to specific hosts only</label>
+                <div class="host-description">
+                  <small>Select individual hosts from the list below. Useful for targeted maintenance or gradual rollouts.</small>
+                </div>
               </div>
-              <div style="font-size: 11px; color: #666; margin: 4px 0; font-style: italic;">
-                ✓ Check the boxes below to select specific hosts for deployment:
+              <div class="host-instruction">
+                <div class="instruction-icon">💡</div>
+                <div class="instruction-text">Check the boxes below to select specific hosts for deployment:</div>
               </div>
               <div id="limit-hosts-box" class="host-selection-box brand-outline"></div>
             </div>
@@ -159,21 +171,36 @@
             <!-- Tag hosts mode -->
             <div id="tags-hosts-tab" class="host-tab-content">
               <div class="host-option">
-                <label><input type="radio" name="host-mode" value="tags"> Target hosts by patterns (--limit):</label>
+                <label><input type="radio" name="host-mode" value="tags"> 🏷️ Deploy using host patterns</label>
+                <div class="host-description">
+                  <small>Use Ansible inventory patterns to target hosts. Advanced users can specify groups, wildcards, or complex patterns.</small>
+                </div>
               </div>
-              <div style="font-size: 11px; color: #666; margin: 4px 0; font-style: italic;">
-                ✓ Enter host patterns in the field below:
+              <div class="host-instruction">
+                <div class="instruction-icon">💡</div>
+                <div class="instruction-text">Enter host patterns in the field below:</div>
               </div>
               <div class="tag-selection">
-                <input id="tag-input" class="btn ghost mono" placeholder="Enter host patterns (e.g., control,compute,controller-*)" disabled>
-                <small class="help-text">Use Ansible patterns: groups, wildcards, or comma-separated hosts</small>
+                <input id="tag-input" class="btn ghost mono" placeholder="e.g., control,compute01:compute05,controller-*,!compute03" disabled>
+                <div class="pattern-examples">
+                  <small class="help-text"><strong>Examples:</strong></small>
+                  <div class="example-list">
+                    <small>• <code>control</code> - all hosts in control group</small>
+                    <small>• <code>compute01:compute05</code> - range of hosts</small>
+                    <small>• <code>controller-*</code> - wildcard pattern</small>
+                    <small>• <code>!compute03</code> - exclude specific host</small>
+                    <small>• <code>control,network</code> - multiple groups</small>
+                  </div>
+                </div>
               </div>
             </div>
             
-            <div class="hdr">Available Hosts</div>
-            <div id="available-hosts" class="host-list"></div>
-            <div class="hdr">Selected Configuration</div>
-            <div id="selected-hosts"></div>
+            <div class="host-info-section">
+              <div class="hdr">Host Information</div>
+              <div id="available-hosts" class="host-list"></div>
+              <div class="hdr">Selected Configuration</div>
+              <div id="selected-hosts" class="selected-config"></div>
+            </div>
           </div>
 
           <div class="controls-actions">

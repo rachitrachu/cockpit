@@ -458,6 +458,167 @@ h1 {
   pointer-events: none;
 }
 
+/* Services Section Enhancements */
+.service-status-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.service-status-indicator {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.services-summary {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border-left: 4px solid #0066cc;
+  font-size: 13px;
+}
+
+.services-summary.disabled {
+  background: #f5f5f5;
+  border-left-color: #999;
+  color: #666;
+}
+
+.services-summary.warning {
+  background: #fff8e1;
+  border-left-color: #ff9800;
+  color: #e65100;
+}
+
+/* Enhanced Chip Styling */
+.chip {
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.chip:hover::after {
+  content: attr(title);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: normal;
+  white-space: nowrap;
+  z-index: 1000;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.chip:hover::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 3px solid transparent;
+  border-top-color: rgba(0, 0, 0, 0.9);
+  z-index: 1001;
+  pointer-events: none;
+}
+
+/* Host Section Enhancements */
+.host-guidance {
+  margin-bottom: 12px;
+}
+
+.host-option {
+  margin-bottom: 16px;
+}
+
+.host-description {
+  margin-left: 24px;
+  margin-top: 6px;
+}
+
+.host-description small {
+  color: #666;
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.host-instruction {
+  display: flex;
+  align-items: flex-start;
+  background: #e3f2fd;
+  padding: 10px 12px;
+  border-radius: 6px;
+  margin: 12px 0;
+  border-left: 4px solid #2196f3;
+}
+
+.instruction-icon {
+  font-size: 16px;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.instruction-text {
+  font-size: 13px;
+  color: #1565c0;
+  font-weight: 500;
+}
+
+.pattern-examples {
+  margin-top: 12px;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+}
+
+.example-list {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.example-list small {
+  color: #555;
+  font-family: monospace;
+}
+
+.example-list code {
+  background: #fff;
+  padding: 2px 4px;
+  border-radius: 3px;
+  border: 1px solid #ddd;
+  font-weight: 600;
+  color: #d63384;
+}
+
+.host-info-section {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #e9ecef;
+}
+
+.selected-config {
+  min-height: 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.host-count-info {
+  font-size: 12px;
+  color: #666;
+  font-style: italic;
+  padding-left: 12px;
+}
+
 /* ===== Custom checkboxes ===== */
 input[type="checkbox"].bxc {
   appearance: none;
