@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "requires": { "cockpit": "186" },
+  "content-security-policy": "default-src 'self'; connect-src 'self' blob:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src 'self'",
+  "tools": {
+    "xavs-networking": {
+      "label": "XAVS Networking",
+      "path": "index.html",
+      "order": 50,
+      "docs": [
+        {
+          "label": "Network Management",
+          "url": "https://docs.xloud.io/networking"
+        }
+      ]
+    }
+  },
+  "menu": {
+    "xavs-networking": {
+      "label": "XAVS Networking",
+      "order": 50
+    }
+  }
+}

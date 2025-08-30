@@ -1,146 +1,395 @@
-/* Buttons */
-.xd-btn{
-  border:1px solid var(--border);
-  padding:8px 12px; border-radius:9999px;
-  background:#222629; color:#eee; cursor:pointer;
-}
-.xd-btn:hover{filter:brightness(1.05)}
-.xd-btn:disabled{opacity:.6; cursor:not-allowed}
-.xd-btn.primary{background:var(--brand); border-color:#13614f}
-.xd-btn.ghost{background:transparent}
-
-/* Inputs */
-.xd-input{
-  width:100%; padding:8px 14px; border-radius:9999px;
-  border:1px solid var(--border); background:#111519; color:#fff; outline:none;
-}
-.xd-input:focus{border-color:#2f6f60}
-
-.xd-textarea{
-  width:100%; padding:10px 12px; border-radius:12px;
-  border:1px solid var(--border); background:#111519; color:#fff;
-  resize:vertical;
-}
-.xd-file{display:block; margin:6px 0}
-
-/* IP + Ping */
-.xd-ip-wrap{display:flex; align-items:center; gap:8px}
-.xd-ping{
-  min-width:64px; padding:8px 12px; border-radius:9999px;
-  border:1px solid var(--border); background:#0f1316; color:#d0d6dc;
-  cursor:pointer; white-space:nowrap;
-}
-.xd-ping:disabled{opacity:.5; cursor:not-allowed}
-.xd-ping.neutral{background:#0f1316; border-color:var(--border); color:#cfd6dd}
-.xd-ping.ok{background:var(--brand); border-color:#13614f; color:#fff}
-.xd-ping.err{background:var(--danger); border-color:#742624; color:#fff}
-.xd-ping.loading{opacity:.8; pointer-events:none}
-
-/* Table */
-.xd-table-wrap{
-  overflow:auto; border:1px solid var(--border); border-radius:12px;
-}
-.xd-table-wrap.small{margin-top:10px}
-.xd-table{
-  width:100%; border-collapse:separate; border-spacing:0;
-}
-.xd-table th,.xd-table td{
-  padding:10px 12px; border-bottom:1px solid var(--border); vertical-align:middle;
-}
-.xd-table thead th{
-  position:sticky; top:0; background:#14171a; text-align:left; color:#cfd6dd;
-}
-.xd-table tbody tr:nth-child(even){background:var(--row)}
-
-/* Delete button */
-.xd-del{
-  background:transparent; border:1px solid var(--border); color:#bbb;
-  padding:6px 12px; border-radius:9999px; cursor:pointer;
-}
-.xd-del:hover{border-color:#8a2e2e; color:#fff; background:#2a1616}
-
-/* Roles chips + dropdown */
-.xd-role-wrap{display:flex; align-items:flex-start; gap:8px; flex-wrap:wrap}
-.xd-chip{
-  padding:4px 10px; border-radius:9999px; border:1px solid var(--border);
-  background:#0f1316; color:#e5ecef; font-size:12px; display:inline-flex; align-items:center; gap:6px;
-}
-.xd-chip .x{cursor:pointer; font-weight:700; opacity:.85}
-.xd-chip .x:hover{opacity:1}
-
-.xd-select{
-  min-width:180px; padding:8px 38px 8px 14px; border-radius:9999px;
-  border:1px solid var(--border); background:#111519; color:#fff; appearance:none; outline:none;
-}
-.xd-select:focus{border-color:#2f6f60}
-.xd-select-wrap{position:relative}
-.xd-select-wrap::after{
-  content:"▾"; position:absolute; right:14px; top:50%; transform:translateY(-50%);
-  pointer-events:none; color:#9aa2aa; font-size:12px;
+/* ===== BUTTONS ===== */
+.xd-btn {
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-strong);
+  cursor: pointer;
+  transition: all .15s ease;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
-/* Tabs */
-.xd-tabs{display:flex; gap:8px; margin-bottom:10px}
-.xd-tab{
-  background:#101316; color:#cfd6dd; border:1px solid var(--border);
-  padding:6px 12px; border-radius:9999px; cursor:pointer;
+.xd-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, .08);
+  border-color: var(--border);
 }
-.xd-tab.active{background:#1d2226; color:#fff; border-color:#2f6f60}
-.xd-tabpanel.hidden{display:none}
-.xd-help{color:#b7bec6; margin:6px 0 10px 0}
-.xd-help code{background:#0d0f11; border:1px solid #22272b; padding:2px 6px; border-radius:6px}
 
-/* Pager */
-.xd-pager{
-  display:flex; align-items:center; gap:10px; justify-content:flex-end;
-  padding:10px 2px; margin-top:8px; border-top:1px dashed var(--border);
+.xd-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 .18rem var(--focus);
 }
-.xd-page-info{color:#cfd6dd; min-width:110px; text-align:center}
-.mt-4 { margin-top: 4px; }
 
-/* CSP-safe utility classes */
-.flex { display:flex; }
-.items-center { align-items:center; }
-.gap-8 { gap:8px; }   /* 8px gap */
+.xd-btn:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+  transform: none;
+}
 
+.xd-btn.primary {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
 
-.flex-1 { flex: 1; }
+.xd-btn.primary:hover {
+  background: var(--brand-600);
+  border-color: var(--brand-600);
+}
+
+.xd-btn.ghost {
+  background: transparent;
+  color: var(--brand);
+  border-color: var(--brand);
+}
+
+.xd-btn.ghost:hover {
+  background: var(--brand);
+  color: #fff;
+}
+
+/* ===== FORM CONTROLS ===== */
+.xd-input, .xd-textarea, .xd-select {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: var(--surface);
+  color: var(--text-strong);
+  transition: border-color .15s, box-shadow .15s;
+  font-size: 14px;
+  height: 38px;
+}
+
+.xd-textarea {
+  height: auto;
+  resize: vertical;
+  min-height: 80px;
+}
+
+.xd-input:focus, .xd-textarea:focus, .xd-select:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 .18rem var(--focus);
+}
+
+.xd-input::placeholder {
+  color: var(--muted);
+}
+
+.xd-file {
+  display: block;
+  margin: 6px 0;
+  padding: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  cursor: pointer;
+}
+
+/* ===== SELECT WRAPPER ===== */
+.xd-select-wrap {
+  position: relative;
+}
+
+.xd-select {
+  appearance: none;
+  background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 5"><path fill="%23666" d="m0 1 2 2 2-2z"/></svg>');
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px;
+  padding-right: 36px;
+}
+
+/* ===== IP + PING ===== */
+.xd-ip-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.xd-ping {
+  min-width: 64px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-strong);
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all .15s ease;
+}
+
+.xd-ping:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.xd-ping.neutral {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--muted);
+}
+
+.xd-ping.ok {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #fff;
+}
+
+.xd-ping.err {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.xd-ping.loading {
+  opacity: .8;
+  pointer-events: none;
+}
+
+/* ===== TABLES ===== */
+.xd-table-wrap {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.xd-table-wrap.small {
+  margin-top: 16px;
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.xd-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.xd-table th,
+.xd-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  text-align: left;
+  color: var(--text-strong);
+}
+
+.xd-table thead th {
+  background: var(--surface-2);
+  font-weight: 600;
+  color: var(--text-strong);
+  font-size: 14px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  border-bottom: 2px solid var(--border);
+}
+
+.xd-table tbody tr:hover {
+  background: var(--surface-2);
+  transition: background-color 0.15s ease;
+}
+
+.xd-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Ensure strong text contrast in table cells */
+.xd-table tbody td {
+  color: var(--text-strong) !important;
+  font-weight: 500;
+}
+
+.xd-table tbody tr td {
+  color: var(--text-strong) !important;
+}
+
+/* Table column sizing */
+.xd-table thead th:first-child,
+.xd-table tbody td:first-child { 
+  width: 44px; 
+  text-align: center; 
+}
+
+/* ===== DELETE BUTTON ===== */
+.xd-del {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--danger);
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+
+.xd-del:hover {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: #fff;
+}
+
+/* ===== ROLES & CHIPS ===== */
+.xd-role-wrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.xd-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--brand);
+  color: #fff;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.xd-chip .x {
+  cursor: pointer;
+  font-weight: 700;
+  opacity: .85;
+  background: none;
+  border: none;
+  color: #fff;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.xd-chip .x:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ===== TABS ===== */
+.xd-tabs {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--border);
+  margin: 6px 0 16px;
+  padding-bottom: 2px;
+}
+
+.xd-tab {
+  border: 1px solid transparent;
+  background: var(--surface);
+  color: var(--muted);
+  padding: 8px 14px;
+  border-radius: 8px 8px 0 0;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.xd-tab:hover {
+  color: var(--text);
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+.xd-tab.active {
+  background: var(--tab-active);
+  color: #fff;
+  border-color: var(--tab-active);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .08);
+}
+
+.xd-tabpanel.hidden {
+  display: none;
+}
+
+.xd-help {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.xd-help code {
+  background: var(--code-bg);
+  color: var(--code-fg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* ===== PAGER ===== */
+.xd-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.xd-page-info {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+  margin: 0 12px;
+}
+
+/* ===== CHECKBOXES ===== */
+input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--brand);
+  cursor: pointer;
+}
+
+/* ===== UTILITY CLASSES ===== */
 .flex { display: flex; }
 .items-center { align-items: center; }
 .gap-8 { gap: 8px; }
+.mt-4 { margin-top: 16px; }
+.flex-1 { flex: 1; }
 
-/* Make SSH table full width and sane column sizes */
-/* SSH table should be full-width */
+/* ===== SSH PANEL SPECIFIC ===== */
 #ssh-panel .xd-table-wrap { 
   max-width: none !important;
   width: 100% !important;
   margin: 0 !important;
 }
+
 #ssh-panel .xd-table {
   width: 100% !important;
   table-layout: auto;
 }
 
-/* Nice column widths */
+/* SSH table column widths */
 #ssh-panel .xd-table th:first-child,
-#ssh-panel .xd-table td:first-child { width: 44px; }    /* checkbox */
+#ssh-panel .xd-table td:first-child { width: 44px; }
 #ssh-panel .xd-table th:nth-child(2),
-#ssh-panel .xd-table td:nth-child(2) { width: 20%; }    /* hostname */
+#ssh-panel .xd-table td:nth-child(2) { width: 20%; }
 #ssh-panel .xd-table th:nth-child(3),
-#ssh-panel .xd-table td:nth-child(3) { width: 16%; }    /* IP */
+#ssh-panel .xd-table td:nth-child(3) { width: 16%; }
 #ssh-panel .xd-table th:nth-child(5),
-#ssh-panel .xd-table td:nth-child(5) { width: 22%; }    /* status */
-
-/* Pager align left like Hosts */
-#ssh-pager { justify-content: flex-start; }
+#ssh-panel .xd-table td:nth-child(5) { width: 22%; }
 
 #ssh-pager { justify-content: flex-start; }
-/* Only make preview tables narrow, not everything with .small */
-.xd-table-wrap.small {
-  max-width: 720px;
-  margin: 0 auto;
-}
-
-/* components.css */
-.xd-table thead th:first-child,
-.xd-table tbody td:first-child { width: 44px; text-align: center; }

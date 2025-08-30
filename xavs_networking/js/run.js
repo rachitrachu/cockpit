@@ -64,7 +64,7 @@ async function netplanAction(action, config) {
 
     for (let i = lines.length - 1; i >= 0; i--) {
       const line = lines[i].trim();
-      if (line.startsWith('{') && line.includes('result')) {
+      if (line.startsWith('{') && (line.includes('result') || line.includes('success'))) {
         jsonLine = line;
         break;
       }

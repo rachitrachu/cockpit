@@ -1,28 +1,110 @@
-:root{
-  --brand:#197560;
-  --bg:#111315;
-  --card:#1a1d20;
-  --text:#e8e8e8;
-  --muted:#a9b0b7;
-  --border:#2b2f34;
-  --row:#171a1d;
-  --danger:#d9534f;
-  --ok:#27ae60;
-  --warn:#f39c12;
+/* XAVS Theme - Based on xavs-globals styling */
+:root {
+  --brand: #197560;
+  --brand-600: #166551;
+  --surface: #ffffff;
+  --surface-2: #f6f7f9;
+  --text: #1f2937;
+  --text-strong: #1f2937;
+  --muted: #6b7280;
+  --border: #d1d5db;
+  --code-bg: #0f172a;
+  --code-fg: #e5e7eb;
+  --focus: rgba(25, 117, 96, .35);
+  --tab-active: var(--brand);
+  --danger: #dc2626;
+  --ok: #059669;
+  --warn: #d97706;
+  
+  /* Legacy mappings for compatibility */
+  --bg: var(--surface);
+  --card: var(--surface);
+  --row: var(--surface-2);
+}
+
+/* Light theme (explicit override) */
+.pf-theme-light :root, .pf-theme-light,
+body[data-theme="light"], 
+body:not([data-theme]) {
+  --surface: #ffffff;
+  --surface-2: #f6f7f9;
+  --text: #1f2937;
+  --text-strong: #1f2937;
+  --muted: #6b7280;
+  --border: #d1d5db;
+  --code-bg: #0f172a;
+  --code-fg: #e5e7eb;
+  
+  /* Legacy mappings for light mode */
+  --bg: var(--surface);
+  --card: var(--surface);
+  --row: var(--surface-2);
+}
+
+/* Dark theme support */
+.pf-theme-dark :root, .pf-theme-dark,
+body[data-theme="dark"] {
+  --surface: #0b0e13;
+  --surface-2: #12161d;
+  --text: #e5e7eb;
+  --text-strong: #e5e7eb;
+  --muted: #94a3b8;
+  --border: #2a3340;
+  --code-bg: #0b1220;
+  --code-fg: #e5e7eb;
+  
+  /* Legacy mappings for dark mode */
+  --bg: var(--surface);
+  --card: #1a1d20;
+  --row: #171a1d;
 }
 
 /* Base reset-ish */
-*{box-sizing:border-box}
-html,body{height:100%}
-body{
-  margin:0;
-  font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Arial;
-  color:var(--text);
-  background:var(--bg);
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: Tenorite, "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Headings */
-h1,h2,h3{margin:6px 0 10px 0}
+h1, h2, h3 { 
+  margin: 6px 0 10px 0; 
+  font-weight: 600; 
+  color: var(--text-strong);
+}
+
+h1 { font-size: 24px; }
+h2 { font-size: 20px; }
+h3 { font-size: 18px; }
+
+/* Specific targeting for section headings */
+section h3,
+.xd-card > h3 {
+  color: var(--text-strong) !important;
+  font-weight: 700;
+}
+
+/* Ensure strong text contrast for all important elements */
+.xd-card-header h2,
+.xd-card-header h3,
+.xd-card h3,
+.xd-brand,
+.xd-label {
+  color: var(--text-strong) !important;
+}
+
+/* Better contrast for body text */
+body, 
+.xd-card,
+.xd-form {
+  color: var(--text);
+}
 
 /* ==== xDeploy: SSH status badges ==== */
 :root{
@@ -88,3 +170,52 @@ h1,h2,h3{margin:6px 0 10px 0}
 }
 .xd-status-note.ok{  color:var(--ok);  }
 .xd-status-note.err{ color:var(--err); }
+
+/* ===== TARGETED TEXT COLOR FIXES ===== */
+/* Fix table text visibility */
+table, 
+table *,
+.xd-table,
+.xd-table *,
+.xd-table th,
+.xd-table td,
+.xd-table tbody,
+.xd-table tbody tr,
+.xd-table tbody td {
+  color: var(--text) !important;
+}
+
+/* Fix section headings */
+h1, h2, h3,
+section h1,
+section h2, 
+section h3,
+.xd-card h1,
+.xd-card h2,
+.xd-card h3 {
+  color: var(--text) !important;
+  font-weight: 700 !important;
+}
+
+/* Fix form labels */
+label,
+.xd-label {
+  color: var(--text) !important;
+}
+
+/* Preserve specific colored elements */
+.xd-btn.primary,
+.xd-ping.ok,
+.xd-ping.err,
+.xd-chip {
+  color: #fff !important;
+}
+
+.xd-subtitle,
+.xd-status {
+  color: var(--muted) !important;
+}
+
+.xd-brand {
+  color: var(--brand) !important;
+}
