@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "tools": {
+    "shares": {
+      "label": "Shares",
+      "path": "index.html",
+      "icon": "fa-share-alt"
+    }
+  }
+}
