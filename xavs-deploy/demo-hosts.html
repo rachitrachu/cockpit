@@ -2,14 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>xAVS Deployment</title>
+  <title>xAVS Deployment - Host Loading Demo</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script src="../base1/cockpit.js"></script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="page-wrap">
-    <h1>xAVS Deployment</h1>
+    <h1>xAVS Deployment - Host Loading Demo</h1>
 
     <!-- ROW 1: Controls -->
     <div class="card controls-card">
@@ -38,10 +37,9 @@
             </select>
           </div>
 
-          <!-- service chips (--tags) -->
+          <!-- service chips (-t) -->
           <div id="services-section" class="flex-col">
-            <div class="hdr">Services (optional)</div>
-            <small class="help-text">Select services to target with --tags</small>
+            <div class="hdr">Targets (optional)</div>
             <div id="services-grid" class="services-grid">
               <span class="chip" data-svc="keystone">keystone</span>
               <span class="chip" data-svc="glance">glance</span>
@@ -66,58 +64,11 @@
               Hosts
               <button id="refreshHostsBtn" class="btn ghost small" style="margin-left: 8px;">↻ Refresh</button>
             </div>
-            
-            <!-- Host selection tabs -->
-            <div class="host-tabs">
-              <button class="host-tab active" data-tab="all">All Hosts</button>
-              <button class="host-tab" data-tab="limit">Limit Hosts</button>
-              <button class="host-tab" data-tab="tags">Host Patterns</button>
-            </div>
-            
-            <!-- All hosts mode -->
-            <div id="all-hosts-tab" class="host-tab-content active">
-              <div class="host-option">
-                <label><input type="radio" name="host-mode" value="all" checked> Use all hosts from inventory</label>
-              </div>
-            </div>
-            
-            <!-- Limit hosts mode -->
-            <div id="limit-hosts-tab" class="host-tab-content">
-              <div class="host-option">
-                <label><input type="radio" name="host-mode" value="limit"> Limit to specific hosts (--limit):</label>
-              </div>
-              <div id="limit-hosts-box" class="host-selection-box brand-outline"></div>
-            </div>
-            
-            <!-- Tag hosts mode -->
-            <div id="tags-hosts-tab" class="host-tab-content">
-              <div class="host-option">
-                <label><input type="radio" name="host-mode" value="tags"> Target hosts by patterns (--limit):</label>
-              </div>
-              <div class="tag-selection">
-                <input id="tag-input" class="btn ghost mono" placeholder="Enter host patterns (e.g., control,compute,controller-*)" disabled>
-                <small class="help-text">Use Ansible patterns: groups, wildcards, or comma-separated hosts</small>
-              </div>
-            </div>
-            
+            <div id="hosts-box" class="brand-outline"></div>
             <div class="hdr">Available Hosts</div>
             <div id="available-hosts" class="host-list"></div>
-            <div class="hdr">Selected Configuration</div>
+            <div class="hdr">Selected</div>
             <div id="selected-hosts"></div>
-          </div>
-
-          <div class="flex-col">
-            <div class="hdr">Database Backup</div>
-            <small class="help-text">Recommended before upgrade, reconfigure, or major changes</small>
-            <div class="backup-options">
-              <button id="backupFullBtn" class="btn ghost">Full Backup</button>
-              <button id="backupIncBtn" class="btn ghost">Incremental Backup</button>
-            </div>
-            <small class="help-text">Command: <code>kolla-ansible -i inventory mariadb_backup --full</code> or <code>--incremental</code></small>
-          </div>
-
-          <div class="flex-col">
-            <label class="dryrun-label"><input type="checkbox" id="dryRunFlag"> Dry Run <span class="help-text">(--check)</span></label>
           </div>
 
           <div class="controls-actions">
@@ -132,12 +83,10 @@
       <header>
         <div class="console-toolbar">
           <span>Deployment Progress</span>
-          <div class="toolbar-actions">
-            <button id="clearBtn" class="btn ghost small">Clear</button>
-          </div>
+          <button id="clearBtn" class="btn ghost small">Clear</button>
         </div>
       </header>
-      <div class="body" id="progress-body">
+      <div class="body">
         <!-- Progress Section -->
         <div id="progress-section" class="progress-section">
           <div id="playbook-progress" class="playbook-progress"></div>
@@ -149,7 +98,6 @@
           <div class="tasks-header">
             <span>Task Progress</span>
             <span class="task-count" id="task-count">(0 tasks)</span>
-            <button id="toggleTasksBtn" class="btn ghost small">−</button>
           </div>
           <div id="tasks-list" class="tasks-list"></div>
         </div>
@@ -158,19 +106,14 @@
 
     <!-- ROW 3: Raw Output -->
     <div class="card console-card">
-      <header>
-        <div class="console-toolbar">
-          <span>Raw Output</span>
-          <button id="toggleConsoleBtn" class="btn ghost small">−</button>
-        </div>
-      </header>
-      <div class="body" id="console-body">
+      <header>Raw Output</header>
+      <div class="body">
         <div id="console-output" class="scroll mono console-output"></div>
         </div>
       </div>
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app-demo.js"></script>
 </body>
 </html>

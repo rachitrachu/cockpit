@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Kolla Ansible Deployment - Demo Progress</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="page-wrap">
+    <h1>Kolla Ansible Deployment - Progress Demo</h1>
+
+    <div class="card">
+      <header>
+        <div class="console-toolbar">
+          <span>Deployment Progress</span>
+        </div>
+      </header>
+      <div class="body">
+        <!-- Progress Section -->
+        <div class="progress-section">
+          <div class="playbook-progress">
+            <div class="playbook-name">📋 Deploy OpenStack services</div>
+            <div class="playbook-status">✅ Completed (3 hosts)</div>
+          </div>
+          
+          <div class="summary-stats">
+            <div class="stat-item ok">✓ 45</div>
+            <div class="stat-item changed">⚡ 12</div>
+            <div class="stat-item failed">✗ 1</div>
+            <div class="stat-item skipped">⊘ 8</div>
+            <div class="stat-item unreachable">⚠ 0</div>
+          </div>
+          
+          <div class="tasks-container">
+            <div class="tasks-header">Task Progress</div>
+            <div class="tasks-list">
+              <div class="task-item ok">
+                <div class="task-header">
+                  <span class="task-status">✓</span>
+                  <span class="task-name">Gather facts</span>
+                  <span class="task-host">controller-01</span>
+                  <span class="task-duration">2.3s</span>
+                </div>
+              </div>
+              
+              <div class="task-item changed">
+                <div class="task-header">
+                  <span class="task-status">⚡</span>
+                  <span class="task-name">Install keystone packages</span>
+                  <span class="task-host">controller-01</span>
+                  <span class="task-duration">15.7s</span>
+                </div>
+                <div class="task-msg">Package keystone-api updated to 2024.1.0</div>
+              </div>
+              
+              <div class="task-item ok">
+                <div class="task-header">
+                  <span class="task-status">✓</span>
+                  <span class="task-name">Start keystone container</span>
+                  <span class="task-host">controller-01</span>
+                  <span class="task-duration">3.1s</span>
+                </div>
+              </div>
+              
+              <div class="task-item failed">
+                <div class="task-header">
+                  <span class="task-status">✗</span>
+                  <span class="task-name">Configure nova endpoints</span>
+                  <span class="task-host">controller-02</span>
+                  <span class="task-duration">1.2s</span>
+                </div>
+                <div class="task-msg">Connection timeout to keystone API</div>
+              </div>
+              
+              <div class="task-item skipped">
+                <div class="task-header">
+                  <span class="task-status">⊘</span>
+                  <span class="task-name">Deploy Ceph integration</span>
+                  <span class="task-host">storage-01</span>
+                  <span class="task-duration"></span>
+                </div>
+                <div class="task-msg">Ceph not enabled in configuration</div>
+              </div>
+              
+              <div class="task-item changed">
+                <div class="task-header">
+                  <span class="task-status">⚡</span>
+                  <span class="task-name">Update horizon configuration</span>
+                  <span class="task-host">controller-01</span>
+                  <span class="task-duration">4.8s</span>
+                </div>
+                <div class="task-msg">Updated dashboard theme settings</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Console Output (smaller, collapsible) -->
+        <details class="console-details">
+          <summary>Raw Output</summary>
+          <div class="console-output">
+▶ deploy started at 1/30/2025, 2:45:12 PM
+📋 Starting playbook: Deploy OpenStack services
+⏱ Task: Gather facts
+⏱ Task: Install keystone packages
+⏱ Task: Start keystone container
+⏱ Task: Configure nova endpoints
+⏱ Task: Deploy Ceph integration
+⏱ Task: Update horizon configuration
+
+📊 Playbook completed. Final stats:
+  controller-01: ok=18 changed=5 unreachable=0 failed=0 skipped=2
+  controller-02: ok=15 changed=4 unreachable=0 failed=1 skipped=3
+  storage-01: ok=12 changed=3 unreachable=0 failed=0 skipped=3
+
+✔ Completed
+          </div>
+        </details>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
