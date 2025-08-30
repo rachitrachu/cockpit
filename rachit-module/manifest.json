@@ -3,14 +3,10 @@
   "requires": { "cockpit": "186" },
   "content-security-policy": "default-src 'self'; connect-src 'self' blob:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src 'self'",
   "tools": {
-    "xos-networking": {
-      "label": "XOS Networking",
+    "rachit-module": {
+      "label": "Rachit Module",
       "path": "index.html",
-      "order": 35,
-      "keywords": [
-        {"matches": ["networking", "neutron", "network", "configuration"]},
-        {"matches": ["bridges", "interfaces", "topology", "setup"]}
-      ]
+      "order": 60
     }
   }
 }

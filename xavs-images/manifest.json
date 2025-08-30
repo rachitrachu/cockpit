@@ -2,9 +2,14 @@
   "version": 1,
   "tools": {
     "xavs-images": {
-      "label": "xAVS Images",
+      "label": "XAVS Images",
       "path": "index.html",
-      "icon": "fa-docker"
+      "order": 20,
+      "icon": "fa-docker",
+      "keywords": [
+        {"matches": ["docker", "images", "containers", "registry"]},
+        {"matches": ["pull", "push", "build", "management"]}
+      ]
     }
   }
 }

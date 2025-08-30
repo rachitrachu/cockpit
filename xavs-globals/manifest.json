@@ -1,6 +1,5 @@
 {
   "version": 1,
-  "name": "xavs-globals",
   "tools": {
     "xavs-globals": {
       "label": "XAVS Globals",
@@ -11,12 +10,6 @@
         {"matches": ["deploy", "deployment", "setup", "settings"]},
         {"matches": ["network", "compute", "storage", "database"]}
       ]
-    }
-  },
-  "menu": {
-    "index": {
-      "label": "XAVS Configuration",
-      "order": 11
     }
   },
   "content-security-policy": "default-src 'self' data: blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss: http: https:; frame-src 'self';"

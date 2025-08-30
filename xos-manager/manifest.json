@@ -1,12 +1,15 @@
 {
   "version": 1,
-  "name": "xos-manager",
   "tools": {
-    "index": {
+    "xos-manager": {
       "label": "XOS Manager",
       "path": "index.html",
       "icon": "computer",
-      "order": 9
+      "order": 25,
+      "keywords": [
+        {"matches": ["horizon", "openstack", "dashboard", "cli"]},
+        {"matches": ["manager", "console", "interface", "web"]}
+      ]
     }
   },
   "content-security-policy": "default-src 'self' data: blob:; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss: http: https:; frame-src 'self' http: https: data:"

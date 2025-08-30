@@ -1,11 +1,14 @@
 {
   "version": 1,
-  "name": "add_host",
-  "label": "XDeploy",
-  "subtitle": "Cluster Host Config",
-  "icon": "server",
-  "index": "index.html",
-  "tools": [
-    { "label": "XDeploy", "path": "index.html" }
-  ]
+  "tools": {
+    "xavs-add_host": {
+      "label": "Add Hosts",
+      "path": "index.html",
+      "order": 15,
+      "keywords": [
+        {"matches": ["hosts", "cluster", "nodes", "inventory"]},
+        {"matches": ["deploy", "target", "configuration", "management"]}
+      ]
+    }
+  }
 }

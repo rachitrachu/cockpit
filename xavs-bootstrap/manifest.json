@@ -1,9 +1,14 @@
 {
   "version": 1,
   "tools": {
-    "xavs-checks": {
-      "label": "xAVS Bootstrap",
-      "path": "index.html"
+    "xavs-bootstrap": {
+      "label": "XAVS Bootstrap",
+      "path": "index.html",
+      "order": 5,
+      "keywords": [
+        {"matches": ["bootstrap", "preparation", "dependencies", "system"]},
+        {"matches": ["setup", "install", "configure", "requirements"]}
+      ]
     }
   }
 }
