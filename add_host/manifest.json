@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "name": "add_host",
+  "label": "XDeploy",
+  "subtitle": "Cluster Host Config",
+  "icon": "server",
+  "index": "index.html",
+  "tools": [
+    { "label": "XDeploy", "path": "index.html" }
+  ]
+}

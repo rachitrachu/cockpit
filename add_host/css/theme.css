@@ -1,0 +1,90 @@
+:root{
+  --brand:#197560;
+  --bg:#111315;
+  --card:#1a1d20;
+  --text:#e8e8e8;
+  --muted:#a9b0b7;
+  --border:#2b2f34;
+  --row:#171a1d;
+  --danger:#d9534f;
+  --ok:#27ae60;
+  --warn:#f39c12;
+}
+
+/* Base reset-ish */
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Arial;
+  color:var(--text);
+  background:var(--bg);
+}
+
+/* Headings */
+h1,h2,h3{margin:6px 0 10px 0}
+
+/* ==== xDeploy: SSH status badges ==== */
+:root{
+  /* fallbacks if your theme doesn't define these */
+  --panel:#161b22; --border:#293042; --muted:#222938;
+  --text:#e6edf3;  --subtle:#a9b4c0;
+  --ok:#21d07a;    --err:#d9534f;
+}
+
+.xd-badges{
+  display:flex;
+  align-items:center;
+  gap:8px;               /* proper spacing between badges */
+  flex-wrap:wrap;
+}
+
+.xd-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:2px 8px;
+  border-radius:9999px;
+  border:1px solid var(--border);
+  background:var(--muted);
+  color:var(--subtle);
+  font:12px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Noto Sans";
+  white-space:nowrap;
+}
+
+.xd-badge .dot{
+  width:8px; height:8px; border-radius:50%;
+  background:var(--subtle);
+  box-shadow:0 0 0 2px rgba(169,180,192,.15);
+}
+
+/* states */
+.xd-badge.ok{
+  border-color:var(--ok);
+  color:var(--ok);
+  background:rgba(33,208,122,.15);
+}
+.xd-badge.ok .dot{
+  background:var(--ok);
+  box-shadow:0 0 0 3px rgba(33,208,122,.18);
+}
+.xd-badge.off{
+  opacity:.85;
+}
+.xd-badge.err{
+  border-color:var(--err);
+  color:#ff6b6b;
+  background:rgba(217,83,79,.12);
+}
+.xd-badge.err .dot{
+  background:var(--err);
+}
+
+/* the small message line under the badges */
+.xd-status-note{
+  margin-top:6px;
+  font-size:12px;
+  color:var(--subtle);
+}
+.xd-status-note.ok{  color:var(--ok);  }
+.xd-status-note.err{ color:var(--err); }

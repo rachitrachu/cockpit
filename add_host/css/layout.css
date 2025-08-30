@@ -1,0 +1,57 @@
+/* Header + main grid */
+.xd-header{
+  padding:18px 22px;
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:baseline; gap:14px;
+}
+.xd-brand{font-weight:800; letter-spacing:.4px; color:#fff}
+.xd-subtitle{color:var(--muted)}
+
+.xd-main{
+  padding:22px;
+  display:grid; gap:18px;
+  grid-template-columns:1fr;
+}
+
+/* Cards */
+.xd-card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:16px;
+}
+.xd-card-header{
+  display:flex; justify-content:space-between; align-items:center;
+  margin-bottom:10px;
+}
+
+/* Forms */
+.xd-form{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(220px,1fr));
+  gap:14px;
+}
+.xd-form-row{display:flex; flex-direction:column; gap:6px}
+.xd-label{color:#cfd6dd; font-size:12px}
+
+/* Actions row */
+.xd-actions{
+  display:flex; align-items:center; gap:10px; margin-top:12px; flex-wrap:wrap;
+}
+.xd-status{color:var(--muted)}
+
+/* Code/preview blocks */
+.xd-code{
+  display:inline-block; background:#0d0f11; border:1px solid var(--border);
+  padding:6px 8px; border-radius:8px;
+}
+.xd-pre{
+  margin-top:8px; background:#0d0f11; border:1px solid var(--border);
+  padding:10px; border-radius:10px; max-height:220px; overflow:auto;
+}
+
+/* Responsive */
+@media (max-width:700px){
+  .xd-form{grid-template-columns:1fr}
+}
+.mt-4 { margin-top: 4px; }

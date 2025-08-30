@@ -1,0 +1,291 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>xDeploy — Cluster Host Config</title>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <script src="../base1/cockpit.js"></script>
+  <link rel="stylesheet" href="css/theme.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+
+</head>
+<body>
+  <header class="xd-header">
+    <div class="xd-brand">xDeploy</div>
+    <div class="xd-subtitle">Cluster Host Configuration</div>
+  </header>
+
+<main class="xd-main">
+
+  <!-- Top-level nav -->
+  <div class="xd-tabs" role="tablist" aria-label="Primary">
+    <button id="nav-hosts" class="xd-tab active" role="tab" aria-selected="true" aria-controls="hosts-panel">Hosts</button>
+    <button id="nav-ssh"   class="xd-tab"        role="tab" aria-selected="false" aria-controls="ssh-panel">SSH Access</button>
+  </div>
+
+  <!-- HOSTS PANEL -->
+  <div id="hosts-panel" class="xd-tabpanel" role="tabpanel" aria-labelledby="nav-hosts">
+
+    <!-- Add Host -->
+    <section class="xd-card">
+      <div class="xd-card-header"><h2>Add Hosts</h2></div>
+
+      <!-- Subtabs -->
+      <div class="xd-tabs" role="tablist" aria-label="Add host modes">
+        <button id="tabbtn-single" class="xd-tab active" role="tab" aria-controls="tab-single" aria-selected="true">Single</button>
+        <button id="tabbtn-bulk"   class="xd-tab"        role="tab" aria-controls="tab-bulk"   aria-selected="false">Bulk paste</button>
+        <button id="tabbtn-upload" class="xd-tab"        role="tab" aria-controls="tab-upload" aria-selected="false">Upload</button>
+      </div>
+
+      <!-- Single -->
+      <div id="tab-single" class="xd-tabpanel" role="tabpanel" aria-labelledby="tabbtn-single">
+        <form id="add-form" class="xd-form" autocomplete="off">
+          <div class="xd-form-row">
+            <label class="xd-label" for="add-hostname">Hostname</label>
+            <input id="add-hostname" class="xd-input" type="text" placeholder="xd1.example"/>
+          </div>
+          <div class="xd-form-row">
+            <label class="xd-label" for="add-ip">IP address</label>
+            <div class="xd-ip-wrap">
+              <input id="add-ip" class="xd-input" type="text" placeholder="10.0.0.11"/>
+              <button id="add-ping" class="xd-ping neutral" type="button" disabled>Ping</button>
+            </div>
+          </div>
+          <div class="xd-form-row">
+            <label class="xd-label">Roles</label>
+            <div id="add-roles-wrap" class="xd-role-wrap"></div>
+          </div>
+          <div class="xd-form-row">
+            <label class="xd-label" for="add-role-select">Add role…</label>
+            <div class="xd-select-wrap">
+              <select id="add-role-select" class="xd-select">
+                <option value="" selected disabled>Select role…</option>
+              </select>
+            </div>
+          </div>
+        </form>
+        <div class="xd-actions">
+          <button form="add-form" class="xd-btn primary" type="submit">Add host</button>
+          <span id="add-status" class="xd-status"></span>
+        </div>
+      </div>
+
+      <!-- Bulk -->
+      <div id="tab-bulk" class="xd-tabpanel hidden" role="tabpanel" aria-labelledby="tabbtn-bulk">
+        <div class="xd-help">
+          Paste one per line — <code>hostname,ip,roles</code> (roles: <code>|</code> or <code>;</code>)
+        </div>
+        <textarea id="bulk-input" class="xd-textarea" rows="7" placeholder="xd1,10.0.0.11,control|compute&#10;xd2 10.0.0.12,storage"></textarea>
+        <div class="xd-actions">
+          <button id="bulk-parse" class="xd-btn">Preview</button>
+          <button id="bulk-ping-all" class="xd-btn" disabled>Ping All</button>
+          </div>
+          <div class="xd-actions">
+          <button id="bulk-commit" class="xd-btn primary" disabled>Add N hosts</button>
+          <span id="bulk-status" class="xd-status"></span>
+        </div>
+        <div class="xd-table-wrap small">
+          <table class="xd-table" aria-label="Bulk preview">
+            <thead>
+              <tr><th>Hostname</th><th>IP</th><th>Roles</th><th>Ping</th><th>Note</th></tr>
+            </thead>
+            <tbody id="bulk-preview"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Upload -->
+      <div id="tab-upload" class="xd-tabpanel hidden" role="tabpanel" aria-labelledby="tabbtn-upload">
+        <div class="xd-help">
+          Upload <strong>.csv</strong> (headers: <code>hostname,ip,roles</code>) or <strong>.json</strong>
+        </div>
+        <input id="upload-input" type="file" accept=".csv,.json,application/json,text/csv" multiple class="xd-file">
+        <div class="xd-actions">
+          <button id="upload-sample-csv"  class="xd-btn ghost" type="button">Download sample CSV</button>
+          <button id="upload-sample-json" class="xd-btn ghost" type="button">Download sample JSON</button>
+          <button id="upload-parse" class="xd-btn">Preview</button>
+          </div>
+          <div class="xd-actions">
+          <button id="upload-commit" class="xd-btn primary" disabled>Add N hosts</button>
+          <span id="upload-status" class="xd-status"></span>
+        </div>
+        <div class="xd-table-wrap small">
+          <table class="xd-table" aria-label="Upload preview">
+            <thead>
+              <tr><th>Source</th><th>Hostname</th><th>IP</th><th>Roles</th><th>Note</th></tr>
+            </thead>
+            <tbody id="upload-preview"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Added Hosts -->
+<section class="xd-card">
+  <div class="xd-card-header"><h2>Added Hosts</h2></div>
+
+  <div class="xd-actions">
+    <input id="hosts-search" class="xd-input" type="text" placeholder="Search hostname, IP, or role…">
+    <select id="page-size" class="xd-select" title="Rows per page">
+      <option value="10">10 / page</option>
+      <option value="25">25 / page</option>
+      <option value="50">50 / page</option>
+      <option value="100">100 / page</option>
+    </select>
+   <!-- <button id="hosts-load-more" class="xd-btn">Load more</button>  -->
+
+    <div class="flex-1"></div>
+
+
+    <button id="hosts-ping-all" class="xd-btn">Ping All</button>
+    <button id="hosts-ssh-all" class="xd-btn">SSH Check All</button>
+    <span id="status" class="xd-status" role="status" aria-live="polite"></span>
+  </div>
+
+  <div class="xd-table-wrap">
+    <table class="xd-table" aria-label="Hosts table">
+      <thead>
+        <tr>
+          <th>Hostname</th>
+          <th>IP Address</th>
+          <th>Roles</th>
+          <th>Ping</th>
+          <th>SSH</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="hosts-tbody"></tbody>
+    </table>
+  </div>
+
+  <div id="pager" class="xd-pager" aria-label="Table pagination" hidden>
+    <button id="page-first" class="xd-btn" type="button">« First</button>
+    <button id="page-prev"  class="xd-btn" type="button">‹ Prev</button>
+    <span id="page-info" class="xd-page-info">Page 1 / 1</span>
+    <button id="page-next"  class="xd-btn" type="button">Next ›</button>
+    <button id="page-last"  class="xd-btn" type="button">Last »</button>
+  </div>
+</section>
+
+
+
+<section class="xd-card">
+  <div class="xd-card-header">
+    <h3>Local machine hosts file</h3>
+  </div>
+  <div class="xd-actions">
+<label class="xd-label flex items-center gap-8">
+  <input id="etc-hosts-toggle" type="checkbox" checked>
+  Update <code class="xd-code">/etc/hosts</code> on this machine with all added hosts
+</label>
+
+    <span id="etc-hosts-status" class="xd-status"></span>
+  </div>
+</section>
+
+
+    <!-- Previews -->
+    <section class="xd-card">
+      <h3>Config file (JSON)</h3>
+      <!-- (path hidden on purpose) -->
+      <pre class="xd-pre" id="preview"></pre>
+    </section>
+
+    <section class="xd-card">
+      <h3>Nodes file</h3>
+      <pre class="xd-pre" id="nodes-preview"></pre>
+    </section>
+  </div>
+
+  <!-- SSH PANEL -->
+  <div id="ssh-panel" class="xd-tabpanel hidden" role="tabpanel" aria-labelledby="nav-ssh">
+    <section class="xd-card">
+      <div class="xd-card-header"><h2>SSH Keys</h2></div>
+
+      <div class="xd-form" autocomplete="off">
+        <div class="xd-form-row">
+          <label class="xd-label" for="ssh-local-user">Local user (key owner)</label>
+          <input id="ssh-local-user" class="xd-input" type="text" value="root" placeholder="e.g. root or deploy" />
+        </div>
+        <div class="xd-form-row">
+          <label class="xd-label" for="ssh-key-type">Key type</label>
+          <select id="ssh-key-type" class="xd-input">
+            <option value="ed25519" selected>ed25519 (recommended)</option>
+            <option value="rsa">rsa (fallback)</option>
+          </select>
+        </div>
+        <div class="xd-form-row">
+          <label class="xd-label" for="ssh-remote-user">Remote username (on targets)</label>
+          <input id="ssh-remote-user" class="xd-input" type="text" value="root" placeholder="e.g. root" />
+        </div>
+        <div class="xd-form-row">
+          <label class="xd-label" for="ssh-remote-pass">Remote password (used once to install key)</label>
+          <input id="ssh-remote-pass" class="xd-input" type="password" placeholder="password for remote user" />
+        </div>
+      </div>
+
+
+
+
+      <div class="xd-actions">
+        <button id="ssh-gen" class="xd-btn">Generate / Use existing key</button>
+        <button id="ssh-dist" class="xd-btn primary" disabled>Distribute to selected</button>
+        <button id="ssh-disable-pass" class="xd-btn ghost" disabled>Disable password SSH</button>
+        <span id="ssh-status" class="xd-status"></span>
+      </div>
+
+      <div class="xd-actions mt-4">
+        <div class="xd-label">Quick select:</div>
+        <button class="xd-btn" id="ssh-sel-all">All</button>
+        <button class="xd-btn" id="ssh-sel-none">None</button>
+        <button class="xd-btn" data-role="control">control</button>
+        <button class="xd-btn" data-role="network">network</button>
+        <button class="xd-btn" data-role="compute">compute</button>
+        <button class="xd-btn" data-role="storage">storage</button>
+        <button class="xd-btn" data-role="monitoring">monitoring</button>
+        <button class="xd-btn" data-role="deployment">deployment</button>
+      </div>
+<div class="xd-actions">
+  <select id="ssh-page-size" class="xd-select" title="Rows per page">
+    <option value="10">10 / page</option>
+    <option value="25">25 / page</option>
+    <option value="50">50 / page</option>
+    <option value="100">100 / page</option>
+  </select>
+  <!-- <button id="ssh-load-more" class="xd-btn">Load more</button> -->
+  <span id="ssh-count" class="xd-hint"></span>
+</div>  <!-- ✅ CLOSE actions bar -->
+
+<div class="xd-table-wrap">
+  <table class="xd-table" aria-label="SSH distribution">
+    <thead>
+      <tr>
+        <th><input type="checkbox" id="ssh-select-all"/></th>
+        <th>Hostname</th>
+        <th>IP</th>
+        <th>Roles</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody id="ssh-tbody"></tbody>
+  </table>
+</div>
+
+<div id="ssh-pager" class="xd-pager" aria-label="Table pagination" hidden>
+  <button id="ssh-page-first" class="xd-btn" type="button">« First</button>
+  <button id="ssh-page-prev"  class="xd-btn" type="button">‹ Prev</button>
+  <span id="ssh-page-info" class="xd-page-info">Page 1 / 1</span>
+  <button id="ssh-page-next"  class="xd-btn" type="button">Next ›</button>
+  <button id="ssh-page-last"  class="xd-btn" type="button">Last »</button>
+</div>
+
+</section>
+  </div>
+</main>
+
+  <!-- Module loader -->
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
