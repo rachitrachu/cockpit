@@ -16,114 +16,232 @@
       <header>Controls</header>
       <div class="body">
         <div class="controls-grid">
-          <div class="flex-col">
-            <div class="hdr">Action</div>
-            <select id="command" class="btn" aria-label="xAVS command">
-              <!-- Core Deployment Workflow -->
-              <option value="prechecks">prechecks</option>
-              <option value="bootstrap-servers" selected>bootstrap-servers</option>
-              <option value="deploy">deploy</option>
-              <option value="post-deploy">post-deploy</option>
-              
-              <!-- Service Management -->
-              <option value="pull">pull</option>
-              <option value="reconfigure">reconfigure</option>
-              <option value="upgrade">upgrade</option>
-              <option value="stop">stop</option>
-              <option value="destroy">destroy</option>
-              
-              <!-- Container Operations -->
-              <option value="deploy-containers">deploy-containers</option>
-              <option value="nova-libvirt-cleanup">nova-libvirt-cleanup</option>
-              
-              <!-- Database Operations -->
-              <option value="mariadb_recovery">mariadb_recovery</option>
-              <option value="mariadb_backup">mariadb_backup</option>
-              
-              <!-- Message Queue Operations -->
-              <option value="rabbitmq-reset-state">rabbitmq-reset-state</option>
-              <option value="rabbitmq-upgrade">rabbitmq-upgrade</option>
-              
-              <!-- Bifrost Operations -->
-              <option value="deploy-bifrost">deploy-bifrost</option>
-              <option value="deploy-servers">deploy-servers</option>
-              <option value="upgrade-bifrost">upgrade-bifrost</option>
-              
-              <!-- Certificate Management -->
-              <option value="certificates">certificates</option>
-              <option value="octavia-certificates">octavia-certificates</option>
-              
-              <!-- Configuration Management -->
-              <option value="genconfig">genconfig</option>
-              <option value="validate-config">validate-config</option>
-              <option value="gather-facts">gather-facts</option>
-            </select>
-          </div>
-
-          <!-- Options -->
-          <div class="flex-col">
-            <div class="hdr">Options</div>
-            <div class="option-controls">
-              <label class="checkbox-label">
-                <input type="checkbox" id="dryRunCheck" class="bxc">
-                <span>Dry Run (--check)</span>
-              </label>
-              <small class="help-text">Preview changes without applying them</small>
-            </div>
-            
-            <!-- Backup type (only shown for mariadb_backup) -->
-            <div id="backup-options" class="backup-options" style="display: none;">
-              <div class="hdr">Backup Type</div>
-              <select id="backupType" class="btn">
-                <option value="full" selected>Full Backup (--full)</option>
-                <option value="incremental">Incremental Backup (--incremental)</option>
+          
+          <!-- Left Column: Command and Options -->
+          <div class="controls-section">
+            <div class="flex-col">
+              <div class="hdr">Action</div>
+              <select id="command" class="btn" aria-label="xAVS command">
+                <!-- Core Deployment Workflow -->
+                <option value="prechecks">prechecks</option>
+                <option value="bootstrap-servers" selected>bootstrap-servers</option>
+                <option value="deploy">deploy</option>
+                <option value="post-deploy">post-deploy</option>
+                
+                <!-- Service Management -->
+                <option value="pull">pull</option>
+                <option value="reconfigure">reconfigure</option>
+                <option value="upgrade">upgrade</option>
+                <option value="stop">stop</option>
+                <option value="destroy">destroy</option>
+                
+                <!-- Container Operations -->
+                <option value="deploy-containers">deploy-containers</option>
+                <option value="nova-libvirt-cleanup">nova-libvirt-cleanup</option>
+                
+                <!-- Database Operations -->
+                <option value="mariadb_recovery">mariadb_recovery</option>
+                <option value="mariadb_backup">mariadb_backup</option>
+                
+                <!-- Message Queue Operations -->
+                <option value="rabbitmq-reset-state">rabbitmq-reset-state</option>
+                <option value="rabbitmq-upgrade">rabbitmq-upgrade</option>
+                
+                <!-- Bifrost Operations -->
+                <option value="deploy-bifrost">deploy-bifrost</option>
+                <option value="deploy-servers">deploy-servers</option>
+                <option value="upgrade-bifrost">upgrade-bifrost</option>
+                
+                <!-- Certificate Management -->
+                <option value="certificates">certificates</option>
+                <option value="octavia-certificates">octavia-certificates</option>
+                
+                <!-- Configuration Management -->
+                <option value="genconfig">genconfig</option>
+                <option value="validate-config">validate-config</option>
+                <option value="gather-facts">gather-facts</option>
               </select>
-              <small class="help-text">Full backup is recommended before major changes</small>
             </div>
-            
-            <!-- Danger warning (shown for dangerous commands) -->
-            <div id="danger-warning" style="display: none;"></div>
+
+            <!-- Options -->
+            <div class="flex-col">
+              <div class="hdr">Options</div>
+              <div class="option-controls">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="dryRunCheck" class="bxc">
+                  <span>Dry Run (--check)</span>
+                </label>
+                <small class="help-text">Preview changes without applying them</small>
+              </div>
+              
+              <!-- Backup type (only shown for mariadb_backup) -->
+              <div id="backup-options" class="backup-options" style="display: none;">
+                <div class="hdr">Backup Type</div>
+                <select id="backupType" class="btn">
+                  <option value="full" selected>Full Backup (--full)</option>
+                  <option value="incremental">Incremental Backup (--incremental)</option>
+                </select>
+                <small class="help-text">Full backup is recommended before major changes</small>
+              </div>
+              
+              <!-- Danger warning (shown for dangerous commands) -->
+              <div id="danger-warning" style="display: none;"></div>
+            </div>
           </div>
 
-          <!-- service chips (--tags) -->
-          <div id="services-section" class="flex-col">
-            <div class="hdr">Services (--tags)</div>
-            <div class="service-status-info">
-              <small class="help-text" id="service-help">Select OpenStack services to target deployment operations</small>
-              <div id="service-status" class="service-status-indicator"></div>
+          <!-- Right Column: Services with Multiselect -->
+          <div class="controls-section">
+            <div id="services-section" class="flex-col">
+              <div class="hdr">Services (--tags)</div>
+              <div class="service-status-info">
+                <small class="help-text" id="service-help">Select OpenStack services to target deployment operations</small>
+                <div id="service-status" class="service-status-indicator"></div>
+              </div>
+              
+              <!-- Multiselect Dropdown for Services -->
+              <div class="multiselect-container">
+                <div class="multiselect-dropdown" id="services-dropdown">
+                  <div class="multiselect-trigger" id="services-trigger">
+                    <span id="services-placeholder">Select services...</span>
+                    <span class="multiselect-arrow">▼</span>
+                  </div>
+                  <div class="multiselect-content" id="services-content">
+                    <div class="multiselect-search">
+                      <input type="text" id="services-search" placeholder="Search services..." class="btn ghost">
+                    </div>
+                    <div class="multiselect-options" id="services-options">
+                      <!-- Core OpenStack Services -->
+                      <div class="multiselect-group">
+                        <div class="multiselect-group-label">Core OpenStack Services</div>
+                        <label class="multiselect-option">
+                          <input type="checkbox" value="keystone"> 
+                          <span class="option-label">keystone</span>
+                          <span class="option-description">Identity Service</span>
+                        </label>
+                        <label class="multiselect-option">
+                          <input type="checkbox" value="glance"> 
+                          <span class="option-label">glance</span>
+                          <span class="option-description">Image Service</span>
+                        </label>
+                        <label class="multiselect-option">
+                          <input type="checkbox" value="nova"> 
+                          <span class="option-label">nova</span>
+                          <span class="option-description">Compute Service</span>
+                        </label>
+                        <label class="multiselect-option">
+                          <input type="checkbox" value="neutron"> 
+                          <span class="option-label">neutron</span>
+                          <span class="option-description">Networking Service</span>
+                        </label>
+                        <label class="multiselect-option">
+                          <input type="checkbox" value="placement"> 
+                          <span class="option-label">placement</span>
+                          <span class="option-description">Placement Service</span>
+                        </label>
+                        <label class="multiselect-option">
+                          <input type="checkbox" value="cinder"> 
+                          <span class="option-label">cinder</span>
+                          <span class="option-description">Block Storage Service</span>
+                        </label>
+                        <label class="multiselect-option">
+                          <input type="checkbox" value="horizon"> 
+                          <span class="option-label">horizon</span>
+                          <span class="option-description">Dashboard Service</span>
+                        </label>
+                      </div>
+                      
+                      <!-- Additional OpenStack Services -->
+                      <div class="multiselect-group">
+                        <div class="multiselect-group-label">Additional OpenStack Services</div>
+                        <label class="multiselect-option">
+                          <input type="checkbox" value="heat"> 
+                          <span class="option-label">heat</span>
+                          <span class="option-description">Orchestration Service</span>
+                        </label>
+                        <label class="multiselect-option">
+                          <input type="checkbox" value="swift"> 
+                          <span class="option-label">swift</span>
+                          <span class="option-description">Object Storage Service</span>
+                        </label>
+                        <label class="multiselect-option">
+                          <input type="checkbox" value="barbican"> 
+                          <span class="option-label">barbican</span>
+                          <span class="option-description">Key Manager Service</span>
+                        </label>
+                        <label class="multiselect-option">
+                          <input type="checkbox" value="magnum"> 
+                          <span class="option-label">magnum</span>
+                          <span class="option-description">Container Infrastructure</span>
+                        </label>
+                        <label class="multiselect-option">
+                          <input type="checkbox" value="octavia"> 
+                          <span class="option-label">octavia</span>
+                          <span class="option-description">Load Balancer Service</span>
+                        </label>
+                        <label class="multiselect-option">
+                          <input type="checkbox" value="masakari"> 
+                          <span class="option-label">masakari</span>
+                          <span class="option-description">Instance High Availability</span>
+                        </label>
+                      </div>
+                      
+                      <!-- Infrastructure Services -->
+                      <div class="multiselect-group">
+                        <div class="multiselect-group-label">Infrastructure Services</div>
+                        <label class="multiselect-option">
+                          <input type="checkbox" value="mariadb"> 
+                          <span class="option-label">mariadb</span>
+                          <span class="option-description">Database Service</span>
+                        </label>
+                        <label class="multiselect-option">
+                          <input type="checkbox" value="rabbitmq"> 
+                          <span class="option-label">rabbitmq</span>
+                          <span class="option-description">Message Queue Service</span>
+                        </label>
+                        <label class="multiselect-option">
+                          <input type="checkbox" value="haproxy"> 
+                          <span class="option-label">haproxy</span>
+                          <span class="option-description">Load Balancer</span>
+                        </label>
+                        <label class="multiselect-option">
+                          <input type="checkbox" value="memcached"> 
+                          <span class="option-label">memcached</span>
+                          <span class="option-description">Caching Service</span>
+                        </label>
+                      </div>
+                      
+                      <!-- Monitoring & Logging -->
+                      <div class="multiselect-group">
+                        <div class="multiselect-group-label">Monitoring & Logging</div>
+                        <label class="multiselect-option">
+                          <input type="checkbox" value="prometheus"> 
+                          <span class="option-label">prometheus</span>
+                          <span class="option-description">Monitoring Service</span>
+                        </label>
+                        <label class="multiselect-option">
+                          <input type="checkbox" value="fluentd"> 
+                          <span class="option-label">fluentd</span>
+                          <span class="option-description">Log Collector</span>
+                        </label>
+                        <label class="multiselect-option">
+                          <input type="checkbox" value="grafana"> 
+                          <span class="option-label">grafana</span>
+                          <span class="option-description">Analytics & Monitoring</span>
+                        </label>
+                        <label class="multiselect-option">
+                          <input type="checkbox" value="elasticsearch"> 
+                          <span class="option-label">elasticsearch</span>
+                          <span class="option-description">Search & Analytics</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <input id="custom-services" class="btn ghost mono" placeholder="Additional services (comma separated, e.g., manila,designate)">
+              <div id="services-summary" class="services-summary"></div>
             </div>
-            <div id="services-grid" class="services-grid">
-              <!-- Core OpenStack Services -->
-              <span class="chip" data-svc="keystone" title="Identity Service">keystone</span>
-              <span class="chip" data-svc="glance" title="Image Service">glance</span>
-              <span class="chip" data-svc="nova" title="Compute Service">nova</span>
-              <span class="chip" data-svc="neutron" title="Networking Service">neutron</span>
-              <span class="chip" data-svc="placement" title="Placement Service">placement</span>
-              <span class="chip" data-svc="cinder" title="Block Storage Service">cinder</span>
-              <span class="chip" data-svc="horizon" title="Dashboard Service">horizon</span>
-              
-              <!-- Additional OpenStack Services -->
-              <span class="chip" data-svc="heat" title="Orchestration Service">heat</span>
-              <span class="chip" data-svc="swift" title="Object Storage Service">swift</span>
-              <span class="chip" data-svc="barbican" title="Key Manager Service">barbican</span>
-              <span class="chip" data-svc="magnum" title="Container Infrastructure Management">magnum</span>
-              <span class="chip" data-svc="octavia" title="Load Balancer Service">octavia</span>
-              <span class="chip" data-svc="masakari" title="Instance High Availability">masakari</span>
-              
-              <!-- Infrastructure Services -->
-              <span class="chip" data-svc="mariadb" title="Database Service">mariadb</span>
-              <span class="chip" data-svc="rabbitmq" title="Message Queue Service">rabbitmq</span>
-              <span class="chip" data-svc="haproxy" title="Load Balancer">haproxy</span>
-              <span class="chip" data-svc="memcached" title="Caching Service">memcached</span>
-              
-              <!-- Monitoring & Logging -->
-              <span class="chip" data-svc="prometheus" title="Monitoring Service">prometheus</span>
-              <span class="chip" data-svc="fluentd" title="Log Collector">fluentd</span>
-              <span class="chip" data-svc="grafana" title="Analytics & Monitoring">grafana</span>
-              <span class="chip" data-svc="elasticsearch" title="Search & Analytics">elasticsearch</span>
-            </div>
-            <input id="custom-services" class="btn ghost mono" placeholder="Additional services (comma separated, e.g., manila,designate)">
-            <div id="services-summary" class="services-summary"></div>
           </div>
 
           <!-- hosts -->

@@ -37,7 +37,12 @@
   const els = {
     command: document.getElementById("command"),
     servicesSection: document.getElementById("services-section"),
-    servicesGrid: document.getElementById("services-grid"),
+    servicesDropdown: document.getElementById("services-dropdown"),
+    servicesTrigger: document.getElementById("services-trigger"),
+    servicesContent: document.getElementById("services-content"),
+    servicesPlaceholder: document.getElementById("services-placeholder"),
+    servicesSearch: document.getElementById("services-search"),
+    servicesOptions: document.getElementById("services-options"),
     customServices: document.getElementById("custom-services"),
     serviceStatus: document.getElementById("service-status"),
     servicesSummary: document.getElementById("services-summary"),
@@ -336,7 +341,7 @@
     
     const cmd = els.command?.value;
     const selectedCount = selectedServices.size;
-    const customCount = els.customServices?.value ? els.customServices.value.split(",").filter(Boolean).length : 0;
+    const customCount = getCustomServices().length;
     const totalSelected = selectedCount + customCount;
     
     if (NO_TAG_COMMANDS.has(cmd)) {
@@ -367,7 +372,7 @@
         break;
       case 'selected':
         const services = [...selectedServices];
-        const customServices = els.customServices?.value ? els.customServices.value.split(",").map(s => s.trim()).filter(Boolean) : [];
+        const customServices = getCustomServices();
         const allSelected = [...services, ...customServices];
         content = `🎯 Selected services: <strong>${allSelected.join(', ')}</strong> (${count} service${count > 1 ? 's' : ''})`;
         break;
@@ -387,35 +392,123 @@
       els.customServices.disabled = disabled;
     }
     
-    // Add visual feedback to service chips
-    if (els.servicesGrid) {
-      els.servicesGrid.querySelectorAll(".chip").forEach(chip => {
-        chip.setAttribute("aria-disabled", disabled ? "true" : "false");
-        if (disabled) {
-          chip.classList.remove("active");
-          selectedServices.delete(chip.dataset.svc);
-          chip.style.opacity = "0.5";
-          chip.style.cursor = "not-allowed";
-        } else {
-          chip.style.opacity = "1";
-          chip.style.cursor = "pointer";
+    // Add visual feedback to multiselect dropdown
+    if (els.servicesOptions) {
+      const checkboxes = els.servicesOptions.querySelectorAll('input[type="checkbox"]');
+      checkboxes.forEach(checkbox => {
+        const option = checkbox.closest('.multiselect-option');
+        if (option) {
+          checkbox.disabled = disabled;
+          if (disabled) {
+            checkbox.checked = false;
+            selectedServices.delete(checkbox.value);
+            option.style.opacity = "0.5";
+            option.style.cursor = "not-allowed";
+          } else {
+            option.style.opacity = "1";
+            option.style.cursor = "pointer";
+          }
         }
       });
+      updateServiceSelection();
     }
     
     updateServiceStatus();
   }
-  function onChipClick(e) {
-    const chip = e.target.closest(".chip");
-    if (!chip || !els.servicesSection || els.servicesSection.style.pointerEvents === "none") return;
-    const svc = chip.dataset.svc;
-    chip.classList.toggle("active");
-    if (chip.classList.contains("active")) selectedServices.add(svc);
-    else selectedServices.delete(svc);
+
+  function initMultiselectDropdown() {
+    if (!els.servicesDropdown || !els.servicesTrigger || !els.servicesContent) return;
+
+    // Toggle dropdown
+    els.servicesTrigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      els.servicesDropdown.classList.toggle('open');
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!els.servicesDropdown.contains(e.target)) {
+        els.servicesDropdown.classList.remove('open');
+      }
+    });
+
+    // Search functionality
+    if (els.servicesSearch) {
+      els.servicesSearch.addEventListener('input', (e) => {
+        const searchTerm = e.target.value.toLowerCase();
+        const options = els.servicesOptions.querySelectorAll('.multiselect-option');
+        
+        options.forEach(option => {
+          const label = option.querySelector('.option-label').textContent.toLowerCase();
+          const description = option.querySelector('.option-description').textContent.toLowerCase();
+          const matches = label.includes(searchTerm) || description.includes(searchTerm);
+          option.style.display = matches ? 'flex' : 'none';
+        });
+
+        // Hide/show groups based on visible options
+        const groups = els.servicesOptions.querySelectorAll('.multiselect-group');
+        groups.forEach(group => {
+          const visibleOptions = group.querySelectorAll('.multiselect-option:not([style*="none"])');
+          group.style.display = visibleOptions.length > 0 ? 'block' : 'none';
+        });
+      });
+    }
+
+    // Handle checkbox changes
+    if (els.servicesOptions) {
+      els.servicesOptions.addEventListener('change', (e) => {
+        if (e.target.type === 'checkbox') {
+          const service = e.target.value;
+          if (e.target.checked) {
+            selectedServices.add(service);
+          } else {
+            selectedServices.delete(service);
+          }
+          updateServiceSelection();
+        }
+      });
+    }
+
+    // Initialize custom services input handler
+    if (els.customServices) {
+      els.customServices.addEventListener('input', () => {
+        updateServiceSelection();
+      });
+    }
+  }
+
+  function updateServiceSelection() {
+    updateServicePlaceholder();
+    updateServicesSummary();
     updateServiceStatus();
   }
+
+  function updateServicePlaceholder() {
+    if (!els.servicesPlaceholder) return;
+
+    const selectedCount = selectedServices.size;
+    const customServices = getCustomServices();
+    const totalSelected = selectedCount + customServices.length;
+
+    if (totalSelected === 0) {
+      els.servicesPlaceholder.textContent = 'Select services...';
+      els.servicesPlaceholder.classList.remove('has-selection');
+    } else if (totalSelected === 1) {
+      const allSelected = [...selectedServices, ...customServices];
+      els.servicesPlaceholder.textContent = allSelected[0];
+      els.servicesPlaceholder.classList.add('has-selection');
+    } else {
+      els.servicesPlaceholder.textContent = `${totalSelected} services selected`;
+      els.servicesPlaceholder.classList.add('has-selection');
+    }
+  }
+
+  function getCustomServices() {
+    return els.customServices?.value ? 
+      els.customServices.value.split(",").map(s => s.trim()).filter(Boolean) : [];
+  }
   function getSelectedServices() {
-    const extra = els.customServices?.value ? els.customServices.value.split(",").map(s => s.trim()).filter(Boolean) : [];
+    const extra = getCustomServices();
     return [...selectedServices, ...extra];
   }
 
@@ -490,21 +583,18 @@
       }
     }
     
-    // Add visual feedback to show which tab is active
-    const allTab = document.querySelector('[data-tab="all"]');
-    const limitTab = document.querySelector('[data-tab="limit"]');
-    const tagsTab = document.querySelector('[data-tab="tags"]');
-    
-    // Reset all tabs
-    [allTab, limitTab, tagsTab].forEach(tab => {
-      if (tab) tab.style.backgroundColor = '';
+    // Reset all tabs to their default state (remove any inline styles)
+    const allTabs = document.querySelectorAll('.host-tab');
+    allTabs.forEach(tab => {
+      tab.style.backgroundColor = '';
+      tab.style.color = '';
+      tab.classList.remove('active');
     });
     
-    // Highlight active tab
+    // Add active class to current tab (CSS will handle the styling)
     const activeTab = document.querySelector(`[data-tab="${hostMode}"]`);
     if (activeTab) {
-      activeTab.style.backgroundColor = '#197560';
-      activeTab.style.color = 'white';
+      activeTab.classList.add('active');
     }
   }
   
@@ -920,9 +1010,8 @@
 
   /* ---------- init ---------- */
   function init() {
-    if (els.servicesGrid) {
-      els.servicesGrid.addEventListener("click", onChipClick);
-    }
+    // Initialize multiselect dropdown
+    initMultiselectDropdown();
     
     if (els.runBtn) {
       els.runBtn.addEventListener("click", () => runningProc ? stop() : start());
