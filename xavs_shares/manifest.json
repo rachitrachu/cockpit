@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "tools": {
+    "xavs_shares": {
+      "label": "XAVS Shares",
+      "path": "index.html",
+      "icon": "fa-share-alt"
+    }
+  }
+}
