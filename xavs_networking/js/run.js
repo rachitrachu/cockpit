@@ -30,8 +30,38 @@ async function run(cmd, args = [], opts = {}) {
   }
 }
 
-async function netplanAction(action, config) {
+async function netplanAction(action, config = {}) {
   console.log('netplanAction called with:', { action, config });
+  
+  setStatus(`Running ${action}...`);
+  
+  try {
+    // Use the new JavaScript-based netplan manager
+    if (typeof window.netplanJsAction === 'function') {
+      console.log('Using JavaScript netplan manager...');
+      const result = await window.netplanJsAction(action, config);
+      console.log('JavaScript netplan manager result:', result);
+      
+      if (result.error) {
+        console.error('JavaScript netplan manager error:', result.error);
+        return { error: result.error };
+      }
+      
+      setStatus('');
+      return result;
+    } else {
+      console.warn('JavaScript netplan manager not available, falling back to Python script...');
+      // Fallback to Python script approach
+      return await netplanActionPython(action, config);
+    }
+  } catch (error) {
+    console.error('netplanAction error:', error);
+    setStatus('');
+    return { error: error.message };
+  }
+}
+
+async function netplanActionPython(action, config = {}) {
   const payload = JSON.stringify({ action, config });
   console.log('JSON payload to send:', payload);
 
@@ -48,8 +78,25 @@ async function netplanAction(action, config) {
       err: 'out'
     });
 
+    // Try to find netplan_manager.py in both development and production locations
     const result = await cockpit.spawn([
-      'bash', '-c', `cd /usr/share/cockpit/xavs_networking && cat ${tempFile} | python3 netplan_manager.py 2>&1; rm -f ${tempFile}`
+      'bash', '-c', `
+        # Find the directory containing netplan_manager.py
+        if [ -f js/netplan_manager.py ]; then
+          SCRIPT_DIR="js"
+        elif [ -f netplan_manager.py ]; then
+          SCRIPT_DIR="."
+        elif [ -f /usr/share/cockpit/xavs_networking/netplan_manager.py ]; then
+          cd /usr/share/cockpit/xavs_networking
+          SCRIPT_DIR="."
+        else
+          echo "Error: netplan_manager.py not found in any expected location"
+          exit 1
+        fi
+        
+        cat ${tempFile} | python3 $SCRIPT_DIR/netplan_manager.py 2>&1
+        rm -f ${tempFile}
+      `
     ], {
       superuser: 'require',
       err: 'out'

@@ -180,13 +180,13 @@ window.forceReloadInterfaces = forceReloadInterfaces;
 window.testInterfaceLoadingFunctionality = testInterfaceLoadingFunctionality;
 window.autoFixInterfaceLoading = autoFixInterfaceLoading;
 
-// Auto-run when script loads
+// Auto-run when script loads (with longer delay to reduce conflicts)
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-        setTimeout(autoFixInterfaceLoading, 2000);
+        setTimeout(autoFixInterfaceLoading, 5000); // Increased delay
     });
 } else {
-    setTimeout(autoFixInterfaceLoading, 1000);
+    setTimeout(autoFixInterfaceLoading, 3000); // Increased delay
 }
 
 console.log('🔧 Interface loading fix script loaded. Available functions:');

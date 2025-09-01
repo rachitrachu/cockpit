@@ -74,7 +74,7 @@ function waitForInterfacesAndUpdate() {
     console.log('3. Waiting for interfaces to load...');
     
     let attempts = 0;
-    const maxAttempts = 20;
+    const maxAttempts = 5; // Reduced from 20 to improve performance
     
     const checkInterval = setInterval(() => {
         attempts++;

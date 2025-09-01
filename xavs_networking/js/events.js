@@ -1,8 +1,8 @@
 ﻿'use strict';
-/* global $, $$, run, setStatus, setupModal, netplanAction, loadInterfaces */function setupEventHandlers() {
-  console.log('Setting up event handlers...');
+/* global $, $$, run, setStatus, setupModal, netplanAction, loadInterfaces */
 
-  // Tab switchingloadConnections() {
+// Tab switching
+async function loadConnections() {
   console.log('Loading connections...');
   const tbody = $('#table-connections tbody');
   if (!tbody) return;
@@ -86,6 +86,18 @@ function setupTabs() {
       const targetPanel = document.querySelector(`#tab-${targetId}`);
       if (targetPanel) {
         targetPanel.classList.add('active');
+      }
+
+      // Tab-specific initialization
+      if (targetId === 'constructs') {
+        console.log('Initializing constructs tab...');
+        if (typeof setupNetworkingForms === 'function') {
+          setupNetworkingForms().then(() => {
+            console.log('✅ Constructs tab forms initialized');
+          }).catch(error => {
+            console.error('❌ Error initializing constructs tab:', error);
+          });
+        }
       }
     });
   });
@@ -765,7 +777,7 @@ ${dns}`;
         }
       });
 
-      alert('? All forms have been reset!');
+      alert('✅ All forms have been reset!');
     });
   }
 }

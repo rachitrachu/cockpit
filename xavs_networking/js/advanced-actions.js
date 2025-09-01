@@ -484,73 +484,7 @@ async function deleteConstructedInterface(iface) {
   try {
     setStatus(`Deleting ${iface.dev}...`);
 
-    // Step 1: Remove any IP addresses first
-    if (iface.ipv4) {
-      try {
-        console.log(`Removing IP address ${iface.ipv4} from ${iface.dev}`);
-        await runInterfaceCommand('ip', ['addr', 'del', iface.ipv4, 'dev', iface.dev], { superuser: 'require' });
-        console.log(`IP address removed successfully`);
-      } catch (e) {
-        console.warn('Could not remove IP address:', e);
-        errorMessages.push(`Failed to remove IP address: ${e}`);
-      }
-    }
-
-    // Step 2: Bring interface down
-    try {
-      console.log(`Bringing interface ${iface.dev} down`);
-      await runInterfaceCommand('ip', ['link', 'set', iface.dev, 'down'], { superuser: 'require' });
-      console.log(`Interface ${iface.dev} brought down successfully`);
-    } catch (e) {
-      console.warn('Could not bring interface down:', e);
-      errorMessages.push(`Failed to bring interface down: ${e}`);
-    }
-
-    // Step 3: Delete the interface using the correct method
-    try {
-      if (iface.dev.includes('.')) {
-        // For VLAN interfaces, use 'ip link delete' (this should work for VLANs)
-        console.log(`Deleting VLAN interface ${iface.dev}`);
-        await runInterfaceCommand('ip', ['link', 'delete', iface.dev], { superuser: 'require' });
-        console.log(`VLAN interface ${iface.dev} deleted successfully`);
-      } else if (iface.dev.startsWith('br')) {
-        // For bridge interfaces
-        console.log(`Deleting bridge interface ${iface.dev}`);
-        await runInterfaceCommand('ip', ['link', 'delete', iface.dev, 'type', 'bridge'], { superuser: 'require' });
-        console.log(`Bridge interface ${iface.dev} deleted successfully`);
-      } else if (iface.dev.startsWith('bond')) {
-        // For bond interfaces
-        console.log(`Deleting bond interface ${iface.dev}`);
-        await runInterfaceCommand('ip', ['link', 'delete', iface.dev], { superuser: 'require' });
-        console.log(`Bond interface ${iface.dev} deleted successfully`);
-      }
-      
-      operationSuccess = true;
-      
-    } catch (e) {
-      console.error('Failed to delete interface via ip command:', e);
-      errorMessages.push(`Failed to delete interface: ${e}`);
-      
-      // Try alternative method for VLAN deletion
-      if (iface.dev.includes('.')) {
-        try {
-          console.log(`Trying alternative VLAN deletion method for ${iface.dev}`);
-          const parts = iface.dev.split('.');
-          const parent = parts[0];
-          const vlanId = parts[1];
-          
-          // Try using vconfig if available (fallback method)
-          await run('bash', ['-c', `if command -v vconfig >/dev/null 2>&1; then vconfig rem ${iface.dev}; else echo "vconfig not available"; fi`], { superuser: 'require' });
-          console.log(`Alternative VLAN deletion attempted`);
-          operationSuccess = true;
-        } catch (altError) {
-          console.error('Alternative VLAN deletion also failed:', altError);
-          errorMessages.push(`Alternative deletion method failed: ${altError}`);
-        }
-      }
-    }
-
-    // Step 4: Remove from netplan configuration
+    // Step 1: Remove from netplan configuration (this is the only step we need)
     try {
       let deleteType;
       let normalizedName = iface.dev;
@@ -558,15 +492,11 @@ async function deleteConstructedInterface(iface) {
       if (iface.dev.includes('.')) {
         deleteType = 'vlans';
         // Enhanced VLAN name normalization
-        // Handle cases like: eno4.1188@eno4@eno4 -> eno4.1188@eno4
+        // Handle cases like: eno4.1188@eno4@eno4 -> eno4.1188
         if (normalizedName.includes('@')) {
-          // Split by @ and keep only the first two parts (interface.vlan@parent)
+          // Split by @ and keep only the first part (interface.vlan)
           const parts = normalizedName.split('@');
-          if (parts.length > 2) {
-            // If we have eno4.1188@eno4@eno4, normalize to eno4.1188@eno4
-            normalizedName = `${parts[0]}@${parts[1]}`;
-          }
-          // If it's already eno4.1188@eno4, keep it as is
+          normalizedName = parts[0];
         }
       } else if (iface.dev.startsWith('br')) {
         deleteType = 'bridges';
@@ -587,58 +517,43 @@ async function deleteConstructedInterface(iface) {
       console.log(`📋 Netplan response:`, result);
       
       if (result.error) {
-        console.warn('? Failed to remove from netplan:', result.error);
+        console.error('❌ Failed to remove from netplan:', result.error);
         errorMessages.push(`Netplan removal failed: ${result.error}`);
-      } else {
-        console.log('✅ Successfully removed from netplan configuration');
-      }
-    } catch (netplanError) {
-      console.error('?? Netplan deletion failed:', netplanError);
-      errorMessages.push(`Netplan operation failed: ${netplanError}`);
-    }
-
-    // Step 5: Verify deletion by checking if interface still exists
-    try {
-      console.log(`Verifying deletion of ${iface.dev}`);
-      const checkResult = await run('ifconfig', [iface.dev], { superuser: 'try' });
-      if (checkResult && checkResult.trim()) {
-        console.warn(`Interface ${iface.dev} still exists after deletion attempt`);
         operationSuccess = false;
-        errorMessages.push(`Interface still exists after deletion`);
       } else {
-        console.log(`Interface ${iface.dev} successfully deleted - no longer exists`);
+        console.log('✅ Successfully removed from netplan configuration and applied changes');
         operationSuccess = true;
       }
-    } catch (e) {
-      // If 'ifconfig' fails, it means the interface doesn't exist (good!)
-      console.log(`Interface ${iface.dev} verified as deleted (ip link show failed as expected)`);
-      operationSuccess = true;
+    } catch (netplanError) {
+      console.error('❌ Netplan deletion failed:', netplanError);
+      errorMessages.push(`Netplan operation failed: ${netplanError}`);
+      operationSuccess = false;
     }
 
-    // Step 6: Double-check netplan file was actually updated
+    // Verify deletion by checking netplan configuration
     try {
-      console.log(`🔍 Verifying netplan configuration was updated`);
+      console.log(`🔍 Verifying deletion by checking netplan configuration`);
       const showConfigResult = await run('cat', ['/etc/netplan/99-cockpit.yaml'], { superuser: 'try' });
       console.log(`📄 Current netplan config after deletion:`);
       console.log(showConfigResult);
       
-      // Enhanced normalization for checking (handle double @parent suffixes)
+      // Enhanced normalization for checking (handle @parent suffixes)
       let checkName = iface.dev;
       if (checkName.includes('@')) {
-        // Handle cases like eno4.1188@eno4@eno4 -> eno4.1188@eno4
+        // Handle cases like eno4.1188@eno4@eno4 -> eno4.1188
         const parts = checkName.split('@');
-        if (parts.length > 2) {
-          checkName = `${parts[0]}@${parts[1]}`;
-        }
-        // If it's already normalized (eno4.1188@eno4), keep it as is
+        checkName = parts[0];
       }
       
       // Check if the normalized interface name still appears in the config
       if (showConfigResult && showConfigResult.includes(checkName + ':')) {
-        console.warn(`?? Interface ${checkName} still appears in netplan config after deletion`);
+        console.warn(`⚠️ Interface ${checkName} still appears in netplan config after deletion`);
         errorMessages.push(`Interface still appears in netplan configuration`);
+        operationSuccess = false;
       } else {
         console.log(`✅ Interface ${checkName} successfully removed from netplan config`);
+        // The interface removal was successful if it's no longer in netplan
+        operationSuccess = true;
       }
     } catch (configCheckError) {
       console.warn('Could not verify netplan config:', configCheckError);
