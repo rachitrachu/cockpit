@@ -1,199 +1,493 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>Shares</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8" />
+  <title>XAVS Shares</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <!-- Cockpit API + Brand CSS -->
   <script src="../base1/cockpit.js"></script>
-  <link rel="stylesheet" href="../base1/cockpit.css">
-  <link rel="stylesheet" href="../base1/patternfly.css">
-  <link rel="stylesheet" href="shares.css">
+  <link rel="stylesheet" href="shares.css" />
 </head>
 <body>
   <div class="app">
-    <div class="topbar">
-      <h1 class="app-title"><i class="fa fa-share-alt"></i> Shares</h1>
-      <div class="actions">
-        <button id="btn-debug" class="btn btn-outline btn-sm"><i class="fa fa-bug"></i> Debug</button>
-      </div>
-    </div>
+    <!-- Top bar -->
+    <header class="topbar">
+      <h1 class="app-title"><i class="fa fa-share-nodes"></i> XAVS Shares</h1>
+      <div class="help" data-tip="This module helps manage network shares:
+• Create and manage NFS exports and mounts
+• Set up and configure iSCSI targets and initiators
+• Monitor active share connections and sessions
+• Quick setup for common sharing scenarios">?</div>
+    </header>
 
-    <!-- global banner for missing deps / JS errors -->
+    <!-- Global error banner -->
     <div id="global-error" class="alert alert-warning d-none"></div>
 
-    <!-- Tabs (JS controls which pane is active) -->
-    <ul class="nav-tabs">
-      <li><a href="#" class="nav-link active" data-tab="tab-overview"><i class="fa fa-dashboard"></i> Overview</a></li>
+    <!-- Tabs -->
+    <ul class="nav-tabs" id="tabs">
+      <li><a href="#" class="nav-link active" data-tab="tab-overview"><i class="fa fa-tachometer-alt"></i> Overview</a></li>
       <li><a href="#" class="nav-link" data-tab="tab-nfs"><i class="fa fa-folder-open"></i> NFS</a></li>
-      <li><a href="#" class="nav-link" data-tab="tab-iscsi"><i class="fa fa-hdd-o"></i> iSCSI</a></li>
+      <li><a href="#" class="nav-link" data-tab="tab-iscsi"><i class="fa fa-hdd"></i> iSCSI</a></li>
+      <li><a href="#" class="nav-link" data-tab="tab-logs"><i class="fa fa-terminal"></i> Logs</a></li>
     </ul>
 
-    <div class="tab-content">
-      <!-- ============ Overview (only these two cards) ============ -->
-      <div id="tab-overview" class="tab-pane active">
-        <div class="grid-2">
+    <main class="tab-content">
+      <!-- TAB 1: OVERVIEW -->
+      <section id="tab-overview" class="tab-pane show active">
+        <div class="overview-grid">
+          <!-- NFS Status Card -->
           <div class="status-card">
             <div class="status-card-header">
-              <h3><i class="status-icon fa fa-server"></i> NFS mounts on this host</h3>
-              <button id="btn-refresh-nfs-mounts" class="btn btn-outline btn-sm"><i class="fa fa-refresh"></i> Refresh</button>
+              <i class="fa fa-folder-open status-icon"></i>
+              <h3>NFS Service</h3>
             </div>
             <div class="status-card-body">
-              <ul id="nfs-mounts-list" class="list"><li class="muted">Loading…</li></ul>
-            </div>
-          </div>
-
-          <div class="status-card">
-            <div class="status-card-header">
-              <h3><i class="status-icon fa fa-link"></i> iSCSI sessions on this host</h3>
-              <button id="btn-refresh-iscsi-sessions" class="btn btn-outline btn-sm"><i class="fa fa-refresh"></i> Refresh</button>
-            </div>
-            <div class="status-card-body">
-              <ul id="iscsi-sessions-list" class="list"><li class="muted">Loading…</li></ul>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ============ NFS (Overview cards are NOT here) ============ -->
-      <div id="tab-nfs" class="tab-pane">
-        <div class="grid-2">
-          <div class="status-card">
-            <div class="status-card-header">
-              <h3><i class="fa fa-list"></i> Created NFS shares (/etc/exports)</h3>
-              <div class="actions">
-                <button id="btn-exports-reload" class="btn btn-outline btn-sm"><i class="fa fa-refresh"></i> Reload</button>
-                <button id="btn-exportfs-apply" class="btn btn-primary btn-sm"><i class="fa fa-check"></i> Apply</button>
+              <div class="status-row">
+                <div class="status-dot" id="nfs-status-dot" aria-hidden="true"></div>
+                <div class="status-info">
+                  <div class="status-label">Service Status:</div>
+                  <div class="status-value" id="nfs-status">Checking...</div>
+                </div>
+              </div>
+              <div class="status-detail">
+                <div class="status-label">Active Exports:</div>
+                <div class="status-value" id="nfs-exports-count">Loading...</div>
+              </div>
+              <div class="status-detail">
+                <div class="status-label">Active Mounts:</div>
+                <div class="status-value" id="nfs-mounts-count">Loading...</div>
               </div>
             </div>
-            <div class="status-card-body">
-              <ul id="nfs-exports-list" class="list"><li class="muted">Loading…</li></ul>
-            </div>
           </div>
 
-          <div class="status-card">
-            <div class="status-card-header"><h3><i class="fa fa-plus-circle"></i> Create another NFS share</h3></div>
-            <div class="status-card-body">
-              <form id="nfs-create-form" class="form">
-                <label for="nfs-name">Share name</label>
-                <input id="nfs-name" class="form-control" placeholder="e.g., projectA" required>
-
-                <label for="nfs-base" class="mt">Base path</label>
-                <input id="nfs-base" class="form-control" value="/srv/nfs" required>
-                <div class="hint">Final path: <code>BASE/NAME</code> (created if missing)</div>
-
-                <label for="nfs-perm" class="mt">Permission</label>
-                <select id="nfs-perm" class="form-control">
-                  <option value="rw">rw</option>
-                  <option value="ro">ro</option>
-                </select>
-
-                <div class="check mt">
-                  <input id="nfs-no-root-squash" type="checkbox">
-                  <label for="nfs-no-root-squash">no_root_squash</label>
-                </div>
-
-                <label for="nfs-scope" class="mt">Scope (CIDR/host, * for all)</label>
-                <input id="nfs-scope" class="form-control" value="*">
-
-                <div class="mt actions">
-                  <button type="submit" class="btn btn-success"><i class="fa fa-save"></i> Create export</button>
-                  <button type="button" id="btn-nfs-clear" class="btn btn-outline"><i class="fa fa-eraser"></i> Clear</button>
-                </div>
-              </form>
-              <div id="nfs-create-msg" class="msg"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ============ iSCSI (Overview cards are NOT here) ============ -->
-      <div id="tab-iscsi" class="tab-pane">
-        <div class="grid-2">
+          <!-- iSCSI Status Card -->
           <div class="status-card">
             <div class="status-card-header">
-              <h3><i class="fa fa-list"></i> Created iSCSI shares (LIO)</h3>
-              <button id="btn-targets-refresh" class="btn btn-outline btn-sm"><i class="fa fa-refresh"></i> Refresh</button>
+              <i class="fa fa-hdd status-icon"></i>
+              <h3>iSCSI Service</h3>
             </div>
             <div class="status-card-body">
-              <ul id="iscsi-targets-list" class="list"><li class="muted">Loading…</li></ul>
+              <div class="status-row">
+                <div class="status-dot" id="iscsi-status-dot" aria-hidden="true"></div>
+                <div class="status-info">
+                  <div class="status-label">Service Status:</div>
+                  <div class="status-value" id="iscsi-status">Checking...</div>
+                </div>
+              </div>
+              <div class="status-detail">
+                <div class="status-label">Active Targets:</div>
+                <div class="status-value" id="iscsi-targets-count">Loading...</div>
+              </div>
+              <div class="status-detail">
+                <div class="status-label">Active Sessions:</div>
+                <div class="status-value" id="iscsi-sessions-count">Loading...</div>
+              </div>
             </div>
           </div>
 
+          <!-- System Status Card -->
           <div class="status-card">
-            <div class="status-card-header"><h3><i class="fa fa-plus-circle"></i> Create / Mount iSCSI</h3></div>
+            <div class="status-card-header">
+              <i class="fa fa-server status-icon"></i>
+              <h3>System Status</h3>
+            </div>
             <div class="status-card-body">
-              <form id="iscsi-create-form" class="form bordered">
-                <div class="form-title"><i class="fa fa-plus"></i> Create iSCSI share</div>
-
-                <label for="iscsi-name">Share name</label>
-                <input id="iscsi-name" class="form-control" placeholder="e.g., projectA-lun0" required>
-
-                <label for="iscsi-size" class="mt">Size (GB)</label>
-                <input id="iscsi-size" type="number" min="1" class="form-control" value="10" required>
-
-                <label for="iscsi-portal" class="mt">Portal (listen address)</label>
-                <input id="iscsi-portal" class="form-control" value="0.0.0.0">
-
-                <div class="check mt">
-                  <input id="iscsi-open-acl" type="checkbox" checked>
-                  <label for="iscsi-open-acl">generate_node_acls (allow any initiator)</label>
+              <div class="status-row">
+                <div class="status-dot" id="system-status-dot" aria-hidden="true"></div>
+                <div class="status-info">
+                  <div class="status-label">Dependencies:</div>
+                  <div class="status-value" id="system-status">Checking...</div>
                 </div>
-
-                <div class="mt actions">
-                  <button type="submit" class="btn btn-success"><i class="fa fa-save"></i> Create Target + LUN</button>
-                  <button type="button" id="btn-iscsi-clear" class="btn btn-outline"><i class="fa fa-eraser"></i> Clear</button>
-                </div>
-                <div id="iscsi-create-msg" class="msg"></div>
-              </form>
-
-              <form id="iscsi-mount-form" class="form bordered mt-lg">
-                <div class="form-title"><i class="fa fa-plug"></i> Mount iSCSI on this host</div>
-
-                <label for="im-portal">Portal (IP:port)</label>
-                <input id="im-portal" class="form-control" placeholder="10.0.0.10:3260" required>
-
-                <label for="im-iqn" class="mt">Target IQN</label>
-                <input id="im-iqn" class="form-control" placeholder="iqn.2025-08.in.example:projectA" required>
-
-                <label for="im-fstype" class="mt">Filesystem</label>
-                <select id="im-fstype" class="form-control">
-                  <option value="ext4" selected>ext4</option>
-                  <option value="xfs">xfs</option>
-                </select>
-
-                <div class="check mt">
-                  <input id="im-mkfs" type="checkbox">
-                  <label for="im-mkfs">Format if unformatted</label>
-                </div>
-
-                <label for="im-mountpoint" class="mt">Mountpoint</label>
-                <input id="im-mountpoint" class="form-control" value="/mnt/iscsi" required>
-
-                <div class="mt actions">
-                  <button type="submit" class="btn btn-primary"><i class="fa fa-sign-in"></i> Discover + Login + Mount</button>
-                  <button type="button" id="btn-im-logout" class="btn btn-danger"><i class="fa fa-sign-out"></i> Logout</button>
-                </div>
-                <div id="iscsi-mount-msg" class="msg"></div>
-              </form>
+              </div>
+              <div class="status-detail">
+                <div class="status-label">NFS Tools:</div>
+                <div class="status-value" id="nfs-tools-status">Loading...</div>
+              </div>
+              <div class="status-detail">
+                <div class="status-label">iSCSI Tools:</div>
+                <div class="status-value" id="iscsi-tools-status">Loading...</div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    </div> <!-- /.tab-content -->
 
-    <!-- ===== Inline debug console (always visible on demand) ===== -->
+        <div class="overview-actions">
+          <button class="btn btn-brand" id="refresh-overview-btn">
+            <i class="fa fa-sync-alt"></i> Refresh Overview
+          </button>
+        </div>
+
+        <!-- Active Connections Summary -->
+        <div class="connections-section">
+          <h3><i class="fa fa-network-wired"></i> Active Connections</h3>
+          <div class="connections-grid">
+            <div class="connection-card">
+              <div class="connection-header">
+                <h4><i class="fa fa-folder-open"></i> NFS Mounts</h4>
+                <button id="btn-refresh-nfs-mounts" class="btn btn-outline-secondary btn-sm">
+                  <i class="fa fa-refresh"></i> Refresh
+                </button>
+              </div>
+              <div class="connection-body">
+                <ul id="nfs-mounts-list" class="connection-list">
+                  <li class="loading">Loading...</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="connection-card">
+              <div class="connection-header">
+                <h4><i class="fa fa-link"></i> iSCSI Sessions</h4>
+                <button id="btn-refresh-iscsi-sessions" class="btn btn-outline-secondary btn-sm">
+                  <i class="fa fa-refresh"></i> Refresh
+                </button>
+              </div>
+              <div class="connection-body">
+                <ul id="iscsi-sessions-list" class="connection-list">
+                  <li class="loading">Loading...</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: NFS -->
+      <section id="tab-nfs" class="tab-pane">
+        <div class="nfs-grid">
+          <!-- NFS Exports Management -->
+          <div class="management-card">
+            <div class="management-card-header">
+              <h3><i class="fa fa-list"></i> NFS Exports</h3>
+              <div class="card-actions">
+                <button id="btn-exports-reload" class="btn btn-outline-secondary btn-sm">
+                  <i class="fa fa-refresh"></i> Reload
+                </button>
+                <button id="btn-exportfs-apply" class="btn btn-brand btn-sm">
+                  <i class="fa fa-check"></i> Apply
+                </button>
+              </div>
+            </div>
+            <div class="management-card-body">
+              <div class="exports-container">
+                <ul id="nfs-exports-list" class="exports-list">
+                  <li class="loading">Loading...</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- NFS Operations -->
+          <div class="management-card">
+            <div class="management-card-header">
+              <h3><i class="fa fa-cogs"></i> NFS Operations</h3>
+            </div>
+            <div class="management-card-body">
+              <!-- Toggle for Create/Mount -->
+              <div class="toggle-pill" role="tablist" aria-label="NFS operation mode">
+                <button id="toggle-nfs-create" class="toggle-seg active" type="button" aria-selected="true">Create Export</button>
+                <button id="toggle-nfs-mount" class="toggle-seg" type="button" aria-selected="false">Mount NFS</button>
+              </div>
+
+              <!-- Create NFS Share -->
+              <div id="nfs-create-block">
+                <form id="nfs-create-form" class="form">
+                  <div class="form-group">
+                    <label class="form-label" for="nfs-name">Share Name</label>
+                    <input id="nfs-name" class="form-control" placeholder="e.g., projectA" required>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label" for="nfs-base">Base Path</label>
+                    <input id="nfs-base" class="form-control" value="/srv/nfs" required>
+                    <div class="hint">Final path: <code>BASE/NAME</code> (created if missing)</div>
+                  </div>
+
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label class="form-label" for="nfs-perm">Permission</label>
+                      <select id="nfs-perm" class="form-control">
+                        <option value="rw">Read/Write</option>
+                        <option value="ro">Read Only</option>
+                      </select>
+                    </div>
+
+                    <div class="form-group">
+                      <label class="form-label" for="nfs-scope">Access Scope</label>
+                      <input id="nfs-scope" class="form-control" value="*" placeholder="CIDR/host or * for all">
+                    </div>
+                  </div>
+
+                  <div class="form-check">
+                    <input id="nfs-no-root-squash" type="checkbox" class="form-check-input">
+                    <label for="nfs-no-root-squash" class="form-check-label">Allow root access (no_root_squash)</label>
+                  </div>
+
+                  <div class="form-check">
+                    <input id="nfs-persistent" type="checkbox" class="form-check-input">
+                    <label for="nfs-persistent" class="form-check-label">Make export persistent (survives reboot)</label>
+                    <div class="hint">Adds entry to /etc/fstab for auto-mount on boot</div>
+                  </div>
+
+                  <div class="form-actions">
+                    <button type="submit" class="btn btn-success">
+                      <i class="fa fa-save"></i> Create Export
+                    </button>
+                    <button type="button" id="btn-nfs-clear" class="btn btn-outline-secondary">
+                      <i class="fa fa-eraser"></i> Clear
+                    </button>
+                  </div>
+                </form>
+                <div id="nfs-create-msg" class="message"></div>
+              </div>
+
+              <!-- Mount NFS Share -->
+              <div id="nfs-mount-block" class="nfs-mount-hidden">
+                <form id="nfs-mount-form" class="form">
+                  <div class="form-group">
+                    <label class="form-label" for="nm-server">NFS Server (IP or hostname)</label>
+                    <input id="nm-server" class="form-control" placeholder="e.g., 192.168.1.100" required>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label" for="nm-export">Export Path</label>
+                    <input id="nm-export" class="form-control" placeholder="e.g., /srv/nfs/projectA" required>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label" for="nm-mountpoint">Local Mount Point</label>
+                    <input id="nm-mountpoint" class="form-control" value="/mnt/nfs" required>
+                    <div class="hint">Directory will be created if it doesn't exist</div>
+                  </div>
+
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label class="form-label" for="nm-version">NFS Version</label>
+                      <select id="nm-version" class="form-control">
+                        <option value="4">NFSv4 (recommended)</option>
+                        <option value="3">NFSv3</option>
+                        <option value="2">NFSv2</option>
+                      </select>
+                    </div>
+
+                    <div class="form-group">
+                      <label class="form-label" for="nm-options">Mount Options</label>
+                      <input id="nm-options" class="form-control" value="defaults" placeholder="e.g., rw,sync,hard">
+                    </div>
+                  </div>
+
+                  <div class="form-check">
+                    <input id="nm-persistent" type="checkbox" class="form-check-input">
+                    <label for="nm-persistent" class="form-check-label">Make mount persistent (add to /etc/fstab)</label>
+                    <div class="hint">Mount will survive reboots</div>
+                  </div>
+
+                  <div class="form-actions">
+                    <button type="submit" class="btn btn-success">
+                      <i class="fa fa-link"></i> Mount NFS Share
+                    </button>
+                    <button type="button" id="btn-nfs-mount-clear" class="btn btn-outline-secondary">
+                      <i class="fa fa-eraser"></i> Clear
+                    </button>
+                  </div>
+                  <div id="nfs-mount-msg" class="message"></div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: iSCSI -->
+      <section id="tab-iscsi" class="tab-pane">
+        <div class="iscsi-grid">
+          <!-- iSCSI Targets Management -->
+          <div class="management-card">
+            <div class="management-card-header">
+              <h3><i class="fa fa-list"></i> iSCSI Targets</h3>
+              <button id="btn-targets-refresh" class="btn btn-outline-secondary btn-sm">
+                <i class="fa fa-refresh"></i> Refresh
+              </button>
+            </div>
+            <div class="management-card-body">
+              <div class="targets-container">
+                <ul id="iscsi-targets-list" class="targets-list">
+                  <li class="loading">Loading...</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- iSCSI Operations -->
+          <div class="management-card">
+            <div class="management-card-header">
+              <h3><i class="fa fa-cogs"></i> iSCSI Operations</h3>
+            </div>
+            <div class="management-card-body">
+              <!-- Toggle for Create/Mount -->
+              <div class="toggle-pill" role="tablist" aria-label="iSCSI operation mode">
+                <button id="toggle-iscsi-create" class="toggle-seg active" type="button" aria-selected="true">Create Target</button>
+                <button id="toggle-iscsi-mount" class="toggle-seg" type="button" aria-selected="false">Mount Target</button>
+              </div>
+
+              <!-- Create iSCSI Target -->
+              <div id="iscsi-create-block">
+                <form id="iscsi-create-form" class="form">
+                  <div class="form-group">
+                    <label class="form-label" for="iscsi-name">Target Name</label>
+                    <input id="iscsi-name" class="form-control" placeholder="e.g., projectA-lun0" required>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label" for="iscsi-backing-store">Backing Store</label>
+                    <select id="iscsi-backing-store" class="form-control" required>
+                      <option value="">Select backing store type...</option>
+                      <option value="file">File-based (safer)</option>
+                      <optgroup label="Available Disks (WARNING: Will be completely wiped!)">
+                        <!-- Disks will be populated by JavaScript -->
+                      </optgroup>
+                    </select>
+                    <div class="hint">File-based creates a virtual disk file. Disk-based uses entire physical disk.</div>
+                  </div>
+
+                  <!-- File-based options -->
+                  <div id="iscsi-file-options" style="display: none;">
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label class="form-label" for="iscsi-size">Size (GB)</label>
+                        <input id="iscsi-size" type="number" min="1" max="1000" class="form-control" value="10" required>
+                      </div>
+                      <div class="form-group">
+                        <label class="form-label" for="iscsi-path">Storage Path</label>
+                        <input id="iscsi-path" class="form-control" value="/var/lib/iscsi/" placeholder="Directory for backing files">
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Disk-based warning -->
+                  <div id="iscsi-disk-warning" class="form-group" style="display: none;">
+                    <div class="alert alert-danger">
+                      <i class="fa fa-exclamation-triangle"></i>
+                      <strong>DANGER:</strong> Selected disk will be completely erased and used as iSCSI backing store. All existing data will be lost!
+                    </div>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label" for="iscsi-portal">Portal Address</label>
+                    <input id="iscsi-portal" class="form-control" value="0.0.0.0" placeholder="Listen address">
+                  </div>
+
+                  <div class="form-check">
+                    <input id="iscsi-open-acl" type="checkbox" class="form-check-input" checked>
+                    <label for="iscsi-open-acl" class="form-check-label">Allow any initiator (generate_node_acls)</label>
+                  </div>
+
+                  <div class="form-actions">
+                    <button type="submit" class="btn btn-success">
+                      <i class="fa fa-save"></i> Create Target + LUN
+                    </button>
+                    <button type="button" id="btn-iscsi-clear" class="btn btn-outline-secondary">
+                      <i class="fa fa-eraser"></i> Clear
+                    </button>
+                  </div>
+                  <div id="iscsi-create-msg" class="message"></div>
+                </form>
+              </div>
+
+              <!-- Mount iSCSI Target -->
+              <div id="iscsi-mount-block" class="iscsi-mount-hidden">
+                <form id="iscsi-mount-form" class="form">
+                  <div class="form-group">
+                    <label class="form-label" for="im-portal">Portal (IP:port)</label>
+                    <input id="im-portal" class="form-control" placeholder="10.0.0.10:3260" required>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label" for="im-iqn">Target IQN</label>
+                    <input id="im-iqn" class="form-control" placeholder="iqn.2025-08.in.example:projectA" required>
+                  </div>
+
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label class="form-label" for="im-fstype">Filesystem</label>
+                      <select id="im-fstype" class="form-control">
+                        <option value="ext4" selected>ext4</option>
+                        <option value="xfs">xfs</option>
+                      </select>
+                    </div>
+
+                    <div class="form-group">
+                      <label class="form-label" for="im-mountpoint">Mountpoint</label>
+                      <input id="im-mountpoint" class="form-control" value="/mnt/iscsi" required>
+                    </div>
+                  </div>
+
+                  <div class="form-check">
+                    <input id="im-mkfs" type="checkbox" class="form-check-input">
+                    <label for="im-mkfs" class="form-check-label">Format if unformatted</label>
+                  </div>
+
+                  <div class="form-actions">
+                    <button type="submit" class="btn btn-brand">
+                      <i class="fa fa-sign-in-alt"></i> Discover + Login + Mount
+                    </button>
+                    <button type="button" id="btn-im-logout" class="btn btn-outline-danger">
+                      <i class="fa fa-sign-out-alt"></i> Logout
+                    </button>
+                  </div>
+                  <div id="iscsi-mount-msg" class="message"></div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+      
+      <!-- TAB 4: LOGS -->
+      <section id="tab-logs" class="tab-pane">
+        <div class="logs-card">
+          <div class="logs-header">
+            <h3><i class="fa fa-terminal"></i> Execution Log</h3>
+            <div class="logs-actions">
+              <button class="btn btn-outline-secondary" id="btn-clear-log">
+                <i class="fa fa-trash"></i> Clear Log
+              </button>
+            </div>
+          </div>
+          <div class="logs-body">
+            <pre class="log-terminal" id="log"></pre>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+      <span id="status-text">Ready</span>
+      <span class="status-actions">
+        <a href="#" class="status-link" data-tab="tab-logs">View Logs</a>
+      </span>
+    </div>
+
+    <!-- ===== Inline debug console (hidden by default) ===== -->
     <div id="debug-panel" class="debug-panel hidden">
       <div class="debug-header">
-        <strong><i class="fa fa-bug"></i> Debug log</strong>
-        <div class="actions">
-          <button id="btn-debug-copy" class="btn btn-outline btn-sm"><i class="fa fa-clipboard"></i> Copy</button>
-          <button id="btn-debug-clear" class="btn btn-outline btn-sm"><i class="fa fa-trash"></i> Clear</button>
-          <button id="btn-debug-close" class="btn btn-outline btn-sm"><i class="fa fa-times"></i> Close</button>
+        <strong><i class="fa fa-bug"></i> Debug Console</strong>
+        <div class="debug-actions">
+          <button id="btn-debug-copy" class="btn btn-outline-secondary btn-sm">
+            <i class="fa fa-clipboard"></i> Copy
+          </button>
+          <button id="btn-debug-clear" class="btn btn-outline-secondary btn-sm">
+            <i class="fa fa-trash"></i> Clear
+          </button>
+          <button id="btn-debug-close" class="btn btn-outline-secondary btn-sm">
+            <i class="fa fa-times"></i> Close
+          </button>
         </div>
       </div>
       <pre id="debug-log" class="debug-body"></pre>
     </div>
-  </div> <!-- /.app -->
+  </div>
 
   <script defer src="shares.js"></script>
 </body>

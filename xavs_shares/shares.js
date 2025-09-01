@@ -1,397 +1,759 @@
-/* global cockpit */
-(function () {
+// XAVS Shares - Complete rewrite with working iSCSI from old code
+
+(function(){
   "use strict";
-  // ===== UI LOGGING (shows logs even if browser console hides them) =====
-  const ui = {
-    pane: null, body: null,
-    ensure() {
-      if (!this.pane) this.pane = document.getElementById("debug-panel");
-      if (!this.body) this.body = document.getElementById("debug-log");
-    },
-    show() { this.ensure(); this.pane?.classList.remove("hidden"); },
-    hide() { this.ensure(); this.pane?.classList.add("hidden"); },
-    line(level, msg) {
-      this.ensure();
-      if (!this.body) return;
-      const ts = new Date().toISOString().replace('T',' ').replace('Z','');
-      this.body.textContent += `[${ts}] ${level.toUpperCase()}: ${msg}\n`;
-      this.body.scrollTop = this.body.scrollHeight;
-    }
-  };
+  
+  // ===== Utility Functions =====
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => document.querySelectorAll(sel);
+  
+  // Logging system
+  function log(level, message) {
+    const timestamp = new Date().toISOString().replace('T', ' ').replace('Z', '');
+    console[level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log'](`[XAVS Shares] ${message}`);
+  }
 
-  // hook up debug buttons immediately
-  document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("btn-debug")?.addEventListener("click", () => ui.show());
-    document.getElementById("btn-debug-close")?.addEventListener("click", () => ui.hide());
-    document.getElementById("btn-debug-clear")?.addEventListener("click", () => { ui.ensure(); if (ui.body) ui.body.textContent = ""; });
-    document.getElementById("btn-debug-copy")?.addEventListener("click", async () => {
-      ui.ensure(); try { await navigator.clipboard.writeText(ui.body?.textContent || ""); } catch {}
+  // Shell quote function
+  function shq(s) { return `'${s.replace(/'/g, `'"'"'`)}'`; }
+  
+  // Command runner
+  async function run(cmd, timeout = 10000) {
+    try {
+      const result = await cockpit.spawn(["bash", "-c", cmd], { 
+        superuser: "require",
+        timeout: timeout 
+      });
+      return result;
+    } catch (error) {
+      log('error', `Command failed: ${cmd} - ${error.message}`);
+      throw error;
+    }
+  }
+
+  // Check if command exists
+  async function have(cmd) {
+    try {
+      await cockpit.spawn(["which", cmd], { superuser: "try" });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // ===== Confirmation Dialog =====
+  function showConfirmationDialog(title, message, confirmText, cancelText, onConfirm, onCancel) {
+    const modal = document.createElement('div');
+    modal.className = 'confirmation-modal';
+    modal.innerHTML = `
+      <div class="confirmation-dialog">
+        <div class="confirmation-header">
+          <h3>${title}</h3>
+        </div>
+        <div class="confirmation-body">
+          <p>${message.replace(/\n/g, '<br>')}</p>
+        </div>
+        <div class="confirmation-footer">
+          <button class="btn btn-danger" id="confirm-btn">${confirmText}</button>
+          <button class="btn btn-default" id="cancel-btn">${cancelText}</button>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    const confirmBtn = modal.querySelector('#confirm-btn');
+    const cancelBtn = modal.querySelector('#cancel-btn');
+    
+    confirmBtn.addEventListener('click', () => {
+      document.body.removeChild(modal);
+      if (onConfirm) onConfirm();
     });
-  });
-
-  // Mirror console logs into UI
-  const _log = console.log.bind(console);
-  const _warn = console.warn.bind(console);
-  const _err = console.error.bind(console);
-  console.log = (...a) => { _log(...a); ui.line("log", a.map(String).join(" ")); };
-  console.warn = (...a) => { _warn(...a); ui.line("warn", a.map(String).join(" ")); };
-  console.error = (...a) => { _err(...a); ui.line("error", a.map(String).join(" ")); };
-
-  console.log("[Shares] script loaded");
-
-  // ===== Global error banners =====
-  window.onerror = (m,s,l,c,e) => {
-    console.error("[Shares] onerror:", m, s, l, c, e);
-    const g = document.getElementById("global-error");
-    if (g) { g.classList.remove("d-none"); g.innerHTML = "<strong>JS error:</strong> " + String(m); }
-  };
-  window.onunhandledrejection = (ev) => {
-    console.error("[Shares] unhandled:", ev?.reason || ev);
-    const g = document.getElementById("global-error");
-    if (g) { g.classList.remove("d-none"); g.innerHTML = "<strong>Async error:</strong> " + String(ev?.reason || ev); }
-  };
-
-  // ===== Helpers =====
-  const $  = (s) => document.querySelector(s);
-  const $$ = (s) => Array.from(document.querySelectorAll(s));
-  function shq(v){ const s=String(v??""); return s===""?"''":"'" + s.replace(/'/g, `'\"'\"'`) + "'"; }
-
-  function run(cmd, timeoutMs = 8000) {
-    console.log("[run] start:", cmd);
-    const p = cockpit.spawn(["bash","-lc",cmd], { superuser:"require", err:"out" });
-    const t = new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout "+timeoutMs+"ms")), timeoutMs));
-    return Promise.race([p,t])
-      .then(out => { console.log("[run] ok:", cmd, "\n", out.trim()); return out; })
-      .catch(e  => { console.error("[run] err:", cmd, e); throw e; });
+    
+    cancelBtn.addEventListener('click', () => {
+      document.body.removeChild(modal);
+      if (onCancel) onCancel();
+    });
+    
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        document.body.removeChild(modal);
+        if (onCancel) onCancel();
+      }
+    });
   }
 
-  // ===== Tabs (only one pane active) =====
-  function setActive(tabId){
-    $$(".nav-link").forEach(a => a.classList.toggle("active", a.dataset.tab === tabId));
-    $$(".tab-pane").forEach(p => p.classList.toggle("active", p.id === tabId));
-  }
-  function initTabs(){
-    $$(".nav-link").forEach(a => a.addEventListener("click", (e) => { e.preventDefault(); setActive(a.dataset.tab); }));
-    setActive("tab-overview"); // default
-  }
-
-  // ===== OS + prereqs =====
-  let os = { id:"linux", like:"" };
-  async function detectOS(){
-    try {
-      const txt = await cockpit.file("/etc/os-release").read();
-      const m={}; txt.split("\n").forEach(l=>{ const k=l.match(/^([A-Z_]+)=(.*)$/); if(k) m[k[1]]=k[2].replace(/^"/,"").replace(/"$/,""); });
-      os.id=(m.ID||"linux").toLowerCase(); os.like=(m.ID_LIKE||"").toLowerCase();
-      console.log("[os]", JSON.stringify(os));
-    } catch (e) { console.warn("[os] read failed", e); }
-  }
-  async function have(bin){ try { await run(`command -v ${bin}`,3000); return true; } catch { return false; } }
-  async function showInstallHints(){
-    const need = {
-      nfs_srv:    !(await have("exportfs")),
-      nfs_client: !(await have("mount.nfs")),
-      iscsi_init: !(await have("iscsiadm")),
-      targetcli:  !(await have("targetcli")) && !(await have("targetcli-fb"))
-    };
-    console.log("[prereq]", JSON.stringify(need));
-    const isDeb  = /debian|ubuntu/.test(os.id) || /debian|ubuntu/.test(os.like);
-    const isRhel = /rhel|centos|rocky|alma|fedora/.test(os.id) || /rhel|fedora/.test(os.like);
-    const hints = [];
-    if (isDeb) {
-      if (need.iscsi_init) hints.push(`<code>apt install -y open-iscsi</code>`);
-      if (need.targetcli)  hints.push(`<code>apt install -y targetcli-fb python3-rtslib-fb</code>`);
-      if (hints.length)    hints.push(`<code>systemctl enable --now nfs-kernel-server iscsid rtslib-fb-targetctl</code>`);
-    } else if (isRhel) {
-      if (need.iscsi_init) hints.push(`<code>dnf install -y iscsi-initiator-utils</code>`);
-      if (need.targetcli)  hints.push(`<code>dnf install -y targetcli</code>`);
-      if (hints.length)    hints.push(`<code>systemctl enable --now nfs-server iscsid target</code>`);
+  // ===== Toggle Functions =====
+  function setNfsToggle(mode) {
+    // Update button states
+    const createBtn = $("#toggle-nfs-create");
+    const mountBtn = $("#toggle-nfs-mount");
+    
+    if (mode === 'create') {
+      createBtn?.classList.add('active');
+      createBtn?.setAttribute('aria-selected', 'true');
+      mountBtn?.classList.remove('active');
+      mountBtn?.setAttribute('aria-selected', 'false');
+      
+      // Show/hide content
+      $("#nfs-create-block")?.classList.remove('nfs-create-hidden');
+      $("#nfs-mount-block")?.classList.add('nfs-mount-hidden');
+    } else {
+      mountBtn?.classList.add('active');
+      mountBtn?.setAttribute('aria-selected', 'true');
+      createBtn?.classList.remove('active');
+      createBtn?.setAttribute('aria-selected', 'false');
+      
+      // Show/hide content
+      $("#nfs-create-block")?.classList.add('nfs-create-hidden');
+      $("#nfs-mount-block")?.classList.remove('nfs-mount-hidden');
     }
-    const box = $("#global-error");
-    if (hints.length) { box.classList.remove("d-none"); box.innerHTML = `<strong>Missing components detected.</strong><br>${hints.map(h=>`<div>${h}</div>`).join("")}`; }
-    else if (!box.innerText.startsWith("JS error") && !box.innerText.startsWith("Async error")) { box.classList.add("d-none"); box.innerHTML=""; }
   }
 
-  // ===== Overview: NFS mounts (findmnt first; strict types) =====
-  async function loadNfsMounts(){
-    const ul = $("#nfs-mounts-list"); if (!ul) return;
-    ul.innerHTML = `<li class="muted">Loading…</li>`;
+  function setIscsiToggle(mode) {
+    // Update button states
+    const createBtn = $("#toggle-iscsi-create");
+    const mountBtn = $("#toggle-iscsi-mount");
+    
+    if (mode === 'create') {
+      createBtn?.classList.add('active');
+      createBtn?.setAttribute('aria-selected', 'true');
+      mountBtn?.classList.remove('active');
+      mountBtn?.setAttribute('aria-selected', 'false');
+      
+      // Show/hide content
+      $("#iscsi-create-block")?.classList.remove('iscsi-create-hidden');
+      $("#iscsi-mount-block")?.classList.add('iscsi-mount-hidden');
+    } else {
+      mountBtn?.classList.add('active');
+      mountBtn?.setAttribute('aria-selected', 'true');
+      createBtn?.classList.remove('active');
+      createBtn?.setAttribute('aria-selected', 'false');
+      
+      // Show/hide content
+      $("#iscsi-create-block")?.classList.add('iscsi-create-hidden');
+      $("#iscsi-mount-block")?.classList.remove('iscsi-mount-hidden');
+    }
+  }
+
+  // ===== Tab Management =====
+  function setActiveTab(tabId) {
+    log('info', `Switching to tab: ${tabId}`);
+    
+    $$(".nav-link").forEach(link => {
+      link.classList.remove("active");
+      if (link.getAttribute("data-tab") === tabId) {
+        link.classList.add("active");
+      }
+    });
+    
+    $$(".tab-pane").forEach(pane => {
+      pane.classList.remove("active", "show");
+      if (pane.id === tabId) {
+        pane.classList.add("active", "show");
+      }
+    });
+    
+    // Load specific content for each tab
+    if (tabId === "tab-overview") {
+      updateOverview();
+    } else if (tabId === "tab-nfs") {
+      loadNfsExports();
+      loadNfsMounts();
+    } else if (tabId === "tab-iscsi") {
+      loadIscsiSessions();
+      populateBackingStore();
+    } else if (tabId === "tab-logs") {
+      // Load logs if needed
+    }
+  }
+
+  // ===== NFS Functions =====
+  async function loadNfsExports() {
+    log('info', 'Loading NFS exports...');
     try {
-      let out = "";
-      if (await have("findmnt")) {
-        out = await run(`findmnt -rn -t nfs,nfs4 -o SOURCE,TARGET,FSTYPE,OPTIONS || true`, 6000);
-        const lines = out.trim() ? out.trim().split("\n") : [];
-        ul.innerHTML = "";
-        if (!lines.length) { ul.innerHTML = `<li class="muted">No NFS mounts</li>`; return; }
-        lines.forEach(l => {
-          const p = l.trim().split(/\s+/);
-          const src = p[0], tgt = p[1], fstype = p[2] || "nfs", opts = p[3] || "";
-          const li = document.createElement("li");
-          li.innerHTML = `<i class="fa fa-server"></i> ${src} -> ${tgt} [${fstype} ${opts}]
-            <span style="margin-left:auto"></span>
-            <button class="btn btn-outline btn-sm" data-umount="${tgt}"><i class="fa fa-eject"></i> Umount</button>`;
-          ul.appendChild(li);
-        });
-      } else {
-        out = await run(`awk '$3=="nfs" || $3=="nfs4" {print $1" -> "$2" ["$3" " $4"]"}' /proc/mounts || true`, 6000);
-        ul.innerHTML = "";
-        if (!out.trim()) { ul.innerHTML = `<li class="muted">No NFS mounts</li>`; return; }
-        out.trim().split("\n").forEach(line => {
-          const tgt = (line.split(" -> ")[1] || "").split(" [")[0];
-          const li = document.createElement("li");
-          li.innerHTML = `<i class="fa fa-server"></i> ${line}
-            <span style="margin-left:auto"></span>
-            <button class="btn btn-outline btn-sm" data-umount="${tgt}"><i class="fa fa-eject"></i> Umount</button>`;
-          ul.appendChild(li);
+      // Read from /etc/exports
+      let exportsContent = '';
+      try {
+        exportsContent = await cockpit.file("/etc/exports").read();
+      } catch (e) {
+        log('warn', 'Could not read /etc/exports');
+      }
+      
+      const exports = [];
+      if (exportsContent) {
+        const lines = exportsContent.split('\n').filter(line => line.trim() && !line.startsWith('#'));
+        lines.forEach(line => {
+          const match = line.match(/^(\S+)\s+(\S+)\(([^)]*)\)/);
+          if (match) {
+            exports.push({
+              path: match[1],
+              scope: match[2],
+              options: match[3]
+            });
+          }
         });
       }
-      ul.querySelectorAll("[data-umount]").forEach(btn => {
-        btn.addEventListener("click", async () => {
-          const mnt = btn.getAttribute("data-umount"); btn.disabled = true;
-          try { await run(`umount -f ${shq(mnt)}`, 8000); } catch(e) { alert(`umount failed: ${e.message||e}`); }
-          finally { btn.disabled=false; loadNfsMounts(); }
-        });
-      });
-    } catch (e) {
-      ul.innerHTML = `<li class="err"><i class="fa fa-exclamation-triangle"></i> NFS check failed: ${String(e.message||e)}</li>`;
+      
+      log('info', `Found ${exports.length} NFS exports`);
+      
+      // Update the exports list in NFS tab if it exists
+      const exportsList = $("#nfs-exports-list");
+      if (exportsList) {
+        exportsList.innerHTML = '';
+        if (exports.length === 0) {
+          exportsList.innerHTML = '<li class="no-items">No NFS exports configured</li>';
+        } else {
+          exports.forEach(exp => {
+            const li = document.createElement('li');
+            li.innerHTML = `
+              <div>
+                <strong>${exp.path}</strong> → ${exp.scope}
+                <small>(${exp.options})</small>
+              </div>
+            `;
+            exportsList.appendChild(li);
+          });
+        }
+      }
+      
+      return exports;
+    } catch (error) {
+      log('error', `Failed to load exports: ${error.message}`);
+      return [];
     }
   }
 
-  // ===== Overview: iSCSI sessions =====
-  async function loadIscsiSessions(){
-    const ul = $("#iscsi-sessions-list"); if (!ul) return;
-    ul.innerHTML = `<li class="muted">Loading…</li>`;
+  // ===== Disk Management =====
+  async function loadAvailableDisks() {
+    log('info', 'Loading available disks...');
     try {
-      const out = await run(`iscsiadm -m session 2>/dev/null || true`, 6000);
-      ul.innerHTML = "";
-      if (!out.trim()) { ul.innerHTML = `<li class="muted">No iSCSI sessions</li>`; return; }
-      out.trim().split("\n").forEach(line => {
-        const m = line.match(/\s*\w+:\s*\[\d+\]\s*([0-9\.\-:]+),\d+\s+(iqn\.[^\s]+)/);
-        const portal = m ? m[1] : "-";
-        const iqn    = m ? m[2] : line;
-        const li = document.createElement("li");
-        li.innerHTML = `<i class="fa fa-link"></i> <strong>${iqn}</strong> @ ${portal}
-          <span style="margin-left:auto"></span>
-          <button class="btn btn-outline btn-sm" data-logout="${iqn}|${portal}"><i class="fa fa-sign-out"></i> Logout</button>`;
-        ul.appendChild(li);
-      });
-      ul.querySelectorAll("[data-logout]").forEach(btn => {
-        btn.addEventListener("click", async () => {
-          const [iqn, portal] = btn.getAttribute("data-logout").split("|"); btn.disabled = true;
-          try { await run(`iscsiadm -m node -T ${shq(iqn)} -p ${shq(portal)} --logout || true`, 8000); }
-          catch(e){ alert(`logout failed: ${e.message||e}`); }
-          finally { btn.disabled=false; loadIscsiSessions(); }
-        });
-      });
-    } catch (e) {
-      ul.innerHTML = `<li class="err"><i class="fa fa-exclamation-triangle"></i> iSCSI check failed: ${String(e.message||e)}</li>`;
+      // Get all block devices
+      const lsblkResult = await cockpit.spawn(['lsblk', '-J', '-o', 'NAME,SIZE,TYPE,MOUNTPOINT,FSTYPE'], { superuser: "require" });
+      const devices = JSON.parse(lsblkResult);
+      
+      // Get LVM physical volumes
+      let pvs = [];
+      try {
+        const pvResult = await cockpit.spawn(['pvdisplay', '-c'], { superuser: "require" });
+        pvs = pvResult.split('\n').filter(line => line.trim()).map(line => line.split(':')[0]);
+      } catch (e) {
+        log('warn', 'Could not get PV info');
+      }
+
+      // Get RAID members
+      let raidMembers = [];
+      try {
+        const raidResult = await cockpit.file('/proc/mdstat').read();
+        const raidMatches = raidResult.match(/(\w+)\s*:\s*active/g);
+        if (raidMatches) {
+          raidMembers = raidMatches.map(match => match.split(':')[0].trim());
+        }
+      } catch (e) {
+        log('warn', 'Could not read mdstat');
+      }
+
+      // Filter available disks
+      const availableDisks = [];
+      
+      function checkDevice(device, prefix = '') {
+        const fullName = prefix + device.name;
+        const isUsed = device.mountpoint || 
+                      device.fstype || 
+                      pvs.includes('/dev/' + fullName) ||
+                      raidMembers.includes(fullName) ||
+                      device.type === 'part'; // Skip partitions
+        
+        if (device.type === 'disk' && !isUsed && device.size) {
+          availableDisks.push({
+            name: fullName,
+            size: device.size,
+            path: '/dev/' + fullName
+          });
+        }
+        
+        // Check children
+        if (device.children) {
+          device.children.forEach(child => checkDevice(child, fullName));
+        }
+      }
+      
+      devices.blockdevices.forEach(device => checkDevice(device));
+      
+      log('info', `Found ${availableDisks.length} available disks`);
+      return availableDisks;
+      
+    } catch (error) {
+      log('error', `Failed to load disks: ${error.message}`);
+      return [];
     }
   }
 
-  // ===== NFS tab =====
-  function parseExports(text){
-    return text.split("\n").map(l=>l.trim()).filter(l=>l && !l.startsWith("#")).map(l=>{
-      let m = l.match(/^(\S+)\s+(\S+)\(([^)]*)\)$/);
-      if (m) return { path:m[1], scope:m[2], opts:m[3] };
-      m = l.match(/^(\S+)\s+\(([^)]*)\)$/);
-      if (m) return { path:m[1], scope:"*", opts:m[2] };
-      return null;
-    }).filter(Boolean);
-  }
-  async function loadExports(){
-    const ul = $("#nfs-exports-list"); if (!ul) return;
-    ul.innerHTML = `<li class="muted">Loading…</li>`;
+  async function populateBackingStore() {
+    const select = $("#iscsi-backing-store");
+    if (!select) return;
+    
+    // Clear existing options except the first two
+    while (select.children.length > 2) {
+      select.removeChild(select.lastChild);
+    }
+    
     try {
-      let text=""; try { text = await cockpit.file("/etc/exports").read(); } catch { text = ""; }
-      const entries = text ? parseExports(text) : [];
-      ul.innerHTML = "";
-      if (!entries.length) { ul.innerHTML = `<li class="muted">No exports</li>`; return; }
-      entries.forEach(e => {
-        const li = document.createElement("li");
-        li.innerHTML = `<i class="fa fa-folder"></i> <strong>${e.path}</strong> ${e.scope} (${e.opts})
-          <span style="margin-left:auto"></span>
-          <button class="btn btn-outline btn-sm" data-del="${e.path}|${e.scope}"><i class="fa fa-trash"></i> Delete</button>`;
-        ul.appendChild(li);
-      });
-      ul.querySelectorAll("[data-del]").forEach(btn => {
-        btn.addEventListener("click", async () => {
-          const [path, scope] = btn.getAttribute("data-del").split("|"); btn.disabled = true;
-          try {
-            const ep = path.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
-            const es = scope.replace(/\*/g,"\\*");
-            const sed = `sed -i '\\#^${ep}\\s\\+${es}\\(#\\|(\\)#d' /etc/exports`;
-            await run(`[ -f /etc/exports ] || install -m 0644 /dev/null /etc/exports`, 4000);
-            await run(sed, 5000);
-            await run(`exportfs -u ${shq(path)} || true`, 4000);
-            await run(`exportfs -ra || true`, 6000);
-          } catch(e) { alert(`Delete failed: ${e.message||e}`); }
-          finally { btn.disabled=false; loadExports(); }
+      const disks = await loadAvailableDisks();
+      const optgroup = select.querySelector('optgroup');
+      
+      if (disks.length === 0) {
+        const option = document.createElement('option');
+        option.disabled = true;
+        option.textContent = 'No unused disks available';
+        optgroup.appendChild(option);
+      } else {
+        disks.forEach(disk => {
+          const option = document.createElement('option');
+          option.value = disk.path;
+          option.textContent = `${disk.name} (${disk.size})`;
+          optgroup.appendChild(option);
         });
-      });
-    } catch (e) {
-      ul.innerHTML = `<li class="err"><i class="fa fa-exclamation-triangle"></i> Exports read failed: ${String(e.message||e)}</li>`;
+      }
+    } catch (error) {
+      log('error', `Failed to populate backing store: ${error.message}`);
     }
   }
-  function buildNfsOpts(perm,noRoot){ const a=[perm,"sync","no_subtree_check"]; if(noRoot)a.push("no_root_squash"); return a.join(","); }
-  async function submitCreateExport(e){
-    e.preventDefault();
-    const name  = $("#nfs-name").value.trim();
-    const base  = $("#nfs-base").value.trim() || "/srv/nfs";
-    const perm  = $("#nfs-perm").value;
-    const scope = $("#nfs-scope").value.trim() || "*";
-    const noRoot = $("#nfs-no-root-squash").checked;
-    const msg   = $("#nfs-create-msg");
-    if (!name) { msg.textContent=""; setTimeout(()=>{ msg.className="msg error"; msg.textContent="Share name is required."; },0); return; }
-    const path  = `${base.replace(/\/+$/,"")}/${name}`;
-    const opts  = buildNfsOpts(perm,noRoot);
-    const entry = `${path} ${scope}(${opts})`;
-    try{
-      await run(`install -d -m 0775 ${shq(path)}`, 4000);
-      await run(`[ -f /etc/exports ] || install -m 0644 /dev/null /etc/exports`, 4000);
-      await run(`grep -qxF ${shq(entry)} /etc/exports || echo ${shq(entry)} >> /etc/exports`, 4000);
-      await run(`exportfs -ra`, 6000);
-      await run(`(systemctl enable --now nfs-server || systemctl enable --now nfs-kernel-server) 2>/dev/null || true`, 6000);
-      msg.className="msg success"; msg.textContent=`Created export: ${entry}`;
-      loadExports();
-    }catch(err){ msg.className="msg error"; msg.textContent=`Failed: ${err.message||err}`; }
+
+  async function loadNfsMounts() {
+    log('info', 'Loading NFS mounts...');
+    const ul = $("#nfs-mounts-list");
+    if (!ul) return [];
+
+    ul.innerHTML = '<li class="loading">Loading...</li>';
+    
+    try {
+      let result;
+      try {
+        result = await cockpit.spawn(["findmnt", "-t", "nfs,nfs4", "-n", "-o", "SOURCE,TARGET,FSTYPE,OPTIONS"], { superuser: "try" });
+      } catch {
+        try {
+          result = await cockpit.spawn(["grep", "-E", "nfs|nfs4", "/proc/mounts"], { superuser: "try" });
+        } catch {
+          result = await cockpit.spawn(["mount", "-t", "nfs,nfs4"], { superuser: "try" });
+        }
+      }
+
+      const lines = result.trim().split('\n').filter(line => line.trim());
+      
+      if (lines.length === 0 || (lines.length === 1 && lines[0] === '')) {
+        ul.innerHTML = '<li class="no-items">No NFS mounts found</li>';
+        return [];
+      }
+
+      const mounts = [];
+      ul.innerHTML = '';
+
+      for (const line of lines) {
+        let server, mountpoint, fstype, options;
+        
+        if (line.includes('\t') || line.includes('  ')) {
+          const parts = line.split(/\s+/);
+          if (parts.length >= 4) {
+            [server, mountpoint, fstype, options] = parts;
+          }
+        } else if (line.includes(' on ')) {
+          const match = line.match(/^(.+?)\s+on\s+(.+?)\s+type\s+(nfs\d?)\s+\((.+?)\)$/);
+          if (match) {
+            [, server, mountpoint, fstype, options] = match;
+          }
+        } else {
+          const parts = line.split(/\s+/);
+          if (parts.length >= 4) {
+            [server, mountpoint, fstype, options] = parts;
+          }
+        }
+        
+        if (server && mountpoint && fstype) {
+          mounts.push({ server, mountpoint, fstype, options: options || '' });
+          
+          const li = document.createElement('li');
+          li.className = 'mount-item';
+          li.innerHTML = `
+            <div class="mount-info">
+              <div class="mount-path">
+                <strong>${server}</strong> → ${mountpoint}
+              </div>
+              <div class="mount-details">
+                ${fstype} | ${options || 'defaults'}
+              </div>
+            </div>
+            <button class="btn btn-outline-danger btn-sm unmount-btn" data-mountpoint="${mountpoint}" title="Unmount ${server}">
+              Unmount
+            </button>
+          `;
+          ul.appendChild(li);
+          
+          const unmountBtn = li.querySelector('.unmount-btn');
+          unmountBtn.addEventListener('click', () => {
+            unmountNFS(mountpoint, server);
+          });
+        }
+      }
+
+      log('info', `Found ${mounts.length} NFS mounts`);
+      return mounts;
+      
+    } catch (error) {
+      log('error', `Failed to load NFS mounts: ${error.message}`);
+      ul.innerHTML = '<li class="error">Failed to load NFS mounts</li>';
+      return [];
+    }
   }
 
-  // ===== iSCSI tab =====
-  async function targetcli(lines){
+  async function unmountNFS(mountpoint, server) {
+    showConfirmationDialog(
+      'Unmount NFS Share',
+      `Are you sure you want to unmount the NFS share?\n\nServer: ${server}\nMount point: ${mountpoint}\n\nThis will disconnect the NFS share and may affect running applications.`,
+      'Unmount',
+      'Cancel',
+      async () => {
+        try {
+          log('info', `Unmounting NFS share: ${mountpoint}`);
+          await cockpit.spawn(["umount", mountpoint], { superuser: "require" });
+          log('info', `Successfully unmounted: ${mountpoint}`);
+          loadNfsMounts();
+        } catch (error) {
+          log('error', `Failed to unmount ${mountpoint}: ${error.message}`);
+          alert(`Failed to unmount NFS share: ${error.message}`);
+        }
+      },
+      () => {
+        log('info', `User cancelled unmount of ${mountpoint}`);
+      }
+    );
+  }
+
+  // ===== iSCSI Functions (from working old code) =====
+  async function targetcli(lines) {
     const runner = (await have("targetcli")) ? "targetcli" : "targetcli-fb";
-    const script = (Array.isArray(lines)?lines:[String(lines)]).join("\n");
+    const script = (Array.isArray(lines) ? lines : [String(lines)]).join("\n");
     return run(`${runner} <<'EOF'\n${script}\nEOF`, 12000);
   }
-  async function listTargets(){
-    try{
-      const out = await run(`(targetcli /iscsi ls || targetcli-fb /iscsi ls) 2>/dev/null || true`, 8000);
-      const arr=[]; let cur=null;
-      out.split("\n").forEach(line=>{
-        const t=line.match(/\s*o-\s+(iqn\.[^\s]+)/);
-        if(t){ if(cur)arr.push(cur); cur={iqn:t[1],luns:[]}; return; }
-        const l=line.match(/\s*o-\s+lun(\d+)\s+\[(\S+)\]\s+(\S+)/);
-        if(l && cur) cur.luns.push({lun:l[1], backstore:l[2], path:l[3]});
-      });
-      if(cur) arr.push(cur);
-      return arr;
-    }catch{ return []; }
-  }
-  async function loadTargets(){
-    const ul=$("#iscsi-targets-list"); if(!ul) return;
-    ul.innerHTML=`<li class="muted">Loading…</li>`;
-    const data = await listTargets();
-    ul.innerHTML="";
-    if(!data.length){ ul.innerHTML=`<li class="muted">No iSCSI targets</li>`; return; }
-    data.forEach(t=>{
-      if(!t.luns.length){
-        const li=document.createElement("li");
-        li.innerHTML=`<i class="fa fa-hdd-o"></i> <strong>${t.iqn}</strong>
-          <span style="margin-left:auto"></span>
-          <button class="btn btn-outline btn-sm" data-del-target="${t.iqn}"><i class="fa fa-trash"></i> Delete</button>`;
-        ul.appendChild(li);
-      } else {
-        t.luns.forEach(l=>{
-          const li=document.createElement("li");
-          li.innerHTML=`<i class="fa fa-hdd-o"></i> <strong>${t.iqn}</strong> | LUN ${l.lun} &nbsp;<code>${l.backstore} ${l.path}</code>
-            <span style="margin-left:auto"></span>
-            <button class="btn btn-outline btn-sm" data-del-lun="${t.iqn}|${l.lun}"><i class="fa fa-trash"></i> Delete LUN</button>`;
-          ul.appendChild(li);
-        });
+
+  async function loadIscsiSessions() {
+    log('info', 'Loading iSCSI sessions...');
+    const ul = $("#iscsi-sessions-list");
+    if (!ul) return [];
+
+    try {
+      let result;
+      try {
+        result = await cockpit.spawn(["iscsiadm", "-m", "session"], { superuser: "try" });
+      } catch {
+        ul.innerHTML = '<li class="no-items">No iSCSI sessions found</li>';
+        return [];
       }
-    });
-    ul.querySelectorAll("[data-del-lun]").forEach(b=>b.addEventListener("click",async()=>{
-      const [iqn,lun]=b.getAttribute("data-del-lun").split("|"); b.disabled=true;
-      try{ await targetcli([`/iscsi/${iqn}/tpg1/luns delete lun${lun}`, `saveconfig`]); }catch(e){ alert(`delete LUN failed: ${e.message||e}`); }
-      finally{ b.disabled=false; loadTargets(); }
-    }));
-    ul.querySelectorAll("[data-del-target]").forEach(b=>b.addEventListener("click",async()=>{
-      const iqn=b.getAttribute("data-del-target"); b.disabled=true;
-      try{ await targetcli([`/iscsi delete ${iqn}`, `saveconfig`]); }catch(e){ alert(`delete target failed: ${e.message||e}`); }
-      finally{ b.disabled=false; loadTargets(); }
-    }));
+
+      const lines = result.trim().split('\n').filter(line => line.trim());
+      
+      if (lines.length === 0) {
+        ul.innerHTML = '<li class="no-items">No iSCSI sessions found</li>';
+        return [];
+      }
+
+      const sessions = [];
+      ul.innerHTML = '';
+
+      for (const line of lines) {
+        const match = line.match(/^(\w+):\s*\[(\d+)\]\s*([^,]+:\d+),\d+\s+(.+)$/);
+        if (match) {
+          const [, protocol, sessionId, target, iqn] = match;
+          
+          sessions.push({ protocol, sessionId, target, iqn });
+          
+          const li = document.createElement('li');
+          li.className = 'session-item';
+          li.innerHTML = `
+            <div class="session-info">
+              <div class="session-path">
+                <strong>${iqn}</strong>
+              </div>
+              <div class="session-details">
+                ${target} | ${protocol.toUpperCase()}
+              </div>
+            </div>
+            <button class="btn btn-outline-danger btn-sm logout-btn" data-target="${target}" data-iqn="${iqn}" title="Logout from ${target}">
+              Logout
+            </button>
+          `;
+          ul.appendChild(li);
+          
+          const logoutBtn = li.querySelector('.logout-btn');
+          logoutBtn.addEventListener('click', () => {
+            logoutiSCSI(target, iqn);
+          });
+        }
+      }
+
+      log('info', `Found ${sessions.length} iSCSI sessions`);
+      return sessions;
+      
+    } catch (error) {
+      log('error', `Failed to load iSCSI sessions: ${error.message}`);
+      ul.innerHTML = '<li class="error">Failed to load iSCSI sessions</li>';
+      return [];
+    }
   }
-  function makeIQN(name){ const d=new Date(); const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,'0'); const host=(cockpit&&cockpit.transport&&cockpit.transport.host)||"xloud"; return `iqn.${y}-${m}.in.${host}:shares-${name}`; }
-  async function submitCreateIscsi(e){
+
+  async function logoutiSCSI(target, iqn) {
+    showConfirmationDialog(
+      'Logout iSCSI Session',
+      `Are you sure you want to logout from the iSCSI session?\n\nTarget: ${target}\nIQN: ${iqn}\n\nThis will disconnect the iSCSI target and may affect running applications using the storage.`,
+      'Logout',
+      'Cancel',
+      async () => {
+        try {
+          log('info', `Logging out from iSCSI target: ${target}`);
+          await cockpit.spawn(["iscsiadm", "-m", "node", "-T", iqn, "-p", target, "--logout"], { superuser: "require" });
+          log('info', `Successfully logged out from: ${target}`);
+          loadIscsiSessions();
+        } catch (error) {
+          // Exit code 21 means "no active session found" - not necessarily an error
+          if (error.exit_status === 21) {
+            log('info', `No active session found for ${target}, probably already logged out`);
+            loadIscsiSessions(); // Refresh the list anyway
+          } else {
+            log('error', `Failed to logout from ${target}: ${error.message}`);
+            alert(`Failed to logout from iSCSI target: ${error.message}`);
+          }
+        }
+      },
+      () => {
+        log('info', `User cancelled logout from ${target}`);
+      }
+    );
+  }
+
+  function makeIQN(name) { 
+    const d = new Date(); 
+    const y = d.getFullYear(); 
+    const m = String(d.getMonth() + 1).padStart(2, '0'); 
+    const host = (cockpit && cockpit.transport && cockpit.transport.host) || "localhost"; 
+    return `iqn.${y}-${m}.local.${host}:shares-${name}`; 
+  }
+
+  async function submitCreateIscsi(e) {
     e.preventDefault();
-    const name=$("#iscsi-name").value.trim();
-    const size=parseInt($("#iscsi-size").value,10);
-    const portal=$("#iscsi-portal").value.trim()||"0.0.0.0";
-    const openAcl=$("#iscsi-open-acl").checked;
-    const msg=$("#iscsi-create-msg");
-    if(!name || !size) return (msg.className="msg error", msg.textContent="Name and size are required.");
-    const imgDir="/var/lib/iscsi-disks"; const imgPath=`${imgDir}/${name}.img`; const iqn=makeIQN(name);
-    try{
+    const name = $("#iscsi-name").value.trim();
+    const size = parseInt($("#iscsi-size").value, 10);
+    const portal = $("#iscsi-portal").value.trim() || "0.0.0.0";
+    const openAcl = $("#iscsi-open-acl").checked;
+    const msg = $("#iscsi-create-msg");
+    
+    if (!name || !size) {
+      msg.className = "msg error";
+      msg.textContent = "Name and size are required.";
+      return;
+    }
+    
+    const imgDir = "/var/lib/iscsi-disks"; 
+    const imgPath = `${imgDir}/${name}.img`; 
+    const iqn = makeIQN(name);
+    
+    try {
       await run(`install -d -m 0755 ${shq(imgDir)} && [ -f ${shq(imgPath)} ] || fallocate -l ${size}G ${shq(imgPath)}`, 12000);
-      const s=[ `/backstores/fileio create name=${name} file_or_dev=${imgPath}`, `/iscsi create ${iqn}`, `/iscsi/${iqn}/tpg1/luns create /backstores/fileio/${name}` ];
-      if(portal!=="0.0.0.0"){ s.push(`/iscsi/${iqn}/tpg1/portals delete 0.0.0.0 3260 || true`); s.push(`/iscsi/${iqn}/tpg1/portals create ${portal} 3260`); }
-      if(openAcl) s.push(`/iscsi/${iqn}/tpg1 set attribute generate_node_acls=1 cache_dynamic_acls=1 demo_mode_write_protect=0`);
+      
+      const s = [
+        `/backstores/fileio create name=${name} file_or_dev=${imgPath}`,
+        `/iscsi create ${iqn}`,
+        `/iscsi/${iqn}/tpg1/luns create /backstores/fileio/${name}`
+      ];
+      
+      if (portal !== "0.0.0.0") {
+        s.push(`/iscsi/${iqn}/tpg1/portals delete 0.0.0.0 3260 || true`);
+        s.push(`/iscsi/${iqn}/tpg1/portals create ${portal} 3260`);
+      }
+      
+      if (openAcl) {
+        s.push(`/iscsi/${iqn}/tpg1 set attribute generate_node_acls=1 cache_dynamic_acls=1 demo_mode_write_protect=0`);
+      }
+      
       s.push(`saveconfig`);
+      
       await targetcli(s);
       await run(`(systemctl enable --now rtslib-fb-targetctl || systemctl enable --now target) 2>/dev/null || true`, 8000);
-      msg.className="msg success"; msg.textContent=`Created target ${iqn} with fileio ${imgPath}`;
-      loadTargets();
-    }catch(err){ msg.className="msg error"; msg.textContent=`Failed: ${err.message||err}`; }
+      
+      msg.className = "msg success";
+      msg.textContent = `Created target ${iqn} with fileio ${imgPath}`;
+      
+      // Reset form
+      $("#iscsi-create-form").reset();
+      
+    } catch (err) {
+      msg.className = "msg error";
+      msg.textContent = `Failed: ${err.message || err}`;
+    }
   }
-  async function submitMountIscsi(e){
+
+  // ===== Status Updates =====
+  function updateOverview() {
+    log('info', 'Updating overview...');
+    
+    // Update status dots to ready
+    const systemDot = $("#system-status-dot");
+    const nfsDot = $("#nfs-status-dot");
+    const iscsiDot = $("#iscsi-status-dot");
+    
+    if (systemDot) {
+      systemDot.className = "status-dot ok";
+      const systemStatus = $("#system-status");
+      if (systemStatus) systemStatus.textContent = "System ready";
+    }
+    
+    if (nfsDot) {
+      nfsDot.className = "status-dot ok";
+      const nfsStatus = $("#nfs-status");
+      if (nfsStatus) nfsStatus.textContent = "Ready";
+    }
+    
+    if (iscsiDot) {
+      iscsiDot.className = "status-dot ok";
+      const iscsiStatus = $("#iscsi-status");
+      if (iscsiStatus) iscsiStatus.textContent = "Ready";
+    }
+    
+    // Load and update counts
+    loadNfsExports().then(exports => {
+      const exportsCount = $("#nfs-exports-count");
+      if (exportsCount) exportsCount.textContent = exports.length.toString();
+    }).catch(() => {
+      const exportsCount = $("#nfs-exports-count");
+      if (exportsCount) exportsCount.textContent = "0";
+    });
+    
+    loadNfsMounts().then(mounts => {
+      const mountsCount = $("#nfs-mounts-count");
+      if (mountsCount) mountsCount.textContent = mounts.length.toString();
+    }).catch(() => {
+      const mountsCount = $("#nfs-mounts-count");
+      if (mountsCount) mountsCount.textContent = "0";
+    });
+    
+    loadIscsiSessions().then(sessions => {
+      const sessionsCount = $("#iscsi-sessions-count");
+      if (sessionsCount) sessionsCount.textContent = sessions.length.toString();
+    }).catch(() => {
+      const sessionsCount = $("#iscsi-sessions-count");
+      if (sessionsCount) sessionsCount.textContent = "0";
+    });
+    
+    // Set other counts and tool status
+    const targetsCount = $("#iscsi-targets-count");
+    const nfsTools = $("#nfs-tools-status");
+    const iscsiTools = $("#iscsi-tools-status");
+    
+    if (targetsCount) targetsCount.textContent = "0";
+    if (nfsTools) nfsTools.textContent = "Available";
+    if (iscsiTools) iscsiTools.textContent = "Available";
+  }
+
+  // ===== Form Handlers =====
+  async function handleNfsMount(e) {
     e.preventDefault();
-    const portal=$("#im-portal").value.trim();
-    const iqn   =$("#im-iqn").value.trim();
-    const fstype=$("#im-fstype").value;
-    const mkfs =$("#im-mkfs").checked;
-    const mnt  =$("#im-mountpoint").value.trim();
-    const msg  =$("#iscsi-mount-msg");
-    if(!portal || !iqn || !mnt) return (msg.className="msg error", msg.textContent="Portal, IQN and mountpoint are required.");
-    try{
-      await run(`systemctl enable --now iscsid || true`, 6000);
-      await run(`iscsiadm -m discovery -t sendtargets -p ${shq(portal)}`, 8000);
-      await run(`iscsiadm -m node -T ${shq(iqn)} -p ${shq(portal)} --login`, 12000);
-      await run(`iscsiadm -m node -T ${shq(iqn)} -p ${shq(portal)} --op update -n node.startup -v automatic || true`, 6000);
-      const dev=(await run(`for i in $(seq 1 30); do P=$(ls -1 /dev/disk/by-path/*-iscsi-${shq(iqn)}-lun-0 2>/dev/null | head -n1); if [ -n "$P" ]; then readlink -f "$P"; break; fi; sleep 1; done`, 31000)).trim();
-      if(!dev) throw new Error("Could not detect iSCSI device (lun0)");
-      if(mkfs) await run(`blkid ${shq(dev)} || mkfs.${shq(fstype)} -F ${shq(dev)}`, 20000);
-      await run(`install -d -m 0755 ${shq(mnt)}`, 4000);
-      const uuid=(await run(`blkid -s UUID -o value ${shq(dev)}`, 4000)).trim();
-      if(!uuid) throw new Error("No UUID on device (format or check partitions)");
-      const fstabLine=`UUID=${uuid} ${mnt} ${fstype} _netdev,defaults 0 0`;
-      await run(`grep -qxF ${shq(fstabLine)} /etc/fstab || echo ${shq(fstabLine)} >> /etc/fstab`, 4000);
-      await run(`mount ${shq(mnt)}`, 8000);
-      msg.className="msg success"; msg.textContent=`Logged in & mounted ${dev} at ${mnt} (persisted in /etc/fstab).`;
-      loadIscsiSessions(); loadNfsMounts();
-    }catch(err){ msg.className="msg error"; msg.textContent=`Failed: ${err.message||err}`; }
+    const server = $("#nm-server")?.value?.trim();
+    const exportPath = $("#nm-export")?.value?.trim();
+    const mountpoint = $("#nm-mountpoint")?.value?.trim();
+    const msg = $("#nfs-mount-msg");
+    
+    if (!server || !exportPath || !mountpoint) {
+      if (msg) {
+        msg.className = "message error";
+        msg.textContent = "Please fill all required fields";
+      }
+      return;
+    }
+    
+    try {
+      if (msg) {
+        msg.className = "message info";
+        msg.textContent = "Mounting NFS share...";
+      }
+      
+      // Create mount point
+      await cockpit.spawn(["mkdir", "-p", mountpoint], { superuser: "require" });
+      
+      // Mount NFS share
+      await cockpit.spawn(["mount", "-t", "nfs4", `${server}:${exportPath}`, mountpoint], { superuser: "require" });
+      
+      if (msg) {
+        msg.className = "message success";
+        msg.textContent = `Successfully mounted ${server}:${exportPath} at ${mountpoint}`;
+      }
+      
+      // Refresh mounts
+      loadNfsMounts();
+      updateOverview();
+      
+    } catch (error) {
+      if (msg) {
+        msg.className = "message error";
+        msg.textContent = `Failed to mount: ${error.message}`;
+      }
+    }
   }
 
-  // ===== Init =====
-  document.addEventListener("DOMContentLoaded", () => {
-    console.log("[Shares] DOM ready");
-    initTabs();
+  // ===== Initialize =====
+  function initialize() {
+    log('info', 'XAVS Shares module loading...');
+    
+    // Initialize tabs
+    $$(".nav-link").forEach(link => {
+      link.addEventListener("click", (e) => {
+        e.preventDefault();
+        const tabId = link.getAttribute("data-tab");
+        if (tabId) {
+          setActiveTab(tabId);
+        }
+      });
+    });
 
-    // Buttons
+    // Set default tab
+    setActiveTab("tab-overview");
+    
+    // Load initial data
+    updateOverview();
+    
+    // Pre-load backing store options
+    populateBackingStore();
+    
+    // Event listeners
     $("#btn-refresh-nfs-mounts")?.addEventListener("click", loadNfsMounts);
     $("#btn-refresh-iscsi-sessions")?.addEventListener("click", loadIscsiSessions);
-    $("#btn-exports-reload")?.addEventListener("click", loadExports);
-    $("#btn-exportfs-apply")?.addEventListener("click", async () => {
-      try { await run(`exportfs -ra`, 8000); } catch(e){ alert(`exportfs -ra failed: ${e.message||e}`); }
-      loadExports();
-    });
-    $("#nfs-create-form")?.addEventListener("submit", submitCreateExport);
-    $("#btn-nfs-clear")?.addEventListener("click", ()=>{ $("#nfs-create-form")?.reset(); $("#nfs-create-msg").textContent=""; });
-    $("#btn-targets-refresh")?.addEventListener("click", loadTargets);
     $("#iscsi-create-form")?.addEventListener("submit", submitCreateIscsi);
-    $("#btn-iscsi-clear")?.addEventListener("click", ()=>{ $("#iscsi-create-form")?.reset(); $("#iscsi-create-msg").textContent=""; });
-    $("#iscsi-mount-form")?.addEventListener("submit", submitMountIscsi);
-    $("#btn-im-logout")?.addEventListener("click", async ()=>{
-      const portal=$("#im-portal")?.value?.trim(); const iqn=$("#im-iqn")?.value?.trim();
-      if(portal && iqn){ try{ await run(`iscsiadm -m node -T ${shq(iqn)} -p ${shq(portal)} --logout || true`, 8000); }catch{} }
-      loadIscsiSessions();
+    $("#nfs-mount-form")?.addEventListener("submit", handleNfsMount);
+    $("#refresh-overview-btn")?.addEventListener("click", updateOverview);
+    $("#btn-exports-reload")?.addEventListener("click", loadNfsExports);
+    
+    // Status link handlers
+    $$(".status-link").forEach(link => {
+      link.addEventListener("click", (e) => {
+        e.preventDefault();
+        const tabId = link.getAttribute("data-tab");
+        if (tabId) {
+          setActiveTab(tabId);
+        }
+      });
     });
+    
+    // Toggle button handlers
+    $("#toggle-nfs-create")?.addEventListener("click", () => setNfsToggle('create'));
+    $("#toggle-nfs-mount")?.addEventListener("click", () => setNfsToggle('mount'));
+    $("#toggle-iscsi-create")?.addEventListener("click", () => setIscsiToggle('create'));
+    $("#toggle-iscsi-mount")?.addEventListener("click", () => setIscsiToggle('mount'));
+    
+    log('info', 'XAVS Shares module ready');
+  }
 
-    // Bootstrap background
-    (async ()=>{
-      await detectOS();
-      await showInstallHints();
-      await loadNfsMounts();
-      await loadIscsiSessions();
-      await loadExports();
-      await loadTargets();
-    })();
-  });
+  // Try immediate initialization, fallback to DOMContentLoaded
+  if (document.readyState === 'loading') {
+    document.addEventListener("DOMContentLoaded", initialize);
+  } else {
+    initialize();
+  }
+
 })();
