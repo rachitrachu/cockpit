@@ -304,7 +304,6 @@ async function saveVlanEdits(modal, iface) {
 
       if (newIp) {
         await runInterfaceCommand('ip', ['addr', 'add', newIp, 'dev', iface.dev], { superuser: 'require' });
-        
         const result = await netplanAction('set_ip', { name: iface.dev, static_ip: newIp });
         if (result.error) {
           console.warn('Failed to persist IP to netplan:', result.error);
@@ -312,8 +311,15 @@ async function saveVlanEdits(modal, iface) {
       }
     }
 
+    // Apply netplan changes safely
+    try {
+      await safeNetplanApply();
+    } catch (e) {
+      alert('⚠ Failed to apply netplan changes: ' + e.message);
+    }
+
     modal.close();
-    alert('✓ VLAN configuration updated successfully!');
+    alert('✓ VLAN configuration updated and applied!');
     await loadInterfaces();
 
   } catch (error) {
@@ -360,8 +366,15 @@ async function saveBridgeEdits(modal, iface) {
       }
     }
 
+    // Apply netplan changes safely
+    try {
+      await safeNetplanApply();
+    } catch (e) {
+      alert('⚠ Failed to apply netplan changes: ' + e.message);
+    }
+
     modal.close();
-    alert('✓ Bridge configuration updated successfully!');
+    alert('✓ Bridge configuration updated and applied!');
     await loadInterfaces();
 
   } catch (error) {
@@ -408,8 +421,15 @@ async function saveBondEdits(modal, iface) {
       }
     }
 
+    // Apply netplan changes safely
+    try {
+      await safeNetplanApply();
+    } catch (e) {
+      alert('⚠ Failed to apply netplan changes: ' + e.message);
+    }
+
     modal.close();
-    alert('✓ Bond configuration updated successfully!');
+    alert('✓ Bond configuration updated and applied!');
     await loadInterfaces();
 
   } catch (error) {

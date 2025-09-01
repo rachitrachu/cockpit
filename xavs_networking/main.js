@@ -23,7 +23,7 @@ function initTabSwitching() {
     const panels = document.querySelectorAll('.tab-pane');
 
     tabs.forEach(tab => {
-        tab.addEventListener('click', (e) => {
+        tab.addEventListener('click', async (e) => {
             e.preventDefault();
             const targetPanel = tab.getAttribute('data-target');
             const targetTab = tab.getAttribute('data-tab');
@@ -47,7 +47,9 @@ function initTabSwitching() {
                 case 'interfaces':
                     console.log('🔌 Loading interfaces tab');
                     if (typeof loadInterfaces === 'function') {
-                        loadInterfaces();
+                        await loadInterfaces();
+                        // Reset status back to Ready after loading interfaces
+                        updateStatus('Ready', 'XOS Networking Management Interface');
                     } else {
                         console.error('❌ loadInterfaces function not found');
                     }
@@ -181,6 +183,79 @@ function initResponsiveBehavior() {
 }
 
 /**
+ * Initialize interface search functionality
+ */
+function initInterfaceSearch() {
+    const searchInput = document.getElementById('search-iface');
+    if (!searchInput) {
+        console.warn('Search input not found');
+        return;
+    }
+
+    searchInput.addEventListener('input', (e) => {
+        const searchTerm = e.target.value.toLowerCase().trim();
+        const tableBody = document.querySelector('#table-interfaces tbody');
+        
+        if (!tableBody) {
+            console.warn('Interface table body not found');
+            return;
+        }
+
+        const rows = tableBody.querySelectorAll('tr');
+        let visibleCount = 0;
+
+        rows.forEach(row => {
+            // Skip detail rows (they have display: none initially)
+            if (row.style.display === 'none' && row.querySelector('td[colspan]')) {
+                return;
+            }
+
+            // Get the interface name from the first cell, but only the actual name
+            const firstCell = row.querySelector('td:first-child');
+            let interfaceName = '';
+            
+            if (firstCell) {
+                // Check if it has a nested div structure (like VLAN interfaces)
+                const nameDiv = firstCell.querySelector('div:first-child');
+                if (nameDiv) {
+                    interfaceName = nameDiv.textContent?.trim()?.toLowerCase() || '';
+                } else {
+                    interfaceName = firstCell.textContent?.trim()?.toLowerCase() || '';
+                }
+            }
+            
+            const matches = interfaceName.startsWith(searchTerm) || searchTerm === '';
+
+            if (matches) {
+                row.style.display = '';
+                visibleCount++;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+
+        // Show/hide "no results" message
+        let noResultsRow = tableBody.querySelector('.no-results-row');
+        if (visibleCount === 0 && searchTerm !== '') {
+            if (!noResultsRow) {
+                noResultsRow = document.createElement('tr');
+                noResultsRow.className = 'no-results-row';
+                noResultsRow.innerHTML = `
+                    <td colspan="8" style="text-align: center; padding: 2rem; color: var(--muted);">
+                        <i class="fas fa-search"></i> No interfaces found matching "${searchTerm}"
+                    </td>
+                `;
+                tableBody.appendChild(noResultsRow);
+            }
+        } else if (noResultsRow) {
+            noResultsRow.remove();
+        }
+    });
+
+    console.log('✅ Interface search functionality initialized');
+}
+
+/**
  * Main initialization function
  */
 async function initNetworkingModule() {
@@ -201,6 +276,7 @@ async function initNetworkingModule() {
         initTabSwitching();
         initKeyboardShortcuts();
         initResponsiveBehavior();
+        initInterfaceSearch();
         
         // Initialize events if available
         if (typeof setupEvents === 'function') {
@@ -210,6 +286,8 @@ async function initNetworkingModule() {
         // Load initial data for interfaces tab
         if (typeof loadInterfaces === 'function') {
             await loadInterfaces();
+            // Reset status back to Ready after loading interfaces
+            updateStatus('Ready', 'XOS Networking Management Interface');
         }
         
         // Load initial diagnostics data
@@ -224,7 +302,6 @@ async function initNetworkingModule() {
         }
         
         NetworkingModule.initialized = true;
-        updateStatus('Ready', 'XOS Networking Management Interface');
         
         console.log('XOS Networking module initialized successfully');
         

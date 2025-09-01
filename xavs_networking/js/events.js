@@ -1,7 +1,8 @@
 ﻿'use strict';
-/* global $, $$, run, setStatus, setupModal, netplanAction, loadInterfaces */
+/* global $, $$, run, setStatus, setupModal, netplanAction, loadInterfaces */function setupEventHandlers() {
+  console.log('Setting up event handlers...');
 
-async function loadConnections() {
+  // Tab switchingloadConnections() {
   console.log('Loading connections...');
   const tbody = $('#table-connections tbody');
   if (!tbody) return;
@@ -92,21 +93,6 @@ function setupTabs() {
 
 function setupEventHandlers() {
   console.log('Setting up event handlers...');
-
-  // Main refresh button (updated ID)
-  const refreshBtn = $('#btn-refresh-all');
-  if (refreshBtn) {
-    refreshBtn.addEventListener('click', async () => {
-      console.log('Main refresh button clicked');
-      setStatus('Refreshing all data...');
-      await Promise.all([
-        loadInterfaces(),
-        loadConnections(),
-        loadDiagnostics()
-      ]);
-      setStatus('All data refreshed');
-    });
-  }
 
   const refreshIfacesBtn = $('#btn-refresh-interfaces');
   if (refreshIfacesBtn) {

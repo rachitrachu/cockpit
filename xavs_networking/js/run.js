@@ -49,7 +49,7 @@ async function netplanAction(action, config) {
     });
 
     const result = await cockpit.spawn([
-      'bash', '-c', `cd /usr/share/cockpit/xos-networking && cat ${tempFile} | python3 netplan_manager.py 2>&1; rm -f ${tempFile}`
+      'bash', '-c', `cd /usr/share/cockpit/xavs_networking && cat ${tempFile} | python3 netplan_manager.py 2>&1; rm -f ${tempFile}`
     ], {
       superuser: 'require',
       err: 'out'

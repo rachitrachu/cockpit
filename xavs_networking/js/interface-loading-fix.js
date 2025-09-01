@@ -64,11 +64,13 @@ async function forceReloadInterfaces() {
             console.log('🔄 Using fallback interfaces:', interfaces);
         }
         
-        // Populate each select manually
-        populateSelect('vlan-parent', interfaces, 'Choose parent interface...');
-        populateSelect('br-ports', interfaces);
-        populateSelect('bond-slaves', interfaces);
-        populateSelect('bond-primary', interfaces, 'Auto-select primary');
+    // Deduplicate interfaces before populating
+    interfaces = [...new Set(interfaces)];
+    // Populate each select manually
+    populateSelect('vlan-parent', interfaces, 'Choose parent interface...');
+    populateSelect('br-ports', interfaces);
+    populateSelect('bond-slaves', interfaces);
+    populateSelect('bond-primary', interfaces, 'Auto-select primary');
         
         console.log('✅ Successfully populated all interface selects');
         return interfaces;

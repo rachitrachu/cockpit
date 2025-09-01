@@ -6,8 +6,13 @@ async function setupNetworkingForms() {
   
   try {
     console.log('Loading physical interfaces for forms...');
-    const interfaces = await getPhysicalInterfaces();
-    console.log('Physical interfaces for forms:', interfaces);
+
+    let interfaces = await getPhysicalInterfaces();
+    console.log('Physical interfaces for forms (raw):', interfaces);
+
+    // Deduplicate interfaces
+    interfaces = [...new Set(interfaces)];
+    console.log('Physical interfaces for forms (deduped):', interfaces);
 
     if (interfaces.length === 0) {
       console.warn('No physical interfaces found - using default interfaces for testing');
@@ -78,7 +83,7 @@ function setupConstructEventHandlers() {
   const btnCreateVlan = $('#btn-create-vlan');
   console.log('VLAN create button found:', !!btnCreateVlan);
   if (btnCreateVlan) {
-    btnCreateVlan.addEventListener('click', async () => {
+  btnCreateVlan.addEventListener('click', async () => {
       console.log('VLAN create button clicked');
       const parent = $('#vlan-parent')?.value?.trim();
       const vlanId = $('#vlan-id')?.value?.trim();
@@ -139,9 +144,14 @@ function setupConstructEventHandlers() {
           if (vlanOut) vlanOut.textContent = `? Error: ${result.error}\n`;
           alert(`❌ Failed to create VLAN: ${result.error}`);
         } else {
-          let successMsg = `✅ VLAN ${config.name} created successfully!`;
+          // Apply netplan changes safely
+          try {
+            await safeNetplanApply();
+          } catch (e) {
+            alert('⚠ Failed to apply netplan changes: ' + e.message);
+          }
+          let successMsg = `✅ VLAN ${config.name} created and applied successfully!`;
           let outputMsg = successMsg;
-          
           // Add IP configuration details to the message
           if (staticIp) {
             successMsg += `\n\n🔗 Static IP: ${staticIp}`;
@@ -154,21 +164,17 @@ function setupConstructEventHandlers() {
             successMsg += '\n\n⚙️ IP Configuration: DHCP enabled';
             outputMsg += '\nIP Configuration: DHCP enabled';
           }
-          
           if (vlanMtu) {
             successMsg += `\n📏 MTU: ${vlanMtu} bytes`;
             outputMsg += `\nMTU: ${vlanMtu} bytes`;
           }
-          
           if (vlanOut) vlanOut.textContent = outputMsg + '\n';
           alert(successMsg);
-          
           // Clear form
           ['#vlan-parent', '#vlan-id', '#vlan-name', '#vlan-mtu', '#vlan-static-ip', '#vlan-gateway'].forEach(sel => {
             const el = $(sel);
             if (el) el.value = '';
           });
-          
           await loadInterfaces();
         }
       } catch (error) {
@@ -185,7 +191,7 @@ function setupConstructEventHandlers() {
   // Bridge creation
   const btnCreateBridge = $('#btn-create-bridge');
   if (btnCreateBridge) {
-    btnCreateBridge.addEventListener('click', async () => {
+  btnCreateBridge.addEventListener('click', async () => {
       const brName = $('#br-name')?.value?.trim();
       const brPorts = Array.from($('#br-ports')?.selectedOptions || []).map(opt => opt.value);
       const brStp = $('#br-stp')?.value === 'true';
@@ -224,9 +230,14 @@ function setupConstructEventHandlers() {
           if (brOut) brOut.textContent = `? Error: ${result.error}\n`;
           alert(`? Failed to create bridge: ${result.error}`);
         } else {
-          if (brOut) brOut.textContent = `? Bridge ${brName} created successfully!\n`;
-          alert(`? Bridge ${brName} created successfully!`);
-          
+          // Apply netplan changes safely
+          try {
+            await safeNetplanApply();
+          } catch (e) {
+            alert('⚠ Failed to apply netplan changes: ' + e.message);
+          }
+          if (brOut) brOut.textContent = `? Bridge ${brName} created and applied successfully!\n`;
+          alert(`? Bridge ${brName} created and applied successfully!`);
           // Clear form
           const nameField = $('#br-name');
           if (nameField) nameField.value = '';
@@ -234,7 +245,6 @@ function setupConstructEventHandlers() {
           if (portsSelect) {
             Array.from(portsSelect.options).forEach(opt => opt.selected = false);
           }
-          
           await loadInterfaces();
         }
       } catch (error) {
@@ -251,7 +261,7 @@ function setupConstructEventHandlers() {
   // Bond creation
   const btnCreateBond = $('#btn-create-bond');
   if (btnCreateBond) {
-    btnCreateBond.addEventListener('click', async () => {
+  btnCreateBond.addEventListener('click', async () => {
       const bondName = $('#bond-name')?.value?.trim();
       const bondMode = $('#bond-mode')?.value;
       const bondSlaves = Array.from($('#bond-slaves')?.selectedOptions || []).map(opt => opt.value);
@@ -295,9 +305,14 @@ function setupConstructEventHandlers() {
           if (bondOut) bondOut.textContent = `? Error: ${result.error}\n`;
           alert(`? Failed to create bond: ${result.error}`);
         } else {
-          if (bondOut) bondOut.textContent = `? Bond ${bondName} created successfully!\n`;
-          alert(`? Bond ${bondName} created successfully!`);
-          
+          // Apply netplan changes safely
+          try {
+            await safeNetplanApply();
+          } catch (e) {
+            alert('⚠ Failed to apply netplan changes: ' + e.message);
+          }
+          if (bondOut) bondOut.textContent = `? Bond ${bondName} created and applied successfully!\n`;
+          alert(`? Bond ${bondName} created and applied successfully!`);
           // Clear form
           const nameField = $('#bond-name');
           if (nameField) nameField.value = '';
@@ -305,7 +320,6 @@ function setupConstructEventHandlers() {
           if (slavesSelect) {
             Array.from(slavesSelect.options).forEach(opt => opt.selected = false);
           }
-          
           await loadInterfaces();
         }
       } catch (error) {
