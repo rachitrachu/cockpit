@@ -126,9 +126,18 @@
             <div class="connection-card">
               <div class="connection-header">
                 <h4><i class="fa fa-folder-open"></i> NFS Mounts</h4>
-                <button id="btn-refresh-nfs-mounts" class="btn btn-outline-secondary btn-sm">
-                  <i class="fa fa-refresh"></i> Refresh
-                </button>
+                <div class="dropdown">
+                  <button class="btn btn-outline-secondary btn-sm dropdown-toggle" id="nfs-mounts-menu" aria-expanded="false">
+                    <i class="fa fa-ellipsis-v"></i>
+                  </button>
+                  <ul class="dropdown-menu" aria-labelledby="nfs-mounts-menu">
+                    <li>
+                      <button class="dropdown-item" id="btn-refresh-nfs-mounts">
+                        <i class="fa fa-refresh"></i> Refresh
+                      </button>
+                    </li>
+                  </ul>
+                </div>
               </div>
               <div class="connection-body">
                 <ul id="nfs-mounts-list" class="connection-list">
@@ -140,9 +149,18 @@
             <div class="connection-card">
               <div class="connection-header">
                 <h4><i class="fa fa-link"></i> iSCSI Sessions</h4>
-                <button id="btn-refresh-iscsi-sessions" class="btn btn-outline-secondary btn-sm">
-                  <i class="fa fa-refresh"></i> Refresh
-                </button>
+                <div class="dropdown">
+                  <button class="btn btn-outline-secondary btn-sm dropdown-toggle" id="iscsi-sessions-menu" aria-expanded="false">
+                    <i class="fa fa-ellipsis-v"></i>
+                  </button>
+                  <ul class="dropdown-menu" aria-labelledby="iscsi-sessions-menu">
+                    <li>
+                      <button class="dropdown-item" id="btn-refresh-iscsi-sessions">
+                        <i class="fa fa-refresh"></i> Refresh
+                      </button>
+                    </li>
+                  </ul>
+                </div>
               </div>
               <div class="connection-body">
                 <ul id="iscsi-sessions-list" class="connection-list">
@@ -299,12 +317,23 @@
             <div class="management-card-header">
               <h3><i class="fa fa-list"></i> iSCSI Targets</h3>
               <div class="card-actions">
-                <button id="btn-cleanup-backstores" class="btn btn-danger btn-sm" title="⚠️ DANGER: This will remove ALL backstores from the system">
-                  <i class="fa fa-exclamation-triangle"></i> Cleanup All
-                </button>
-                <button id="btn-targets-refresh" class="btn btn-outline-secondary btn-sm">
-                  <i class="fa fa-refresh"></i> Refresh
-                </button>
+                <div class="dropdown">
+                  <button class="btn btn-outline-secondary btn-sm dropdown-toggle" id="iscsi-actions-menu" aria-expanded="false">
+                    <i class="fa fa-ellipsis-v"></i>
+                  </button>
+                  <ul class="dropdown-menu" aria-labelledby="iscsi-actions-menu">
+                    <li>
+                      <button class="dropdown-item" id="btn-targets-refresh">
+                        <i class="fa fa-refresh"></i> Refresh Targets
+                      </button>
+                    </li>
+                    <li>
+                      <button class="dropdown-item text-danger" id="btn-cleanup-backstores" title="⚠️ DANGER: This will remove ALL backstores from the system">
+                        <i class="fa fa-exclamation-triangle"></i> Cleanup All
+                      </button>
+                    </li>
+                  </ul>
+                </div>
               </div>
             </div>
             <div class="management-card-body">
@@ -491,20 +520,33 @@
       
       <!-- TAB 4: LOGS -->
       <section id="tab-logs" class="tab-pane">
-        <div class="logs-card">
-          <div class="logs-header">
-            <h3><i class="fa fa-terminal"></i> System Activity Log</h3>
-            <div class="logs-actions">
-              <button class="btn btn-outline-secondary" id="btn-refresh-logs">
-                <i class="fa fa-refresh"></i> Refresh
-              </button>
-              <button class="btn btn-outline-secondary" id="btn-clear-logs">
-                <i class="fa fa-trash"></i> Clear
-              </button>
+        <div class="logs-container">
+          <div class="logs-card">
+            <div class="logs-header">
+              <h3><i class="fa fa-terminal"></i> System Activity Log</h3>
+              <div class="logs-actions">
+                <div class="dropdown">
+                  <button class="btn btn-outline-secondary btn-sm dropdown-toggle" id="logs-actions-menu" aria-expanded="false">
+                    <i class="fa fa-ellipsis-v"></i>
+                  </button>
+                  <ul class="dropdown-menu" aria-labelledby="logs-actions-menu">
+                    <li>
+                      <button class="dropdown-item" id="btn-refresh-logs">
+                        <i class="fa fa-refresh"></i> Refresh
+                      </button>
+                    </li>
+                    <li>
+                      <button class="dropdown-item text-danger" id="btn-clear-logs">
+                        <i class="fa fa-trash"></i> Clear Logs
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              </div>
             </div>
-          </div>
-          <div class="logs-body">
-            <pre class="log-terminal" id="log-display"></pre>
+            <div class="logs-body">
+              <pre class="log-terminal" id="log-display"></pre>
+            </div>
           </div>
         </div>
       </section>

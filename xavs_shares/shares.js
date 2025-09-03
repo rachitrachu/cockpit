@@ -12,6 +12,9 @@
   let activityLog = [];
   const MAX_LOG_ENTRIES = 100;
   
+  // Mount tracking system
+  let activeMounts = new Map(); // Track active mounts: device -> {mountpoint, type, iqn, portal}
+  
   function log(level, message) {
     const timestamp = new Date();
     const timeStr = timestamp.toLocaleTimeString();
@@ -83,6 +86,92 @@
     activityLog = [];
     updateLogDisplay();
     log('info', 'Activity log cleared');
+  }
+
+  // Mount tracking functions
+  function addMountTracking(device, mountpoint, type, iqn = null, portal = null) {
+    activeMounts.set(device, {
+      mountpoint: mountpoint,
+      type: type,
+      iqn: iqn,
+      portal: portal,
+      timestamp: new Date()
+    });
+    
+    // Save to localStorage for persistence
+    const mountData = {};
+    activeMounts.forEach((value, key) => {
+      mountData[key] = value;
+    });
+    localStorage.setItem('xavs-active-mounts', JSON.stringify(mountData));
+    
+    log('info', `Mount tracking added: ${device} -> ${mountpoint} (${type})`);
+  }
+  
+  function removeMountTracking(device) {
+    if (activeMounts.has(device)) {
+      const mountInfo = activeMounts.get(device);
+      activeMounts.delete(device);
+      
+      // Update localStorage
+      const mountData = {};
+      activeMounts.forEach((value, key) => {
+        mountData[key] = value;
+      });
+      localStorage.setItem('xavs-active-mounts', JSON.stringify(mountData));
+      
+      log('info', `Mount tracking removed: ${device} -> ${mountInfo.mountpoint}`);
+      return mountInfo;
+    }
+    return null;
+  }
+  
+  function loadMountTracking() {
+    try {
+      const stored = localStorage.getItem('xavs-active-mounts');
+      if (stored) {
+        const mountData = JSON.parse(stored);
+        activeMounts.clear();
+        Object.entries(mountData).forEach(([device, info]) => {
+          activeMounts.set(device, info);
+        });
+        log('info', `Loaded ${activeMounts.size} tracked mounts from storage`);
+      }
+    } catch (error) {
+      log('warn', `Failed to load mount tracking: ${error.message}`);
+      activeMounts.clear();
+    }
+  }
+  
+  function getMountByDevice(device) {
+    return activeMounts.get(device);
+  }
+  
+  function getMountByIqn(iqn) {
+    for (const [device, mountInfo] of activeMounts) {
+      if (mountInfo.iqn === iqn) {
+        return { device, ...mountInfo };
+      }
+    }
+    return null;
+  }
+  
+  function validateMountPoint(mountpoint) {
+    // Check if mountpoint is already in use by another device
+    for (const [device, mountInfo] of activeMounts) {
+      if (mountInfo.mountpoint === mountpoint) {
+        throw new Error(`Mount point ${mountpoint} is already in use by device ${device}. Please choose a different mount point.`);
+      }
+    }
+    
+    // Additional validation
+    if (!mountpoint.startsWith('/')) {
+      throw new Error('Mount point must be an absolute path starting with /');
+    }
+    
+    if (mountpoint === '/' || mountpoint === '/boot' || mountpoint === '/proc' || mountpoint === '/sys') {
+      throw new Error('Cannot mount to system directories');
+    }
   }
 
   // Shell quote function
@@ -1016,6 +1105,49 @@
     );
   }
 
+  async function unmountIscsiDevice(device, mountpoint) {
+    log('info', `Unmounting iSCSI device ${device} from ${mountpoint}...`);
+    
+    try {
+      // Step 1: Unmount the device
+      try {
+        await cockpit.spawn(['umount', device], { superuser: "require" });
+        log('info', `Successfully unmounted ${device}`);
+      } catch (error) {
+        // Try unmounting by mountpoint if device unmount fails
+        await cockpit.spawn(['umount', mountpoint], { superuser: "require" });
+        log('info', `Successfully unmounted ${mountpoint}`);
+      }
+      
+      // Step 2: Remove mount point directory if it's empty and safe to remove
+      try {
+        // Only remove if it's not a system directory and appears to be empty
+        if (mountpoint !== '/' && mountpoint !== '/mnt' && mountpoint.startsWith('/mnt/')) {
+          const lsResult = await cockpit.spawn(['ls', '-la', mountpoint], { superuser: "require" });
+          const lines = lsResult.trim().split('\n');
+          // If directory only contains . and .. entries, it's empty
+          if (lines.length <= 3) {
+            await cockpit.spawn(['rmdir', mountpoint], { superuser: "require" });
+            log('info', `Removed empty mount directory: ${mountpoint}`);
+          } else {
+            log('info', `Mount directory ${mountpoint} not empty, leaving intact`);
+          }
+        }
+      } catch (error) {
+        log('warn', `Could not remove mount directory ${mountpoint}: ${error.message}`);
+      }
+      
+      // Step 3: Remove from mount tracking
+      removeMountTracking(device);
+      
+      log('info', `Successfully unmounted and cleaned up ${device}`);
+      
+    } catch (error) {
+      log('error', `Failed to unmount ${device}: ${error.message}`);
+      throw error;
+    }
+  }
+
   // ===== iSCSI Functions (from working old code) =====
   async function targetcli(lines) {
     const runner = (await have("targetcli")) ? "targetcli" : "targetcli-fb";
@@ -1591,6 +1723,18 @@
           
           sessions.push({ protocol, sessionId, target, iqn });
           
+          // Check if this session has any mounts
+          const mountInfo = getMountByIqn(iqn);
+          const mountDisplay = mountInfo ? 
+            `<div class="mount-info">
+              <i class="fa fa-hdd text-success"></i> 
+              <span>Mounted at: <code>${mountInfo.mountpoint}</code></span>
+              <button class="btn btn-outline-danger btn-xs unmount-btn" data-device="${mountInfo.device}" data-mountpoint="${mountInfo.mountpoint}" title="Unmount device">
+                <i class="fa fa-eject"></i> Unmount
+              </button>
+            </div>` : 
+            '<div class="mount-info"><i class="fa fa-circle-o text-muted"></i> <span>Not mounted</span></div>';
+          
           const li = document.createElement('li');
           li.className = 'session-item';
           li.innerHTML = `
@@ -1601,6 +1745,7 @@
               <div class="session-details">
                 ${target} | ${protocol.toUpperCase()}
               </div>
+              ${mountDisplay}
             </div>
             <div class="session-actions">
               <button class="btn btn-outline-success btn-sm login-btn" data-target="${target}" data-iqn="${iqn}" title="Re-login to ${target}" style="display: none;">
@@ -1615,6 +1760,7 @@
           
           const logoutBtn = li.querySelector('.logout-btn');
           const loginBtn = li.querySelector('.login-btn');
+          const unmountBtn = li.querySelector('.unmount-btn');
           
           logoutBtn.addEventListener('click', () => {
             logoutiSCSI(target, iqn);
@@ -1623,6 +1769,34 @@
           loginBtn.addEventListener('click', async () => {
             await loginiSCSI(target, iqn);
           });
+          
+          if (unmountBtn) {
+            unmountBtn.addEventListener('click', async () => {
+              const device = unmountBtn.getAttribute('data-device');
+              const mountpoint = unmountBtn.getAttribute('data-mountpoint');
+              
+              showConfirmationDialog(
+                'Unmount iSCSI Device',
+                `Are you sure you want to unmount the iSCSI device?\n\nDevice: ${device}\nMount point: ${mountpoint}\n\nThis will unmount the device but keep the iSCSI session active.`,
+                'Unmount',
+                'Cancel',
+                async () => {
+                  try {
+                    await unmountIscsiDevice(device, mountpoint);
+                    log('info', `Successfully unmounted ${device} from UI`);
+                    // Refresh the sessions list to update mount status
+                    await loadIscsiSessions();
+                  } catch (error) {
+                    log('error', `Failed to unmount ${device}: ${error.message}`);
+                    showMessage(`Failed to unmount device: ${error.message}`, "error");
+                  }
+                },
+                () => {
+                  log('info', `User cancelled unmount of ${device}`);
+                }
+              );
+            });
+          }
         } else {
           log('warn', `[SESSION-LOAD] Failed to parse session line: "${line}"`);
         }
@@ -2235,6 +2409,17 @@
   async function forceIscsiLogout(target, iqn) {
     try {
       log('info', `[LOGOUT] Starting forceful logout from iSCSI target: ${target}, IQN: ${iqn}`);
+      
+      // Step 0: Check if device is mounted and unmount it
+      const mountInfo = getMountByIqn(iqn);
+      if (mountInfo) {
+        log('info', `[LOGOUT-0] Found mounted device ${mountInfo.device} at ${mountInfo.mountpoint}, unmounting...`);
+        try {
+          await unmountIscsiDevice(mountInfo.device, mountInfo.mountpoint);
+        } catch (unmountError) {
+          log('warn', `[LOGOUT-0] Failed to unmount device: ${unmountError.message}, continuing with logout...`);
+        }
+      }
       
       // Step 1: Try normal logout first
       try {
@@ -3052,6 +3237,15 @@
       return;
     }
     
+    // Validate mount point before proceeding
+    try {
+      validateMountPoint(mountpoint);
+    } catch (error) {
+      log('error', `Mount point validation failed: ${error.message}`);
+      showMessage(error.message, "error");
+      return;
+    }
+    
     let sessionCreated = false;
     let iscsiDevice = null;
     
@@ -3304,6 +3498,10 @@
           throw new Error('Mount verification failed');
         }
         
+        // Add to mount tracking
+        const { iqn, portal } = selectedTarget;
+        addMountTracking(iscsiDevice, mountpoint, 'iscsi', iqn, portal);
+        
       } catch (error) {
         // If mount fails, clean up the directory we created
         try {
@@ -3375,6 +3573,9 @@
   function initialize() {
     log('info', 'XAVS Shares module loading...');
     
+    // Load mount tracking data
+    loadMountTracking();
+    
     // Initialize tabs
     $$(".nav-link").forEach(link => {
       link.addEventListener("click", (e) => {
@@ -3430,6 +3631,9 @@
     $("#btn-refresh-logs")?.addEventListener("click", loadSystemLogs);
     $("#btn-clear-logs")?.addEventListener("click", clearActivityLog);
     
+    // Initialize dropdown menus
+    initializeDropdowns();
+    
     // Clear button handlers
     $("#btn-nfs-clear")?.addEventListener("click", () => {
       $("#nfs-create-form").reset();
@@ -3478,6 +3682,49 @@
     $("#im-portal")?.addEventListener("input", (e) => validateIP(e.target));
     
     log('info', 'XAVS Shares module ready');
+  }
+  
+  function initializeDropdowns() {
+    // Handle all dropdown toggles
+    document.querySelectorAll('.dropdown-toggle').forEach(toggle => {
+      toggle.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const dropdown = toggle.closest('.dropdown');
+        const menu = dropdown.querySelector('.dropdown-menu');
+        
+        // Close all other dropdowns
+        document.querySelectorAll('.dropdown-menu.show').forEach(otherMenu => {
+          if (otherMenu !== menu) {
+            otherMenu.classList.remove('show');
+          }
+        });
+        
+        // Toggle current dropdown
+        menu.classList.toggle('show');
+      });
+    });
+    
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.dropdown')) {
+        document.querySelectorAll('.dropdown-menu.show').forEach(menu => {
+          menu.classList.remove('show');
+        });
+      }
+    });
+    
+    // Handle dropdown item clicks
+    document.querySelectorAll('.dropdown-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        // Close the dropdown after clicking an item
+        const menu = item.closest('.dropdown-menu');
+        if (menu) {
+          menu.classList.remove('show');
+        }
+      });
+    });
   }
 
   // Try immediate initialization, fallback to DOMContentLoaded

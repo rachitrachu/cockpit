@@ -1747,3 +1747,295 @@ code {
   margin: 0 0 1rem 0;
   color: var(--text);
 }
+
+/* ===== Dropdown Menus ===== */
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dropdown-toggle:hover {
+  background: var(--surface-2);
+  border-color: var(--brand);
+}
+
+.dropdown-toggle:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus);
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 1000;
+  display: none;
+  min-width: 160px;
+  padding: 4px 0;
+  margin: 2px 0 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  list-style: none;
+}
+
+.dropdown-menu.show {
+  display: block;
+}
+
+.dropdown-menu li {
+  margin: 0;
+  padding: 0;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 16px;
+  background: none;
+  border: none;
+  text-align: left;
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.dropdown-item:hover {
+  background: var(--surface-2);
+}
+
+.dropdown-item.text-danger {
+  color: var(--danger);
+}
+
+.dropdown-item.text-danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* ===== Responsive Design Improvements ===== */
+
+/* Base responsive breakpoints */
+@media (max-width: 1200px) {
+  .app {
+    padding: 16px 20px 84px;
+  }
+  
+  .overview-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  
+  .iscsi-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  .app {
+    padding: 12px 16px 84px;
+  }
+  
+  .topbar {
+    flex-direction: column;
+    gap: 12px;
+    text-align: center;
+  }
+  
+  .app-title {
+    font-size: 20px;
+  }
+  
+  .nav-tabs {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  
+  .nav-link {
+    font-size: 13px;
+    padding: 8px 12px;
+  }
+  
+  .management-card-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  
+  .card-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 480px) {
+  .app {
+    padding: 8px 12px 84px;
+  }
+  
+  .app-title {
+    font-size: 18px;
+  }
+  
+  .nav-tabs {
+    flex-direction: column;
+    gap: 2px;
+  }
+  
+  .nav-link {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
+  }
+  
+  .status-card {
+    padding: 16px;
+  }
+  
+  .management-card {
+    padding: 16px;
+  }
+}
+
+/* ===== Logs Container Improvements ===== */
+.logs-container {
+  height: calc(100vh - 200px);
+  min-height: 400px;
+  display: flex;
+  flex-direction: column;
+}
+
+.logs-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.logs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.logs-body {
+  flex: 1;
+  overflow: auto;
+  padding: 0;
+}
+
+.log-terminal {
+  height: 100%;
+  margin: 0;
+  padding: 16px 20px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #33ff33;
+  background: #000;
+  border: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  resize: none;
+}
+
+/* Responsive logs */
+@media (max-width: 768px) {
+  .logs-container {
+    height: calc(100vh - 180px);
+    min-height: 300px;
+  }
+  
+  .logs-header {
+    padding: 12px 16px;
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  
+  .logs-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  
+  .log-terminal {
+    padding: 12px 16px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .logs-container {
+    height: calc(100vh - 160px);
+    min-height: 250px;
+  }
+  
+  .logs-header {
+    padding: 10px 12px;
+  }
+  
+  .log-terminal {
+    padding: 10px 12px;
+    font-size: 11px;
+  }
+}
+
+/* ===== Mount Info Display ===== */
+.mount-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: var(--surface-2);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.mount-info code {
+  padding: 2px 4px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 2px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 11px;
+}
+
+.mount-info .btn-xs {
+  padding: 2px 6px;
+  font-size: 10px;
+  line-height: 1.2;
+  margin-left: auto;
+}
+
+.mount-info .text-success {
+  color: var(--success);
+}
+
+.mount-info .text-muted {
+  color: var(--muted);
+}
