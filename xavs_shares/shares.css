@@ -1,26 +1,3 @@
-/* ===== FontAwesome icon replacements (avoid CSP issues) ===== */
-.fa::before { 
-  font-family: monospace; 
-  margin-right: 6px;
-  font-weight: normal;
-}
-.fa-tachometer-alt::before { content: "📊"; }
-.fa-folder-open::before { content: "📁"; }
-.fa-hdd::before { content: "💾"; }
-.fa-terminal::before { content: "💻"; }
-.fa-link::before { content: "🔗"; }
-.fa-refresh::before { content: "↻"; }
-.fa-eject::before { content: "⏏"; }
-.fa-sign-out::before { content: "🚪"; }
-.fa-plus::before { content: "+"; }
-.fa-check::before { content: "✓"; }
-.fa-cog::before { content: "⚙"; }
-.fa-server::before { content: "🖥"; }
-.fa-network-wired::before { content: "🌐"; }
-.fa-list::before { content: "📋"; }
-.fa-info-circle::before { content: "ℹ"; }
-.fa-exclamation-triangle::before { content: "⚠"; }
-
 /* ===== Brand tokens ===== */
 :root {
   --brand: #197560;
@@ -34,6 +11,11 @@
   --success: #10b981;
   --warning: #f59e0b;
   --danger: #ef4444;
+}
+
+/* ===== Utility Classes ===== */
+.hidden {
+  display: none !important;
 }
 
 /* ===== Base ===== */
@@ -52,8 +34,140 @@ html, body {
 /* Full-width app wrapper */
 .app {
   width: 100%;
-  padding: 20px 28px 64px;
+  padding: 20px 28px 84px; /* Extra bottom padding for status bar */
 }
+
+/* ===== Modal and Dialog Styles ===== */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.4);
+}
+
+.modal-content {
+  background-color: #fefefe;
+  margin: 5% auto;
+  padding: 0;
+  border: 1px solid #888;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 600px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+  background: var(--brand-color);
+  color: white;
+  padding: 15px 20px;
+  border-radius: 8px 8px 0 0;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+.modal-footer {
+  padding: 15px 20px;
+  border-top: 1px solid #e0e0e0;
+  text-align: right;
+}
+
+.button-group {
+  display: flex;
+  gap: 15px;
+  margin: 20px 0;
+}
+
+.button-group .btn {
+  flex: 1;
+  padding: 15px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.btn-help {
+  font-size: 11px;
+  opacity: 0.8;
+  font-weight: normal;
+}
+
+.action-descriptions {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.action-desc {
+  margin-bottom: 15px;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.action-desc strong {
+  color: var(--brand-color);
+}
+
+/* ===== Logs Section ===== */
+.log-terminal {
+  background: #1e1e1e;
+  color: #f0f0f0;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 15px;
+  margin: 0;
+  height: 400px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  border: 1px solid #333;
+}
+
+.log-terminal .log-info { color: #4a90e2; }
+.log-terminal .log-success { color: #7ed321; }
+.log-terminal .log-warning { color: #f5a623; }
+.log-terminal .log-error { color: #d0021b; }
+
+/* Status bar at bottom */
+.status-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #f8f9fa;
+  border-top: 1px solid #dee2e6;
+  padding: 8px 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  z-index: 1000;
+}
+
+#status-text {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  color: #333;
+}
+
+#status-text.ready { color: #28a745; }
+#status-text.not-ready { color: #dc3545; }
+#status-text.working { color: #ffc107; }
 
 /* ===== Topbar ===== */
 .topbar {
@@ -192,39 +306,126 @@ html, body {
   display: block; 
 }
 
-/* ===== Toggle pill ===== */
+/* ===== Buttons - Brand Colors ===== */
+.btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-success {
+  background-color: var(--brand);
+  border-color: var(--brand);
+  color: white;
+}
+
+.btn-success:hover {
+  background-color: var(--brand-600);
+  border-color: var(--brand-600);
+}
+
+.btn-outline-secondary {
+  background-color: transparent;
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.btn-outline-secondary:hover {
+  background-color: var(--surface-2);
+  border-color: var(--muted);
+}
+
+/* Help buttons */
+.help-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0 !important;
+  margin: 0 0 0 6px;
+  font-size: 11px;
+  font-weight: bold;
+  line-height: 1;
+  text-decoration: none;
+  background: transparent;
+  border: 1px solid var(--brand);
+  border-radius: 50% !important;
+  color: var(--brand);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 18px;
+  box-sizing: border-box;
+}
+
+.help-btn:hover {
+  background-color: var(--brand);
+  color: white;
+  text-decoration: none;
+  border-color: var(--brand);
+}
+
+.btn-outline-danger {
+  background-color: transparent;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.btn-outline-danger:hover {
+  background-color: var(--danger);
+  color: white;
+}
+
+.btn-outline-warning {
+  background-color: transparent;
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.btn-outline-warning:hover {
+  background-color: var(--warning);
+  color: white;
+}
+
+/* ===== Toggle Pills - Brand Colors ===== */
 .toggle-pill {
   width: min(320px, 100%); 
   height: 44px; 
-  border-radius: 22px;
-  background: #333; 
   display: flex; 
-  align-items: center; 
-  padding: 4px; 
-  gap: 2px;
-  box-shadow: inset 0 0 0 1px #444; 
-  margin: 8px 0 20px;
+  border-radius: 8px; 
+  padding: 2px; 
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  margin-bottom: 20px;
 }
 
 .toggle-seg {
-  flex: 1 1 0; 
-  height: 36px; 
-  border-radius: 18px; 
-  border: none;
+  flex: 1; 
+  padding: 0 12px; 
   background: transparent; 
-  color: #fff; 
-  font-weight: 600; 
-  font-size: 14px; 
-  cursor: pointer;
-  transition: transform .12s ease, background .12s ease, color .12s ease;
+  border: none; 
+  border-radius: 6px; 
+  cursor: pointer; 
+  font-weight: 500; 
+  color: var(--muted);
+  transition: all 0.2s ease;
 }
 
 .toggle-seg.active {
-  background: #fff; 
-  color: #222; 
-  transform: translateY(-1px);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, .2);
+  background: var(--brand);
+  color: white;
+  box-shadow: 0 2px 4px rgba(25, 117, 96, 0.2);
 }
+
+.toggle-seg:hover:not(.active) {
+  background: rgba(25, 117, 96, 0.1);
+  color: var(--brand);
+}
+
+/* Remove duplicate - already defined above with proper brand styling */
 
 /* ===== Forms ===== */
 .form-label { 
@@ -250,6 +451,49 @@ html, body {
   outline: none; 
   border-color: var(--brand); 
   box-shadow: 0 0 0 .18rem var(--focus); 
+}
+
+/* Form validation states */
+.form-control.is-valid {
+  border-color: var(--success);
+}
+
+.form-control.is-valid:focus {
+  border-color: var(--success);
+  box-shadow: 0 0 0 .18rem rgba(16, 185, 129, 0.25);
+}
+
+.form-control.is-invalid {
+  border-color: var(--danger);
+}
+
+.form-control.is-invalid:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 .18rem rgba(239, 68, 68, 0.25);
+}
+
+/* Backing store select styling */
+#iscsi-backing-store {
+  cursor: pointer;
+}
+
+#iscsi-backing-store optgroup {
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 600;
+  font-style: normal;
+  padding: 8px 12px;
+}
+
+#iscsi-backing-store option {
+  background: var(--surface);
+  color: var(--text);
+  padding: 6px 12px;
+}
+
+#iscsi-backing-store option:hover {
+  background: var(--brand);
+  color: white;
 }
 
 .form-group {
@@ -368,20 +612,82 @@ html, body {
 }
 
 .btn-success { 
-  background: var(--success); 
-  border-color: var(--success); 
+  background: var(--brand); 
+  border-color: var(--brand); 
   color: #fff; 
 }
 
 .btn-success:hover { 
-  background: #059669; 
-  border-color: #059669; 
+  background: var(--brand-600); 
+  border-color: var(--brand-600); 
+}
+
+.btn-danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.btn-danger:hover {
+  background: #c82333;
+  border-color: #bd2130;
 }
 
 .btn-sm { 
   padding: 6px 12px; 
   font-size: 13px; 
   border-radius: 18px;
+}
+
+/* Warning Dialog Styles */
+.warning-dialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.warning-dialog-content {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 500px;
+  width: 90%;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.warning-dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  color: var(--danger);
+}
+
+.warning-dialog-header i {
+  font-size: 24px;
+}
+
+.warning-dialog-header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.warning-dialog-body {
+  margin-bottom: 24px;
+  line-height: 1.6;
+}
+
+.warning-dialog-footer {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
 }
 
 /* ===== Overview Grid ===== */
@@ -1134,11 +1440,191 @@ code {
   text-overflow: ellipsis;
 }
 
+.session-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.session-actions .btn {
+  min-width: auto;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.session-item.offline {
+  background-color: #f9f9f9;
+  border-left: 3px solid #fbbf24;
+}
+
+.status-offline {
+  color: #f59e0b;
+  font-size: 10px;
+  font-weight: normal;
+}
+
 .btn-sm {
   padding: 4px 8px;
   font-size: 11px;
   min-width: 60px;
   flex-shrink: 0;
+}
+
+/* Install Help Modal */
+.install-help-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.install-help-dialog {
+  background: var(--surface);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  width: 90%;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow: hidden;
+}
+
+.install-help-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.install-help-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text);
+}
+
+.install-help-header h3 i {
+  margin-right: 8px;
+  color: var(--brand);
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-btn:hover {
+  color: var(--text);
+}
+
+.install-help-body {
+  padding: 20px;
+}
+
+.install-command {
+  position: relative;
+  margin: 16px 0;
+}
+
+.install-command pre {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px;
+  margin: 0;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  overflow-x: auto;
+}
+
+.install-command .copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.install-help-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  text-align: right;
+}
+
+.close-help-btn {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.close-help-btn:hover {
+  background: var(--border);
+}
+
+/* Export and Target Items */
+.export-item, .target-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  margin: 8px 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.export-item:hover, .target-item:hover {
+  border-color: var(--brand);
+  box-shadow: 0 2px 4px rgba(25, 117, 96, 0.1);
+}
+
+.export-info, .target-info {
+  flex: 1;
+}
+
+.export-info strong, .target-iqn strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.export-info small, .target-status {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.delete-export-btn, .delete-target-btn {
+  margin-left: 12px;
+  padding: 6px 12px;
+  font-size: 12px;
+  border-color: #dc3545;
+  color: #dc3545;
+  background: transparent;
+  transition: all 0.2s ease;
+}
+
+.delete-export-btn:hover, .delete-target-btn:hover {
+  background: #dc3545;
+  color: white;
+  border-color: #dc3545;
 }
 
 .btn-outline-danger {
@@ -1164,4 +1650,100 @@ code {
 
 .connection-body {
   min-height: 100px;
+}
+
+/* ===== iSCSI Discovery Table ===== */
+.table-container {
+  margin: 1rem 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.table {
+  width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+  background: var(--surface);
+}
+
+.table th,
+.table td {
+  padding: 12px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.table th {
+  background: var(--surface-2);
+  font-weight: 600;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.table td {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.table-striped tbody tr:nth-child(even) {
+  background: rgba(246, 247, 249, 0.5);
+}
+
+.table tbody tr:hover {
+  background: rgba(25, 117, 96, 0.05);
+}
+
+/* Target status indicators */
+.target-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.target-status.available {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--success);
+}
+
+.target-status.connected {
+  background: rgba(25, 117, 96, 0.1);
+  color: var(--brand);
+}
+
+/* Selected target info */
+#selected-target-info {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 14px;
+  padding: 12px 16px;
+  margin: 0;
+}
+
+/* Discovery results section */
+#iscsi-discovery-results {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+#iscsi-discovery-results h5 {
+  margin: 0 0 1rem 0;
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Mount stage spacing */
+#iscsi-mount-stage {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+#iscsi-mount-stage h4 {
+  margin: 0 0 1rem 0;
+  color: var(--text);
 }

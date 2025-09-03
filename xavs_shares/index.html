@@ -6,6 +6,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <!-- Cockpit API + Brand CSS -->
   <script src="../base1/cockpit.js"></script>
+  <!-- FontAwesome CSS -->
+  <link rel="stylesheet" href="fontawesome/css/all.min.css" />
   <link rel="stylesheet" href="shares.css" />
 </head>
 <body>
@@ -163,9 +165,6 @@
                 <button id="btn-exports-reload" class="btn btn-outline-secondary btn-sm">
                   <i class="fa fa-refresh"></i> Reload
                 </button>
-                <button id="btn-exportfs-apply" class="btn btn-brand btn-sm">
-                  <i class="fa fa-check"></i> Apply
-                </button>
               </div>
             </div>
             <div class="management-card-body">
@@ -221,12 +220,6 @@
                   <div class="form-check">
                     <input id="nfs-no-root-squash" type="checkbox" class="form-check-input">
                     <label for="nfs-no-root-squash" class="form-check-label">Allow root access (no_root_squash)</label>
-                  </div>
-
-                  <div class="form-check">
-                    <input id="nfs-persistent" type="checkbox" class="form-check-input">
-                    <label for="nfs-persistent" class="form-check-label">Make export persistent (survives reboot)</label>
-                    <div class="hint">Adds entry to /etc/fstab for auto-mount on boot</div>
                   </div>
 
                   <div class="form-actions">
@@ -305,9 +298,14 @@
           <div class="management-card">
             <div class="management-card-header">
               <h3><i class="fa fa-list"></i> iSCSI Targets</h3>
-              <button id="btn-targets-refresh" class="btn btn-outline-secondary btn-sm">
-                <i class="fa fa-refresh"></i> Refresh
-              </button>
+              <div class="card-actions">
+                <button id="btn-cleanup-backstores" class="btn btn-danger btn-sm" title="⚠️ DANGER: This will remove ALL backstores from the system">
+                  <i class="fa fa-exclamation-triangle"></i> Cleanup All
+                </button>
+                <button id="btn-targets-refresh" class="btn btn-outline-secondary btn-sm">
+                  <i class="fa fa-refresh"></i> Refresh
+                </button>
+              </div>
             </div>
             <div class="management-card-body">
               <div class="targets-container">
@@ -351,7 +349,7 @@
                   </div>
 
                   <!-- File-based options -->
-                  <div id="iscsi-file-options" style="display: none;">
+                  <div id="iscsi-file-options" class="hidden">
                     <div class="form-row">
                       <div class="form-group">
                         <label class="form-label" for="iscsi-size">Size (GB)</label>
@@ -359,13 +357,13 @@
                       </div>
                       <div class="form-group">
                         <label class="form-label" for="iscsi-path">Storage Path</label>
-                        <input id="iscsi-path" class="form-control" value="/var/lib/iscsi/" placeholder="Directory for backing files">
+                        <input id="iscsi-path" class="form-control" value="/var/lib/iscsi-disks" placeholder="Directory for backing files">
                       </div>
                     </div>
                   </div>
 
                   <!-- Disk-based warning -->
-                  <div id="iscsi-disk-warning" class="form-group" style="display: none;">
+                  <div id="iscsi-disk-warning" class="form-group hidden">
                     <div class="alert alert-danger">
                       <i class="fa fa-exclamation-triangle"></i>
                       <strong>DANGER:</strong> Selected disk will be completely erased and used as iSCSI backing store. All existing data will be lost!
@@ -374,7 +372,8 @@
 
                   <div class="form-group">
                     <label class="form-label" for="iscsi-portal">Portal Address</label>
-                    <input id="iscsi-portal" class="form-control" value="0.0.0.0" placeholder="Listen address">
+                    <input id="iscsi-portal" class="form-control" value="0.0.0.0" placeholder="0.0.0.0 (default - listen on all interfaces)" pattern="^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$" title="Please enter a valid IP address (e.g., 192.168.1.100)">
+                    <div class="hint">IP address where the iSCSI target will listen for connections. Use 0.0.0.0 to listen on all network interfaces.</div>
                   </div>
 
                   <div class="form-check">
@@ -396,45 +395,92 @@
 
               <!-- Mount iSCSI Target -->
               <div id="iscsi-mount-block" class="iscsi-mount-hidden">
-                <form id="iscsi-mount-form" class="form">
-                  <div class="form-group">
-                    <label class="form-label" for="im-portal">Portal (IP:port)</label>
-                    <input id="im-portal" class="form-control" placeholder="10.0.0.10:3260" required>
-                  </div>
-
-                  <div class="form-group">
-                    <label class="form-label" for="im-iqn">Target IQN</label>
-                    <input id="im-iqn" class="form-control" placeholder="iqn.2025-08.in.example:projectA" required>
-                  </div>
-
-                  <div class="form-row">
+                <!-- Stage 1: Discovery -->
+                <div id="iscsi-discovery-stage">
+                  <h4><i class="fa fa-search"></i> Discover iSCSI Targets</h4>
+                  <form id="iscsi-discovery-form" class="form">
                     <div class="form-group">
-                      <label class="form-label" for="im-fstype">Filesystem</label>
-                      <select id="im-fstype" class="form-control">
-                        <option value="ext4" selected>ext4</option>
-                        <option value="xfs">xfs</option>
-                      </select>
+                      <label class="form-label" for="im-portal">Portal (IP:port)</label>
+                      <input id="im-portal" class="form-control" placeholder="192.168.1.100:3260" required pattern="^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(?::\d{1,5})?$" title="Please enter a valid IP address with optional port (e.g., 192.168.1.100:3260)">
+                      <div class="hint">Enter the IP address and port of the iSCSI target server</div>
                     </div>
 
-                    <div class="form-group">
-                      <label class="form-label" for="im-mountpoint">Mountpoint</label>
-                      <input id="im-mountpoint" class="form-control" value="/mnt/iscsi" required>
+                    <div class="form-actions">
+                      <button type="submit" class="btn btn-brand">
+                        <i class="fa fa-search"></i> Discover Targets
+                      </button>
+                    </div>
+                    <div id="iscsi-discovery-msg" class="message"></div>
+                  </form>
+
+                  <!-- Discovery Results -->
+                  <div id="iscsi-discovery-results" class="hidden">
+                    <h5><i class="fa fa-list"></i> Available Targets</h5>
+                    <div class="table-container">
+                      <table class="table table-striped">
+                        <thead>
+                          <tr>
+                            <th>Target IQN</th>
+                            <th>Portal</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody id="iscsi-targets-table">
+                          <!-- Discovery results will be populated here -->
+                        </tbody>
+                      </table>
                     </div>
                   </div>
+                </div>
 
-                  <div class="form-check">
-                    <input id="im-mkfs" type="checkbox" class="form-check-input">
-                    <label for="im-mkfs" class="form-check-label">Format if unformatted</label>
-                  </div>
+                <!-- Stage 2: Login and Mount -->
+                <div id="iscsi-mount-stage" class="hidden">
+                  <h4><i class="fa fa-sign-in-alt"></i> Login and Mount Target</h4>
+                  <form id="iscsi-mount-form" class="form">
+                    <div class="form-group">
+                      <label class="form-label">Selected Target</label>
+                      <div id="selected-target-info" class="alert alert-info">
+                        <!-- Selected target info will be shown here -->
+                      </div>
+                    </div>
 
-                  <div class="form-actions">
-                    <button type="submit" class="btn btn-brand">
-                      <i class="fa fa-sign-in-alt"></i> Discover + Login + Mount
-                    </button>
-                    <button type="button" id="btn-im-logout" class="btn btn-outline-danger">
-                      <i class="fa fa-sign-out-alt"></i> Logout
-                    </button>
-                  </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label class="form-label" for="im-fstype">Filesystem</label>
+                        <select id="im-fstype" class="form-control">
+                          <option value="ext4" selected>ext4</option>
+                          <option value="xfs">xfs</option>
+                          <option value="btrfs">btrfs</option>
+                        </select>
+                      </div>
+
+                      <div class="form-group">
+                        <label class="form-label" for="im-mountpoint">Mountpoint</label>
+                        <input id="im-mountpoint" class="form-control" value="/mnt/iscsi" required>
+                      </div>
+                    </div>
+
+                    <div class="alert alert-info">
+                      <i class="fa fa-info-circle"></i>
+                      <strong>Auto-Format:</strong> The iSCSI disk will be automatically formatted with the selected filesystem if it's unformatted.
+                    </div>
+
+                    <div class="form-actions">
+                      <button type="submit" class="btn btn-success">
+                        <i class="fa fa-hdd"></i> Login and Mount
+                      </button>
+                      <button type="button" id="btn-back-to-discovery" class="btn btn-outline-secondary">
+                        <i class="fa fa-arrow-left"></i> Back to Discovery
+                      </button>
+                      <button type="button" id="btn-im-logout" class="btn btn-outline-danger">
+                        <i class="fa fa-sign-out-alt"></i> Logout All
+                      </button>
+                    </div>
+                    <div id="iscsi-mount-msg" class="message"></div>
+                  </form>
+                </div>
+              </div>
                   <div id="iscsi-mount-msg" class="message"></div>
                 </form>
               </div>
@@ -447,15 +493,18 @@
       <section id="tab-logs" class="tab-pane">
         <div class="logs-card">
           <div class="logs-header">
-            <h3><i class="fa fa-terminal"></i> Execution Log</h3>
+            <h3><i class="fa fa-terminal"></i> System Activity Log</h3>
             <div class="logs-actions">
-              <button class="btn btn-outline-secondary" id="btn-clear-log">
-                <i class="fa fa-trash"></i> Clear Log
+              <button class="btn btn-outline-secondary" id="btn-refresh-logs">
+                <i class="fa fa-refresh"></i> Refresh
+              </button>
+              <button class="btn btn-outline-secondary" id="btn-clear-logs">
+                <i class="fa fa-trash"></i> Clear
               </button>
             </div>
           </div>
           <div class="logs-body">
-            <pre class="log-terminal" id="log"></pre>
+            <pre class="log-terminal" id="log-display"></pre>
           </div>
         </div>
       </section>
