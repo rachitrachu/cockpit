@@ -8,6 +8,8 @@
   --muted:#6b7280;
   --border:#d1d5db;
   --focus:rgba(25,117,96,.35);
+  --code-bg:#0f172a;
+  --code-fg:#e5e7eb;
 }
 
 /* ===== Base ===== */
@@ -31,15 +33,31 @@ body{
 .topbar{
   display:flex; align-items:center; justify-content:space-between;
   margin:6px 0 14px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--brand);
 }
-.app-title{ margin:0; font-size:28px; font-weight:800; letter-spacing:.2px; }
+.app-title{ 
+  margin:0; 
+  font-size:28px; 
+  font-weight:800; 
+  letter-spacing:.2px; 
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
 .app-title i{ color:var(--brand); margin-right:10px; }
+.logo-x {
+  height: 24px;
+  width: auto;
+  vertical-align: middle;
+  margin-right: -1px;
+}
 
 /* Help bubble + tooltip */
 .help{
   width:32px; height:32px; border-radius:9999px;
   background:var(--brand); color:#fff; display:flex; align-items:center; justify-content:center;
-  font-weight:800; cursor:help; position:relative;
+  font-weight:normal; cursor:help; position:relative;
 }
 .help::after{
   content:attr(data-tip);
@@ -484,8 +502,8 @@ body{
 .yaml-terminal {
     font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
     font-size: 13px;
-    background: var(--surface-2);
-    color: var(--text);
+    background: var(--code-bg, #0f172a);
+    color: var(--code-fg, #e5e7eb);
     border-radius: 10px;
     border: 1px solid var(--border);
     padding: 14px;
@@ -494,6 +512,18 @@ body{
     white-space: pre;
     margin: 12px 0;
 }
+
+/* Additional terminal-specific styling from XAVS-Bootstrap */
+pre.yaml-terminal { 
+    max-height: 320px; 
+}
+
+/* FontAwesome color classes for log messages */
+.text-green { color: #10b981; }
+.text-red { color: #ef4444; }
+.text-blue { color: #3b82f6; }
+.text-yellow { color: #f59e0b; }
+.text-purple { color: #8b5cf6; }
 
 /* ===== Status Bar ===== */
 .status-bar {

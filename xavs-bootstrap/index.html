@@ -12,18 +12,25 @@
 <body>
   <div class="container-fluid">
     <div class="topbar">
-      <h1 class="app-title">xAVS Bootstrap</h1>
-      <div class="toolbar right">
-        <button class="btn btn-brand" id="btn-refresh" type="button"><i class="fas fa-sync"></i> Re-run all detections</button>
-      </div>
+      <h1 class="app-title">
+        <img src="logo-x.png" alt="X" class="logo-x">AVS Bootstrap
+      </h1>
+      <div class="help" data-tip="This module helps prepare your system for OpenStack deployment:
+• Check hardware requirements and system compatibility
+• Detect and install missing dependencies
+• Verify system configuration and readiness
+• Monitor installation progress with detailed logs">?</div>
     </div>
 
-    <ul class="nav-tabs" id="tabs">
-      <li><a class="nav-link active" data-target="panel-overview">Overview</a></li>
-      <li><a class="nav-link" data-target="panel-hw">Hardware</a></li>
-      <li><a class="nav-link" data-target="panel-deps">Dependencies</a></li>
-  <li><a class="nav-link" data-target="panel-logs">Logs</a></li>
-    </ul>
+    <div class="tabs-container">
+      <ul class="nav-tabs" id="tabs">
+        <li><a class="nav-link active" data-target="panel-overview"><i class="fas fa-tachometer-alt"></i> Overview</a></li>
+        <li><a class="nav-link" data-target="panel-hw"><i class="fas fa-microchip"></i> Hardware</a></li>
+        <li><a class="nav-link" data-target="panel-deps"><i class="fas fa-puzzle-piece"></i> Dependencies</a></li>
+        <li><a class="nav-link" data-target="panel-logs"><i class="fas fa-terminal"></i> Logs</a></li>
+      </ul>
+      <button class="btn btn-brand btn-tab-right" id="btn-refresh" type="button"><i class="fas fa-sync"></i> Re-run all detections</button>
+    </div>
 
   <!-- Overview -->
   <section id="panel-overview" class="tab-pane active">
