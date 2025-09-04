@@ -1,5 +1,5 @@
 /*
- * XAVS Deploy - Kolla Ansible GUI
+ * XAVS Deploy - Deployment GUI
  * Production version - Complete SOP integration with safety features
  * Copyright 2025 - XAVS Project
  */
@@ -109,11 +109,11 @@
   function updateSummaryStats() {
     if (!els.summaryStats) return;
     els.summaryStats.innerHTML = `
-      <div class="stat-item ok">✓ ${playbookStats.ok}</div>
-      <div class="stat-item changed">⚡ ${playbookStats.changed}</div>
-      <div class="stat-item failed">✗ ${playbookStats.failed}</div>
-      <div class="stat-item skipped">⊘ ${playbookStats.skipped}</div>
-      <div class="stat-item unreachable">⚠ ${playbookStats.unreachable}</div>
+      <div class="stat-item ok"><i class="fas fa-check"></i> ${playbookStats.ok}</div>
+      <div class="stat-item changed"><i class="fas fa-bolt"></i> ${playbookStats.changed}</div>
+      <div class="stat-item failed"><i class="fas fa-times"></i> ${playbookStats.failed}</div>
+      <div class="stat-item skipped"><i class="fas fa-forward"></i> ${playbookStats.skipped}</div>
+      <div class="stat-item unreachable"><i class="fas fa-exclamation-triangle"></i> ${playbookStats.unreachable}</div>
     `;
     
     // Update task count
@@ -129,12 +129,12 @@
     taskElement.className = `task-item ${taskData.status}`;
     
     const statusIcon = {
-      'ok': '✓',
-      'changed': '⚡',
-      'failed': '✗',
-      'skipped': '⊘',
-      'unreachable': '⚠'
-    }[taskData.status] || '?';
+      'ok': '<i class="fas fa-check"></i>',
+      'changed': '<i class="fas fa-bolt"></i>',
+      'failed': '<i class="fas fa-times"></i>',
+      'skipped': '<i class="fas fa-forward"></i>',
+      'unreachable': '<i class="fas fa-exclamation-triangle"></i>'
+    }[taskData.status] || '<i class="fas fa-question"></i>';
 
     const duration = taskData.duration ? ` (${taskData.duration}s)` : '';
     
@@ -162,7 +162,7 @@
     if (!els.playbookProgress) return;
     currentPlaybook = playbookName;
     els.playbookProgress.innerHTML = `
-      <div class="playbook-name">📋 ${playbookName}</div>
+      <div class="playbook-name"><i class="fas fa-clipboard-list"></i> ${playbookName}</div>
       <div class="playbook-status">Running...</div>
     `;
   }
@@ -181,7 +181,7 @@
         
         if (jsonData.type === 'playbook_start') {
           updatePlaybookProgress(jsonData.playbook);
-          appendConsole(`📋 Starting playbook: ${jsonData.playbook}\n`);
+          appendConsole(`<i class="fas fa-clipboard-list"></i> Starting playbook: ${jsonData.playbook}\n`);
         }
         else if (jsonData.type === 'task_start') {
           appendConsole(`⏱ Task: ${jsonData.task}\n`);
@@ -242,11 +242,11 @@
           if (els.playbookProgress) {
             const totalHosts = Object.keys(jsonData.stats || {}).length;
             els.playbookProgress.innerHTML = `
-              <div class="playbook-name">📋 ${currentPlaybook}</div>
+              <div class="playbook-name"><i class="fas fa-clipboard-list"></i> ${currentPlaybook}</div>
               <div class="playbook-status">✅ Completed (${totalHosts} hosts)</div>
             `;
           }
-          appendConsole(`\n📊 Playbook completed. Final stats:\n`);
+          appendConsole(`\n<i class="fas fa-chart-bar"></i> Playbook completed. Final stats:\n`);
           Object.entries(jsonData.stats || {}).forEach(([host, stats]) => {
             appendConsole(`  ${host}: ok=${stats.ok} changed=${stats.changed} unreachable=${stats.unreachable} failed=${stats.failed} skipped=${stats.skipped}\n`);
           });
@@ -278,7 +278,7 @@
         if (playMatch) {
           const playName = playMatch[1];
           updatePlaybookProgress(playName);
-          appendConsole(`📋 ${playName}\n`);
+          appendConsole(`<i class="fas fa-clipboard-list"></i> ${playName}\n`);
           currentTaskName = ""; // Reset task name for new play
         }
         continue;
@@ -368,13 +368,13 @@
         className += ' disabled';
         break;
       case 'all':
-        content = '🌐 No specific services selected. The command will apply to all relevant services (default behavior).';
+        content = '<i class="fas fa-globe"></i> No specific services selected. The command will apply to all relevant services (default behavior).';
         break;
       case 'selected':
         const services = [...selectedServices];
         const customServices = getCustomServices();
         const allSelected = [...services, ...customServices];
-        content = `🎯 Selected services: <strong>${allSelected.join(', ')}</strong> (${count} service${count > 1 ? 's' : ''})`;
+        content = `<i class="fas fa-bullseye"></i> Selected services: <strong>${allSelected.join(', ')}</strong> (${count} service${count > 1 ? 's' : ''})`;
         break;
     }
     
@@ -608,7 +608,7 @@
     switch (hostMode) {
       case 'all':
         hostCount = availableHostsList.length;
-        configText = `🌐 All hosts from inventory (${hostCount} hosts)`;
+        configText = `<i class="fas fa-globe"></i> All hosts from inventory (${hostCount} hosts)`;
         if (hostCount === 0) {
           configText = '⚠️ No hosts found in inventory - check inventory file';
           statusClass = 'warning';
@@ -623,7 +623,7 @@
           configText = '⚠️ No hosts selected - please select hosts in the "Select Hosts" tab above';
           statusClass = 'warning';
         } else {
-          configText = `🎯 Selected hosts: ${limitedHosts.join(', ')} (${hostCount} hosts)`;
+          configText = `<i class="fas fa-bullseye"></i> Selected hosts: ${limitedHosts.join(', ')} (${hostCount} hosts)`;
           statusClass = 'success';
         }
         break;
@@ -633,7 +633,7 @@
           configText = '⚠️ No host patterns specified - enter patterns in the "Host Patterns" tab above';
           statusClass = 'warning';
         } else {
-          configText = `🏷️ Host patterns: ${tags}`;
+          configText = `<i class="fas fa-tags"></i> Host patterns: ${tags}`;
           statusClass = 'success';
         }
         break;
@@ -703,7 +703,7 @@
     }
     
     // Add header with clear explanation
-    els.availableHosts.innerHTML = '<div class="host-info-header" style="font-size: 11px; color: #666; margin-bottom: 4px; font-style: italic;">📋 Inventory hosts (for reference - use tabs above to select):</div>';
+    els.availableHosts.innerHTML = '<div class="host-info-header" style="font-size: 11px; color: #666; margin-bottom: 4px; font-style: italic;"><i class="fas fa-clipboard-list"></i> Inventory hosts (for reference - use tabs above to select):</div>';
     
     const hostContainer = document.createElement('div');
     hostContainer.className = 'host-container';
@@ -932,7 +932,7 @@
     }
 
     // Build command to match manual execution format
-    return `source ${VENV_ACTIVATE} && kolla-ansible -i ${INVENTORY} ${cmd}${tagsArg}${limitArg}${specialArgs}${extraFlags}`.trim();
+    return `source ${VENV_ACTIVATE} && xavs-deploy -i ${INVENTORY} ${cmd}${tagsArg}${limitArg}${specialArgs}${extraFlags}`.trim();
   }
 
   /* ---------- run / stop ---------- */
@@ -966,7 +966,7 @@
         appendConsole(`\n⏹ Stopped\n`);
         if (els.playbookProgress) {
           els.playbookProgress.innerHTML = `
-            <div class="playbook-name">📋 ${currentPlaybook || 'Unknown'}</div>
+            <div class="playbook-name"><i class="fas fa-clipboard-list"></i> ${currentPlaybook || 'Unknown'}</div>
             <div class="playbook-status">⏹ Stopped by user</div>
           `;
         }
@@ -982,7 +982,7 @@
         appendConsole(`\n⏹ Stopped\n`);
         if (els.playbookProgress) {
           els.playbookProgress.innerHTML = `
-            <div class="playbook-name">📋 ${currentPlaybook || 'Unknown'}</div>
+            <div class="playbook-name"><i class="fas fa-clipboard-list"></i> ${currentPlaybook || 'Unknown'}</div>
             <div class="playbook-status">⏹ Stopped by user</div>
           `;
         }
@@ -990,7 +990,7 @@
         appendConsole(`\n✖ Failed: ${ex}\n`);
         if (els.playbookProgress) {
           els.playbookProgress.innerHTML = `
-            <div class="playbook-name">📋 ${currentPlaybook || 'Unknown'}</div>
+            <div class="playbook-name"><i class="fas fa-clipboard-list"></i> ${currentPlaybook || 'Unknown'}</div>
             <div class="playbook-status">❌ Failed</div>
           `;
         }
@@ -1049,10 +1049,47 @@
     // Initialize new features
     initHostTabs();
     initCollapsibleSections();
+    initStatusBar();
     
     // Show loading state while loading hosts
     renderHostCheckboxes(null);
     loadHosts();
   }
+
+  /* ---------- Status Bar ---------- */
+  function initStatusBar() {
+    const statusLink = document.getElementById('view-progress-link');
+    if (statusLink) {
+      statusLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        // Scroll to deployment progress section
+        const progressCard = document.querySelector('.deployment-progress-card');
+        if (progressCard) {
+          progressCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    }
+    updateStatusBar('Ready');
+  }
+
+  function updateStatusBar(message) {
+    const statusElement = document.getElementById('status-text');
+    if (statusElement) {
+      const cleanText = message.replace(/<[^>]*>/g, '').trim() || "Ready";
+      statusElement.textContent = cleanText;
+    }
+  }
+
+  // Update appendConsole to also update status bar
+  const originalAppendConsole = appendConsole;
+  appendConsole = function(text) {
+    originalAppendConsole(text);
+    if (text && text.trim()) {
+      updateStatusBar(text.trim());
+    }
+  };
+
   document.addEventListener("DOMContentLoaded", init);
 })();
+
+

@@ -94,20 +94,39 @@ body{
 .tab-pane{ display:none; }
 .tab-pane.show{ display:block; }
 
-/* ===== Toggle pill (compact version) ===== */
-.toggle-pill{
-  width:min(320px,100%); height:44px; border-radius:22px;
-  background:#333; display:flex; align-items:center; padding:4px; gap:2px;
-  box-shadow:inset 0 0 0 1px #444; margin:8px 0 20px;
+/* ===== Toggle pill (XAVS-Shares style) ===== */
+.toggle-pill {
+  width: min(320px, 100%); 
+  height: 44px; 
+  display: flex; 
+  border-radius: 8px; 
+  padding: 2px; 
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  margin-bottom: 20px;
 }
-.toggle-seg{
-  flex:1 1 0; height:36px; border-radius:18px; border:none;
-  background:transparent; color:#fff; font-weight:600; font-size:14px; cursor:pointer;
-  transition:transform .12s ease, background .12s ease, color .12s ease;
+
+.toggle-seg {
+  flex: 1; 
+  padding: 0 12px; 
+  background: transparent; 
+  border: none; 
+  border-radius: 6px; 
+  cursor: pointer; 
+  font-weight: 500; 
+  color: var(--muted);
+  transition: all 0.2s ease;
 }
-.toggle-seg.active{
-  background:#fff; color:#222; transform:translateY(-1px);
-  box-shadow:0 1px 3px rgba(0,0,0,.2);
+
+.toggle-seg.active {
+  background: var(--brand);
+  color: white;
+  box-shadow: 0 2px 4px rgba(25, 117, 96, 0.2);
+}
+
+.toggle-seg:hover:not(.active) {
+  background: rgba(25, 117, 96, 0.1);
+  color: var(--brand);
 }
 
 /* ===== Form bits ===== */

@@ -133,6 +133,13 @@
         logEl.textContent += logEntry + "\n";
         logEl.scrollTop = logEl.scrollHeight;
         
+        // Update status bar (strip HTML for status bar)
+        const statusElement = $('status-text');
+        if (statusElement) {
+            const cleanText = t.replace(/<[^>]*>/g, '').trim() || "Ready";
+            statusElement.textContent = cleanText;
+        }
+        
         // Store logs for persistence across tabs (localStorage for better cross-tab sync)
         try {
             const existingLogs = localStorage.getItem('xavs-logs') || '';
@@ -246,6 +253,19 @@
         if (targetPanel === 'panel-hw')   runHardwareChecks().catch(console.error);
         // Removed auto-check for dependencies - user must click "Check Dependencies"
     }));
+
+    // Wire up status bar link
+    const statusLink = $('.status-link');
+    if (statusLink) {
+        statusLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            const targetTab = statusLink.dataset.tab;
+            if (targetTab) {
+                const targetPanel = targetTab.replace('tab-', 'panel-');
+                showPanel(targetPanel);
+            }
+        });
+    }
 
     //  OS Detection 
     let osInfo = {

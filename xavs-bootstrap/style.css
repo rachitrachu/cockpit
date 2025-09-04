@@ -627,3 +627,39 @@ select option:checked { background:var(--brand); color:#fff; }
         align-items: flex-start;
     }
 }
+
+/* Status Bar */
+.status-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 8px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  z-index: 1000;
+}
+
+.status-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.status-link {
+  color: var(--brand);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.status-link:hover {
+  text-decoration: underline;
+}
+
+/* Adjust main content to account for status bar */
+.app {
+  padding-bottom: 64px;
+}
