@@ -24,14 +24,53 @@
 (() => {
     'use strict';
 
-    // ——— helpers ———
+    //  helpers 
     const $  = (id) => document.getElementById(id);
     const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+    
+    // Simple notification helper
+    const showNotification = (message, type = 'info') => {
+        const existing = document.querySelector('.notification');
+        if (existing) existing.remove();
+        
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.innerHTML = `
+            <span>${message}</span>
+            <button onclick="this.parentElement.remove()" style="margin-left: 10px; background: none; border: none; cursor: pointer;"></button>
+        `;
+        notification.style.cssText = `
+            position: fixed; top: 20px; right: 20px; z-index: 100;
+            padding: 12px 16px; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            background: white; border: 1px solid #d1d5db; max-width: 400px;
+        `;
+        
+        if (type === 'error') {
+            notification.style.background = '#fef2f2';
+            notification.style.borderColor = '#fecaca';
+            notification.style.color = '#dc2626';
+        } else if (type === 'success') {
+            notification.style.background = '#f0fdf4';
+            notification.style.borderColor = '#bbf7d0';
+            notification.style.color = '#16a34a';
+        }
+        
+        document.body.appendChild(notification);
+        setTimeout(() => {
+            if (notification.parentElement) notification.remove();
+        }, 5000);
+    };
+    
     const setBadge = (id, cls, text) => {
         const el = $(id);
         if (!el) return;
         el.className = "badge " + (cls || "");
-        el.textContent = text || "—";
+        
+        if (text && text.includes('<i class="fas')) {
+            el.innerHTML = text;
+        } else {
+            el.textContent = text || "";
+        }
         
         // Update card visual state
         const card = el.closest('.dep-card');
@@ -40,12 +79,18 @@
             if (cls === "ok") card.classList.add('dep-ready');
             else if (cls === "err") card.classList.add('dep-error');
             else if (cls === "warn") card.classList.add('dep-warning');
-            else if (text === "⏳") card.classList.add('dep-working');
+            else if (text === "" || text.includes('fa-clock')) card.classList.add('dep-working');
         }
     };
     const setText = (id, text) => {
         const el = $(id);
-        if (el) el.textContent = text;
+        if (el) {
+            if (text.includes('<i class="fas')) {
+                el.innerHTML = text;
+            } else {
+                el.textContent = text;
+            }
+        }
     };
     const setTextWithSpinner = (id, text) => {
         const el = $(id);
@@ -57,14 +102,22 @@
     const setTextSuccess = (id, text) => {
         const el = $(id);
         if (el) {
-            el.textContent = text;
+            if (text.includes('<i class="fas')) {
+                el.innerHTML = text;
+            } else {
+                el.textContent = text;
+            }
             el.className = "status-success";
         }
     };
     const setTextError = (id, text) => {
         const el = $(id);
         if (el) {
-            el.textContent = text;
+            if (text.includes('<i class="fas')) {
+                el.innerHTML = text;
+            } else {
+                el.textContent = text;
+            }
             el.className = "status-error";
         }
     };
@@ -148,7 +201,7 @@
         }, 2000); // Check every 2 seconds
     };
 
-    // ——— tab management ———
+    //  tab management 
     let currentPanel = 'panel-overview';
     const links = $$('#tabs .nav-link');
     
@@ -194,7 +247,7 @@
         // Removed auto-check for dependencies - user must click "Check Dependencies"
     }));
 
-    // ——— OS Detection ———
+    //  OS Detection 
     let osInfo = {
         name: "Unknown",
         id: "",
@@ -207,7 +260,7 @@
 
     async function detectOS() {
         try {
-            setText("os-name", "Detecting…");
+            setText("os-name", "Detecting");
             log("[OS] Starting OS detection...");
             
             const out = await cockpit.spawn([
@@ -263,20 +316,21 @@
                 if (depGrid) depGrid.style.opacity = "1";
                 if (installBtn) installBtn.disabled = false;
                 if (checkBtn) checkBtn.disabled = false;
-                setText("dep-status", "—");
+                setText("dep-status", "");
             }
 
             log(`[OS] ${osInfo.name} (id=${osInfo.id}, like=${osInfo.like}) kernel=${osInfo.kernel} branch=${osInfo.branch} XOS=${osInfo.isXOS}`);
         } catch (error) {
             setText("os-name", "Detection Failed");
-            setText("os-kernel", "—");
-            setText("os-branch", "—");
-            setText("os-mode", "—");
+            setText("os-kernel", "");
+            setText("os-branch", "");
+            setText("os-mode", "");
+            showNotification("OS detection failed: " + (error.message || error), 'error');
             log("[OS] Detection failed: " + (error.message || error));
         }
     }
 
-    // ——— Enhanced System Information Functions ———
+    //  Enhanced System Information Functions 
     async function refreshSystemStatus() {
         try {
             setText("sys-uptime", "Loading...");
@@ -288,27 +342,27 @@
 
             // Get uptime
             const uptime = await cockpit.spawn(["bash", "-c", "uptime -p 2>/dev/null || uptime | awk '{print $3\" \"$4}' | sed 's/,$//'"]);
-            setText("sys-uptime", uptime.trim() || "—");
+            setText("sys-uptime", uptime.trim() || "");
 
             // Get load average
-            const load = await cockpit.spawn(["bash", "-c", "uptime | awk -F'load average:' '{print $2}' | sed 's/^ *//' || echo '—'"]);
-            setText("sys-load", load.trim() || "—");
+            const load = await cockpit.spawn(["bash", "-c", "uptime | awk -F'load average:' '{print $2}' | sed 's/^ *//' || echo ''"]);
+            setText("sys-load", load.trim() || "");
 
             // Get CPU usage (5-second average)
-            const cpu = await cockpit.spawn(["bash", "-c", "top -bn1 | grep 'Cpu(s)' | awk '{print $2}' | sed 's/%us,//' || echo '—'"]);
-            setText("sys-cpu", cpu.trim() ? cpu.trim() + "%" : "—");
+            const cpu = await cockpit.spawn(["bash", "-c", "top -bn1 | grep 'Cpu(s)' | awk '{print $2}' | sed 's/%us,//' || echo ''"]);
+            setText("sys-cpu", cpu.trim() ? cpu.trim() + "%" : "");
 
             // Get memory usage
             const memory = await cockpit.spawn(["bash", "-c", "free -h | awk 'NR==2{printf \"%s / %s (%s)\", $3, $2, $5}'"]);
-            setText("sys-memory", memory.trim() || "—");
+            setText("sys-memory", memory.trim() || "");
 
-            log("[System] ✅ System status updated successfully");
+            log("[System] System status updated successfully");
         } catch (error) {
             setText("sys-uptime", "Error");
             setText("sys-load", "Error");
             setText("sys-cpu", "Error");
             setText("sys-memory", "Error");
-            log("[System] ❌ Failed to refresh system status: " + (error.message || error));
+            log("[System] Failed to refresh system status: " + (error.message || error));
         }
     }
 
@@ -325,9 +379,9 @@
             try {
                 const rootSize = await cockpit.spawn(["bash", "-c", "df -h / | tail -1 | awk '{print $2}'"]);
                 const rootUsed = await cockpit.spawn(["bash", "-c", "df -h / | tail -1 | awk '{print $5}'"]);
-                setText("storage-root", (rootSize.trim() || "—") + " (" + (rootUsed.trim() || "—") + " used)");
+                setText("storage-root", (rootSize.trim() || "") + " (" + (rootUsed.trim() || "") + " used)");
             } catch {
-                setText("storage-root", "—");
+                setText("storage-root", "");
             }
 
             // Count disks - simple approach
@@ -335,15 +389,15 @@
                 const disks = await cockpit.spawn(["bash", "-c", "lsblk -d | grep disk | wc -l"]);
                 setText("storage-disks", (disks.trim() || "0") + " disk(s)");
             } catch {
-                setText("storage-disks", "—");
+                setText("storage-disks", "");
             }
 
             // Total available space
             try {
                 const free = await cockpit.spawn(["bash", "-c", "df -h / | tail -1 | awk '{print $4}'"]);
-                setText("storage-free", free.trim() || "—");
+                setText("storage-free", free.trim() || "");
             } catch {
-                setText("storage-free", "—");
+                setText("storage-free", "");
             }
 
             // Storage type detection
@@ -359,13 +413,13 @@
                 }
             }
 
-            log("[Storage] ✅ Storage overview updated successfully");
+            log("[Storage] Storage overview updated successfully");
         } catch (error) {
             setText("storage-root", "Error");
             setText("storage-disks", "Error");
             setText("storage-free", "Error");
             setText("storage-type", "Error");
-            log("[Storage] ❌ Failed to refresh storage overview: " + (error.message || error));
+            log("[Storage] Failed to refresh storage overview: " + (error.message || error));
         }
     }
 
@@ -385,30 +439,30 @@
             // Test connectivity
             try {
                 await cockpit.spawn(["bash", "-c", "timeout 5 ping -c 1 8.8.8.8 >/dev/null 2>&1"]);
-                setText("net-connectivity", "✅ Connected");
+                setText("net-connectivity", '<i class="fas fa-check text-success"></i> Connected');
             } catch {
-                setText("net-connectivity", "❌ No internet");
+                setText("net-connectivity", '<i class="fas fa-times text-danger"></i> No internet');
             }
 
             // Get primary IP
-            const primaryIp = await cockpit.spawn(["bash", "-c", "ip route get 8.8.8.8 2>/dev/null | awk 'NR==1{print $7}' || echo '—'"]);
-            setText("net-primary-ip", primaryIp.trim() || "—");
+            const primaryIp = await cockpit.spawn(["bash", "-c", "ip route get 8.8.8.8 2>/dev/null | awk 'NR==1{print $7}' || echo ''"]);
+            setText("net-primary-ip", primaryIp.trim() || "");
 
             // Test DNS
             try {
                 await cockpit.spawn(["bash", "-c", "timeout 3 nslookup google.com >/dev/null 2>&1"]);
-                setText("net-dns", "✅ Working");
+                setText("net-dns", '<i class="fas fa-check text-success"></i> Working');
             } catch {
-                setText("net-dns", "❌ Failed");
+                setText("net-dns", '<i class="fas fa-times text-danger"></i> Failed');
             }
 
-            log("[Network] ✅ Network overview updated successfully");
+            log("[Network] Network overview updated successfully");
         } catch (error) {
             setText("net-interfaces", "Error");
             setText("net-connectivity", "Error");
             setText("net-primary-ip", "Error");
             setText("net-dns", "Error");
-            log("[Network] ❌ Failed to refresh network overview: " + (error.message || error));
+            log("[Network] Failed to refresh network overview: " + (error.message || error));
         }
     }
 
@@ -423,17 +477,17 @@
             setText("cpu-arch", "Loading...");
             setText("cpu-virt", "Loading...");
 
-            const cpuModel = await cockpit.spawn(["bash", "-c", "lscpu | grep 'Model name' | cut -d':' -f2 | sed 's/^ *//' || echo '—'"]);
-            setText("cpu-model", cpuModel.trim() || "—");
+            const cpuModel = await cockpit.spawn(["bash", "-c", "lscpu | grep 'Model name' | cut -d':' -f2 | sed 's/^ *//' || echo ''"]);
+            setText("cpu-model", cpuModel.trim() || "");
 
-            const cpuCores = await cockpit.spawn(["bash", "-c", "lscpu | grep '^CPU(s):' | awk '{print $2}' || echo '—'"]);
-            setText("cpu-cores", cpuCores.trim() || "—");
+            const cpuCores = await cockpit.spawn(["bash", "-c", "lscpu | grep '^CPU(s):' | awk '{print $2}' || echo ''"]);
+            setText("cpu-cores", cpuCores.trim() || "");
 
-            const cpuThreads = await cockpit.spawn(["bash", "-c", "lscpu | grep 'Thread(s) per core' | awk '{print $4}' || echo '—'"]);
-            setText("cpu-threads", cpuThreads.trim() || "—");
+            const cpuThreads = await cockpit.spawn(["bash", "-c", "lscpu | grep 'Thread(s) per core' | awk '{print $4}' || echo ''"]);
+            setText("cpu-threads", cpuThreads.trim() || "");
 
-            const cpuArch = await cockpit.spawn(["bash", "-c", "lscpu | grep Architecture | cut -d':' -f2 | sed 's/^ *//' || echo '—'"]);
-            setText("cpu-arch", cpuArch.trim() || "—");
+            const cpuArch = await cockpit.spawn(["bash", "-c", "lscpu | grep Architecture | cut -d':' -f2 | sed 's/^ *//' || echo ''"]);
+            setText("cpu-arch", cpuArch.trim() || "");
 
             // Check for virtualization support
             try {
@@ -450,13 +504,13 @@
             setText("mem-swap", "Loading...");
 
             const memTotal = await cockpit.spawn(["bash", "-c", "free -h | awk 'NR==2{print $2}'"]);
-            setText("mem-total", memTotal.trim() || "—");
+            setText("mem-total", memTotal.trim() || "");
 
             const memAvailable = await cockpit.spawn(["bash", "-c", "free -h | awk 'NR==2{print $7}'"]);
-            setText("mem-available", memAvailable.trim() || "—");
+            setText("mem-available", memAvailable.trim() || "");
 
             const memUsed = await cockpit.spawn(["bash", "-c", "free -h | awk 'NR==2{print $3}'"]);
-            setText("mem-used", memUsed.trim() || "—");
+            setText("mem-used", memUsed.trim() || "");
 
             const memSwap = await cockpit.spawn(["bash", "-c", "free -h | awk 'NR==3{print $2}' | grep -v '^$' || echo 'None'"]);
             setText("mem-swap", memSwap.trim() || "None");
@@ -467,8 +521,8 @@
             setText("disk-vgs", "Loading...");
             setText("disk-mounts", "Loading...");
 
-            const rootfsType = await cockpit.spawn(["bash", "-c", "findmnt -n -o FSTYPE / || echo '—'"]);
-            setText("disk-rootfs", rootfsType.trim() || "—");
+            const rootfsType = await cockpit.spawn(["bash", "-c", "findmnt -n -o FSTYPE / || echo ''"]);
+            setText("disk-rootfs", rootfsType.trim() || "");
 
             const blockDevices = await cockpit.spawn(["bash", "-c", "lsblk -dn -o NAME,SIZE,TYPE | grep disk | wc -l"]);
             setText("disk-devices", blockDevices.trim() + " disk(s)");
@@ -493,18 +547,18 @@
             const activeNics = await cockpit.spawn(["bash", "-c", "ip link show | grep -c 'state UP'"]);
             setText("net-active", activeNics.trim() || "0");
 
-            const nicTypes = await cockpit.spawn(["bash", "-c", "ip link show | grep '^[0-9]' | awk '{print $2}' | cut -d':' -f1 | grep -v lo | head -3 | tr '\\n' ', ' | sed 's/,$//' || echo '—'"]);
-            setText("net-types", nicTypes.trim() || "—");
+            const nicTypes = await cockpit.spawn(["bash", "-c", "ip link show | grep '^[0-9]' | awk '{print $2}' | cut -d':' -f1 | grep -v lo | head -3 | tr '\\n' ', ' | sed 's/,$//' || echo ''"]);
+            setText("net-types", nicTypes.trim() || "");
 
-            const ipAddresses = await cockpit.spawn(["bash", "-c", "ip addr show | grep 'inet ' | grep -v '127.0.0.1' | awk '{print $2}' | head -6 || echo '—'"]);
-            setText("net-ips", ipAddresses.trim() || "—");
+            const ipAddresses = await cockpit.spawn(["bash", "-c", "ip addr show | grep 'inet ' | grep -v '127.0.0.1' | awk '{print $2}' | head -6 || echo ''"]);
+            setText("net-ips", ipAddresses.trim() || "");
 
-            const gateway = await cockpit.spawn(["bash", "-c", "ip route | grep default | awk '{print $3}' | head -1 || echo '—'"]);
-            setText("net-gateway", gateway.trim() || "—");
+            const gateway = await cockpit.spawn(["bash", "-c", "ip route | grep default | awk '{print $3}' | head -1 || echo ''"]);
+            setText("net-gateway", gateway.trim() || "");
 
-            log("[Hardware] ✅ Hardware details updated successfully");
+            log("[Hardware] Hardware details updated successfully");
         } catch (error) {
-            log("[Hardware] ❌ Failed to refresh hardware details: " + (error.message || error));
+            log("[Hardware] Failed to refresh hardware details: " + (error.message || error));
         }
     }
 
@@ -527,8 +581,8 @@
 
             // Platform detection
             try {
-                const platform = await cockpit.spawn(["bash", "-c", "dmidecode -s system-product-name 2>/dev/null | head -1 || echo '—'"]);
-                setText("virt-platform", platform.trim() || "—");
+                const platform = await cockpit.spawn(["bash", "-c", "dmidecode -s system-product-name 2>/dev/null | head -1 || echo ''"]);
+                setText("virt-platform", platform.trim() || "");
             } catch {
                 setText("virt-platform", "Access denied");
             }
@@ -544,20 +598,20 @@
             // Check nested virtualization support
             try {
                 const nested = await cockpit.spawn(["bash", "-c", "cat /sys/module/kvm_*/parameters/nested 2>/dev/null | head -1 || echo 'N/A'"]);
-                const nestedText = nested.trim() === "Y" ? "✅ Enabled" : 
-                                 nested.trim() === "N" ? "❌ Disabled" : "N/A";
+                const nestedText = nested.trim() === "Y" ? '<i class="fas fa-check text-success"></i> Enabled' : 
+                                 nested.trim() === "N" ? '<i class="fas fa-times text-danger"></i> Disabled' : "N/A";
                 setText("virt-nested", nestedText);
             } catch {
                 setText("virt-nested", "Not available");
             }
 
-            log("[Virtualization] ✅ Virtualization detection completed");
+            log("[Virtualization] Virtualization detection completed");
         } catch (error) {
             setText("virt-type", "Error");
             setText("virt-platform", "Error");
             setText("virt-hypervisor", "Error");
             setText("virt-nested", "Error");
-            log("[Virtualization] ❌ Failed to detect virtualization: " + (error.message || error));
+            log("[Virtualization] Failed to detect virtualization: " + (error.message || error));
         }
     }
 
@@ -618,17 +672,17 @@ End of Report
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
             
-            log("[Export] ✅ System information exported as " + filename);
+            log("[Export] System information exported as " + filename);
         } catch (error) {
-            log("[Export] ❌ Failed to export system information: " + (error.message || error));
+            log("[Export] Failed to export system information: " + (error.message || error));
         }
     }
 
-    // ——— Hardware Checks ———
+    //  Hardware Checks 
     async function runHardwareChecks() {
         // Reset badges
         ['root', 'nics', 'extra', 'cores', 'ram'].forEach(id => 
-            setBadge(`chk-${id}`, "", "⏳")
+            setBadge(`chk-${id}`, "", '<i class="fas fa-clock text-warning"></i>')
         );
         setText("hw-summary", "Running hardware checks...");
         log("[HW] Starting hardware validation checks");
@@ -696,25 +750,25 @@ End of Report
 
             let summary = "";
             if (errors.length === 0 && warnings.length === 0) {
-                summary = "✅ All hardware requirements met!";
+                summary = '<i class="fas fa-check text-success"></i> All hardware requirements met!';
             } else {
                 if (errors.length) {
-                    summary += "❌ Fix red items before proceeding. ";
+                    summary += "Fix red items before proceeding. ";
                 }
                 if (warnings.length) {
-                    summary += "⚠️ Additional disk/VG not found — block storage won't be used; ephemeral only.";
+                    summary += "Additional disk/VG not found  block storage won't be used; ephemeral only.";
                 }
             }
             setText("hw-summary", summary);
 
-            log(`[HW] ✅ Hardware check completed: root=${freeSpace}G nics=${nics} extra=${extra} cores=${cores} ram=${ramGB}G`);
+            log(`[HW] Hardware check completed: root=${freeSpace}G nics=${nics} extra=${extra} cores=${cores} ram=${ramGB}G`);
         } catch (error) {
-            setText("hw-summary", "❌ Hardware check failed. See logs for details.");
-            log("[HW] ❌ Hardware check failed: " + (error.message || error));
+            setText("hw-summary", "Hardware check failed. See logs for details.");
+            log("[HW] Hardware check failed: " + (error.message || error));
         }
     }
 
-    // ——— Dependencies ———
+    //  Dependencies 
     let isRunningBulkInstall = false;  // Flag to prevent individual checks during bulk install
     
     async function checkDependencies() {
@@ -728,7 +782,7 @@ End of Report
 
         // Reset all badges to loading state
         ['dep-py', 'dep-tools', 'dep-env', 'dep-xdep', 'dep-oscli', 'dep-cfg', 'dep-pwd'].forEach(id => 
-            setBadge(id, "", "⏳")
+            setBadge(id, "", '<i class="fas fa-clock text-warning"></i>')
         );
         
         setTextWithSpinner("dep-status", "Checking dependencies...");
@@ -741,8 +795,8 @@ End of Report
             } else if (osInfo.branch === "rhel") {
                 await checkRHELDeps();
             } else {
-                setTextError("dep-status", "❌ Unknown OS - cannot check dependencies");
-                log("[Deps] ❌ Unknown OS branch: " + osInfo.branch);
+                setTextError("dep-status", '<i class="fas fa-times text-danger"></i> Unknown OS - cannot check dependencies');
+                log("[Deps] Unknown OS branch: " + osInfo.branch);
                 return;
             }
             
@@ -752,18 +806,18 @@ End of Report
             const warnings = badges.filter(id => $(`${id}`).className.includes("warn"));
             
             if (errors.length === 0 && warnings.length === 0) {
-                setTextSuccess("dep-status", "✅ All dependencies ready!");
+                setTextSuccess("dep-status", '<i class="fas fa-check text-success"></i> All dependencies ready!');
             } else if (errors.length === 0) {
-                setText("dep-status", `⚠️ ${warnings.length} item(s) need attention`);
+                setText("dep-status", `<i class="fas fa-exclamation-triangle text-warning"></i> ${warnings.length} item(s) need attention`);
             } else {
-                setTextError("dep-status", `❌ ${errors.length} missing dependencies`);
+                setTextError("dep-status", `<i class="fas fa-times text-danger"></i> ${errors.length} missing dependencies`);
             }
             
-            log(`[Deps] ✅ Check completed - ${errors.length} errors, ${warnings.length} warnings`);
+            log(`[Deps] Check completed - ${errors.length} errors, ${warnings.length} warnings`);
             
         } catch (error) {
-            setTextError("dep-status", "❌ Check failed");
-            log("[Deps] ❌ Check failed: " + (error.message || error));
+            setTextError("dep-status", '<i class="fas fa-times text-danger"></i> Check failed');
+            log("[Deps] Check failed: " + (error.message || error));
         }
     }
 
@@ -988,58 +1042,58 @@ PY
             const results = out.trim().split("\n");
             log("[Deps:Debian] Parsed results: " + JSON.stringify(results));
             
-            setBadge("dep-py",    results.includes("PY_OK")   ? "ok" : "err", results.includes("PY_OK")   ? "✅ installed" : "❌ missing");
-            setBadge("dep-tools", results.includes("TOOLS_OK") ? "ok" : "err", results.includes("TOOLS_OK") ? "✅ installed" : "❌ missing");
-            setBadge("dep-env",   results.includes("ENV_OK")  ? "ok" : "err", results.includes("ENV_OK")  ? "✅ present" : "❌ missing");
+            setBadge("dep-py",    results.includes("PY_OK")   ? "ok" : "err", results.includes("PY_OK")   ? '<i class="fas fa-check text-success"></i> installed' : '<i class="fas fa-times text-danger"></i> missing');
+            setBadge("dep-tools", results.includes("TOOLS_OK") ? "ok" : "err", results.includes("TOOLS_OK") ? '<i class="fas fa-check text-success"></i> installed' : '<i class="fas fa-times text-danger"></i> missing');
+            setBadge("dep-env",   results.includes("ENV_OK")  ? "ok" : "err", results.includes("ENV_OK")  ? '<i class="fas fa-check text-success"></i> present' : '<i class="fas fa-times text-danger"></i> missing');
             
             // Enhanced xDeploy status handling
             if (results.includes("XDEP_OK")) {
-                setBadge("dep-xdep", "ok", "✅ ready");
+                setBadge("dep-xdep", "ok", '<i class="fas fa-check text-success"></i> ready');
             } else if (results.includes("XDEP_PARTIAL")) {
-                setBadge("dep-xdep", "warn", "⚠️ partial");
-                log("[Deps:Debian] ⚠️ xDeploy dependencies partially installed - please reinstall xDeploy Dependencies");
+                setBadge("dep-xdep", "warn", '<i class="fas fa-exclamation-triangle text-warning"></i> partial');
+                log("[Deps:Debian] xDeploy dependencies partially installed - please reinstall xDeploy Dependencies");
             } else {
-                setBadge("dep-xdep", "err", "❌ missing");
+                setBadge("dep-xdep", "err", '<i class="fas fa-times text-danger"></i> missing');
             }
             
-            setBadge("dep-oscli", results.includes("OSCLI_OK") ? "ok" : "err", results.includes("OSCLI_OK") ? "✅ ready" : "❌ missing");
+            setBadge("dep-oscli", results.includes("OSCLI_OK") ? "ok" : "err", results.includes("OSCLI_OK") ? '<i class="fas fa-check text-success"></i> ready' : '<i class="fas fa-times text-danger"></i> missing');
             
             // Enhanced config status handling  
             if (results.includes("CFG_OK")) {
-                setBadge("dep-cfg", "ok", "✅ ready");
+                setBadge("dep-cfg", "ok", '<i class="fas fa-check text-success"></i> ready');
             } else if (results.includes("CFG_PARTIAL")) {
-                setBadge("dep-cfg", "warn", "⚠️ partial");
-                log("[Deps:Debian] ⚠️ Configuration partially set up - please reinstall Configuration");
+                setBadge("dep-cfg", "warn", '<i class="fas fa-exclamation-triangle text-warning"></i> partial');
+                log("[Deps:Debian] Configuration partially set up - please reinstall Configuration");
             } else {
-                setBadge("dep-cfg", "err", "❌ missing");
+                setBadge("dep-cfg", "err", '<i class="fas fa-times text-danger"></i> missing');
             }
             
             setBadge("dep-pwd",   
                 results.includes("PWD_OK") ? "ok" : 
                 results.includes("PWD_PARTIAL") ? "warn" : "warn", 
-                results.includes("PWD_OK") ? "✅ ready" : 
-                results.includes("PWD_PARTIAL") ? "⚠️ incomplete" : "⚠️ generate");
+                results.includes("PWD_OK") ? '<i class="fas fa-check text-success"></i> ready' : 
+                results.includes("PWD_PARTIAL") ? '<i class="fas fa-exclamation-triangle text-warning"></i> incomplete' : '<i class="fas fa-exclamation-triangle text-warning"></i> generate');
             
             // Log helpful message for partial password state
             if (results.includes("PWD_PARTIAL")) {
-                log("[Deps:Debian] ⚠️ Password file exists but appears incomplete - please regenerate passwords");
+                log("[Deps:Debian] Password file exists but appears incomplete - please regenerate passwords");
             }
             
-            log("[Deps:Debian] ✅ Check completed\n" + out.trim());
+            log("[Deps:Debian] Check completed\n" + out.trim());
         } catch (error) {
-            setTextError("dep-status", "❌ Check failed");
-            log("[Deps:Debian] ❌ Check failed with error: " + (error.message || error));
-            log("[Deps:Debian] ❌ Error details: " + JSON.stringify(error));
+            setTextError("dep-status", '<i class="fas fa-times text-danger"></i> Check failed');
+            log("[Deps:Debian] Check failed with error: " + (error.message || error));
+            log("[Deps:Debian] Error details: " + JSON.stringify(error));
             if (error.exit_status) {
-                log("[Deps:Debian] ❌ Script exit status: " + error.exit_status);
+                log("[Deps:Debian] Script exit status: " + error.exit_status);
             }
             if (error.stderr) {
-                log("[Deps:Debian] ❌ Script stderr: " + error.stderr);
+                log("[Deps:Debian] Script stderr: " + error.stderr);
             }
             
             // Reset badges to error state
             ['dep-py', 'dep-tools', 'dep-env', 'dep-xdep', 'dep-oscli', 'dep-cfg', 'dep-pwd'].forEach(id => 
-                setBadge(id, "err", "❌ error")
+                setBadge(id, "err", '<i class="fas fa-times text-danger"></i> error')
             );
         }
     }
@@ -1246,58 +1300,58 @@ PY
             const results = out.trim().split("\n");
             log("[Deps:RHEL] Parsed results: " + JSON.stringify(results));
             
-            setBadge("dep-py",   results.includes("PY_OK")   ? "ok" : "err",  results.includes("PY_OK")   ? "✅ installed" : "❌ missing");
-            setBadge("dep-tools", results.includes("TOOLS_OK") ? "ok" : "err", results.includes("TOOLS_OK") ? "✅ installed" : "❌ missing");
-            setBadge("dep-env",  "warn", "⚠️ N/A (global)");
+            setBadge("dep-py",   results.includes("PY_OK")   ? "ok" : "err",  results.includes("PY_OK")   ? '<i class="fas fa-check text-success"></i> installed' : '<i class="fas fa-times text-danger"></i> missing');
+            setBadge("dep-tools", results.includes("TOOLS_OK") ? "ok" : "err", results.includes("TOOLS_OK") ? '<i class="fas fa-check text-success"></i> installed' : '<i class="fas fa-times text-danger"></i> missing');
+            setBadge("dep-env",  "warn", '<i class="fas fa-exclamation-triangle text-warning"></i> N/A (global)');
             
             // Enhanced xDeploy status handling
             if (results.includes("XDEP_OK")) {
-                setBadge("dep-xdep", "ok", "✅ ready");
+                setBadge("dep-xdep", "ok", '<i class="fas fa-check text-success"></i> ready');
             } else if (results.includes("XDEP_PARTIAL")) {
-                setBadge("dep-xdep", "warn", "⚠️ partial");
-                log("[Deps:RHEL] ⚠️ xDeploy dependencies partially installed - please reinstall xDeploy Dependencies");
+                setBadge("dep-xdep", "warn", '<i class="fas fa-exclamation-triangle text-warning"></i> partial');
+                log("[Deps:RHEL] xDeploy dependencies partially installed - please reinstall xDeploy Dependencies");
             } else {
-                setBadge("dep-xdep", "err", "❌ missing");
+                setBadge("dep-xdep", "err", '<i class="fas fa-times text-danger"></i> missing');
             }
             
-            setBadge("dep-oscli", results.includes("OSCLI_OK") ? "ok" : "err", results.includes("OSCLI_OK") ? "✅ ready" : "❌ missing");
+            setBadge("dep-oscli", results.includes("OSCLI_OK") ? "ok" : "err", results.includes("OSCLI_OK") ? '<i class="fas fa-check text-success"></i> ready' : '<i class="fas fa-times text-danger"></i> missing');
             
             // Enhanced config status handling  
             if (results.includes("CFG_OK")) {
-                setBadge("dep-cfg", "ok", "✅ ready");
+                setBadge("dep-cfg", "ok", '<i class="fas fa-check text-success"></i> ready');
             } else if (results.includes("CFG_PARTIAL")) {
-                setBadge("dep-cfg", "warn", "⚠️ partial");
-                log("[Deps:RHEL] ⚠️ Configuration partially set up - please reinstall Configuration");
+                setBadge("dep-cfg", "warn", '<i class="fas fa-exclamation-triangle text-warning"></i> partial');
+                log("[Deps:RHEL] Configuration partially set up - please reinstall Configuration");
             } else {
-                setBadge("dep-cfg", "err", "❌ missing");
+                setBadge("dep-cfg", "err", '<i class="fas fa-times text-danger"></i> missing');
             }
             
             setBadge("dep-pwd",   
                 results.includes("PWD_OK") ? "ok" : 
                 results.includes("PWD_PARTIAL") ? "warn" : "warn", 
-                results.includes("PWD_OK") ? "✅ ready" : 
-                results.includes("PWD_PARTIAL") ? "⚠️ incomplete" : "⚠️ generate");
+                results.includes("PWD_OK") ? '<i class="fas fa-check text-success"></i> ready' : 
+                results.includes("PWD_PARTIAL") ? '<i class="fas fa-exclamation-triangle text-warning"></i> incomplete' : '<i class="fas fa-exclamation-triangle text-warning"></i> generate');
             
             // Log helpful message for partial password state
             if (results.includes("PWD_PARTIAL")) {
-                log("[Deps:RHEL] ⚠️ Password file exists but appears incomplete - please regenerate passwords");
+                log("[Deps:RHEL] Password file exists but appears incomplete - please regenerate passwords");
             }
             
-            log("[Deps:RHEL] ✅ Check completed\n" + out.trim());
+            log("[Deps:RHEL] Check completed\n" + out.trim());
         } catch (error) {
-            setTextError("dep-status", "❌ Check failed");
-            log("[Deps:RHEL] ❌ Check failed with error: " + (error.message || error));
-            log("[Deps:RHEL] ❌ Error details: " + JSON.stringify(error));
+            setTextError("dep-status", '<i class="fas fa-times text-danger"></i> Check failed');
+            log("[Deps:RHEL] Check failed with error: " + (error.message || error));
+            log("[Deps:RHEL] Error details: " + JSON.stringify(error));
             if (error.exit_status) {
-                log("[Deps:RHEL] ❌ Script exit status: " + error.exit_status);
+                log("[Deps:RHEL] Script exit status: " + error.exit_status);
             }
             if (error.stderr) {
-                log("[Deps:RHEL] ❌ Script stderr: " + error.stderr);
+                log("[Deps:RHEL] Script stderr: " + error.stderr);
             }
             
             // Reset badges to error state  
             ['dep-py', 'dep-tools', 'dep-env', 'dep-xdep', 'dep-oscli', 'dep-cfg', 'dep-pwd'].forEach(id => 
-                setBadge(id, "err", "❌ error")
+                setBadge(id, "err", '<i class="fas fa-times text-danger"></i> error')
             );
         }
     }
@@ -1378,13 +1432,13 @@ PY
             });
             
             pb("dep-progress", 100);
-            setTextSuccess("dep-note", "✅ Installation completed successfully!");
-            log("[Install:Debian] ✅ Installation completed successfully");
+            setTextSuccess("dep-note", '<i class="fas fa-check text-success"></i> Installation completed successfully!');
+            log("[Install:Debian] Installation completed successfully");
             
         } catch (error) {
             const errorMsg = error.message || error.toString();
-            setTextError("dep-note", "❌ Installation failed - check logs");
-            log("[Install:Debian] ❌ Failed: " + errorMsg);
+            setTextError("dep-note", '<i class="fas fa-times text-danger"></i> Installation failed - check logs');
+            log("[Install:Debian] Failed: " + errorMsg);
             if (error.exit_status) {
                 log("[Install:Debian] Exit code: " + error.exit_status);
             }
@@ -1446,13 +1500,13 @@ PY
             });
             
             pb("dep-progress", 100);
-            setTextSuccess("dep-note", "✅ Installation completed successfully!");
-            log("[Install:RHEL] ✅ Installation completed successfully");
+            setTextSuccess("dep-note", '<i class="fas fa-check text-success"></i> Installation completed successfully!');
+            log("[Install:RHEL] Installation completed successfully");
             
         } catch (error) {
             const errorMsg = error.message || error.toString();
-            setTextError("dep-note", "❌ Installation failed - check logs");
-            log("[Install:RHEL] ❌ Failed: " + errorMsg);
+            setTextError("dep-note", '<i class="fas fa-times text-danger"></i> Installation failed - check logs');
+            log("[Install:RHEL] Failed: " + errorMsg);
             if (error.exit_status) {
                 log("[Install:RHEL] Exit code: " + error.exit_status);
             }
@@ -1531,14 +1585,14 @@ PY
             await checkDependencies();
             
             // Show final success message
-            setTextSuccess("dep-note", "✅ Complete installation successful!");
-            log("[Install:All] ✅ All 7 steps completed successfully in proper sequence");
+            setTextSuccess("dep-note", '<i class="fas fa-check text-success"></i> Complete installation successful!');
+            log("[Install:All] All 7 steps completed successfully in proper sequence");
             
         } catch (error) {
             const errorMsg = error.message || error.toString();
-            setTextError("dep-note", "❌ Installation failed: " + errorMsg);
-            log("[Install:All] ❌ Installation failed at current step: " + errorMsg);
-            log("[Install:All] 💡 You can continue by clicking individual component install buttons");
+            setTextError("dep-note", '<i class="fas fa-times text-danger"></i> Installation failed: ' + errorMsg);
+            log("[Install:All] Installation failed at current step: " + errorMsg);
+            log("[Install:All] You can continue by clicking individual component install buttons");
             
             // Reset progress on failure
             pb("dep-progress", 0);
@@ -1553,7 +1607,7 @@ PY
         }
     }
 
-    // ——— Individual Installation Functions ———
+    //  Individual Installation Functions 
     async function installPythonDeps() {
         if (osInfo.isXOS) {
             log("[Install:Python] Skipped on XOS system");
@@ -1564,22 +1618,22 @@ PY
         if (btn) btn.disabled = true;
 
         try {
-            setBadge("dep-py", "", "⏳ Installing...");
+            setBadge("dep-py", "", '<i class="fas fa-clock text-warning"></i> Installing...');
             log("[Install:Python] Installing system Python packages...");
 
             if (osInfo.branch === "debian") {
-                setBadge("dep-py", "", "⏳ Updating apt...");
+                setBadge("dep-py", "", '<i class="fas fa-clock text-warning"></i> Updating apt...');
                 log("[Install:Python] Updating package lists...");
                 await cockpit.spawn(["apt-get", "update"], { superuser: "require", err: "message" });
                 
-                setBadge("dep-py", "", "⏳ Installing packages...");
+                setBadge("dep-py", "", '<i class="fas fa-clock text-warning"></i> Installing packages...');
                 log("[Install:Python] Installing: git, python3-dev, python3-pip, libffi-dev, gcc, libssl-dev, python3-venv, python3-docker");
                 await cockpit.spawn([
                     "apt-get", "install", "-y", 
                     "git", "python3-dev", "python3-pip", "libffi-dev", "gcc", "libssl-dev", "python3-venv", "python3-docker"
                 ], { superuser: "require", err: "message" });
             } else if (osInfo.branch === "rhel") {
-                setBadge("dep-py", "", "⏳ Installing packages...");
+                setBadge("dep-py", "", '<i class="fas fa-clock text-warning"></i> Installing packages...');
                 log("[Install:Python] Installing: git, python3-devel, python3-pip, libffi-devel, gcc, openssl-devel, python3-libselinux");
                 await cockpit.spawn([
                     "dnf", "install", "-y", 
@@ -1587,8 +1641,8 @@ PY
                 ], { superuser: "require", err: "message" });
             }
 
-            setBadge("dep-py", "ok", "✅ installed");
-            log("[Install:Python] ✅ Python dependencies installed successfully");
+            setBadge("dep-py", "ok", '<i class="fas fa-check text-success"></i> installed');
+            log("[Install:Python] Python dependencies installed successfully");
             
             // Refresh detection to verify installation (unless in bulk install mode)
             if (!isRunningBulkInstall) {
@@ -1596,8 +1650,8 @@ PY
             }
 
         } catch (error) {
-            setBadge("dep-py", "err", "❌ failed");
-            log("[Install:Python] ❌ Failed: " + (error.message || error));
+            setBadge("dep-py", "err", '<i class="fas fa-times text-danger"></i> failed');
+            log("[Install:Python] Failed: " + (error.message || error));
         } finally {
             if (btn) btn.disabled = false;
         }
@@ -1613,7 +1667,7 @@ PY
         if (btn) btn.disabled = true;
 
         try {
-            setBadge("dep-tools", "", "⏳ Updating packages...");
+            setBadge("dep-tools", "", '<i class="fas fa-clock text-warning"></i> Updating packages...');
             log("[Install:SystemTools] Installing comprehensive system tools and utilities...");
 
             if (osInfo.branch === "debian") {
@@ -1621,7 +1675,7 @@ PY
                 log("[Install:SystemTools] Updating package lists...");
                 await cockpit.spawn(["apt-get", "update"], { superuser: "require", err: "message" });
                 
-                setBadge("dep-tools", "", "⏳ Installing core tools...");
+                setBadge("dep-tools", "", '<i class="fas fa-clock text-warning"></i> Installing core tools...');
                 log("[Install:SystemTools] Step 1/4: Installing core monitoring and networking tools...");
                 
                 // Step 1: Core monitoring and networking tools
@@ -1631,7 +1685,7 @@ PY
                     "curl", "wget", "vim", "nano", "tmux", "jq", "pv", "rsync", "lsof"
                 ], { superuser: "require", err: "message" });
                 
-                setBadge("dep-tools", "", "⏳ Installing development tools...");
+                setBadge("dep-tools", "", '<i class="fas fa-clock text-warning"></i> Installing development tools...');
                 log("[Install:SystemTools] Step 2/4: Installing development and build tools...");
                 
                 // Step 2: Development tools
@@ -1640,7 +1694,7 @@ PY
                     "build-essential", "make", "cmake", "gcc", "git", "zip", "unzip", "bzip2"
                 ], { superuser: "require", err: "message" });
                 
-                setBadge("dep-tools", "", "⏳ Installing system services...");
+                setBadge("dep-tools", "", '<i class="fas fa-clock text-warning"></i> Installing system services...');
                 log("[Install:SystemTools] Step 3/4: Installing system services and utilities...");
                 
                 // Step 3: System services (install what's available, skip missing)
@@ -1651,7 +1705,7 @@ PY
                     "done"
                 ], { superuser: "require", err: "message" });
                 
-                setBadge("dep-tools", "", "⏳ Installing storage tools...");
+                setBadge("dep-tools", "", '<i class="fas fa-clock text-warning"></i> Installing storage tools...');
                 log("[Install:SystemTools] Step 4/4: Installing storage and virtualization tools...");
                 
                 // Step 4: Storage and virtualization (install what's available)
@@ -1663,7 +1717,7 @@ PY
                 ], { superuser: "require", err: "message" });
                 
             } else if (osInfo.branch === "rhel") {
-                setBadge("dep-tools", "", "⏳ Installing core tools...");
+                setBadge("dep-tools", "", '<i class="fas fa-clock text-warning"></i> Installing core tools...');
                 log("[Install:SystemTools] Step 1/3: Installing core monitoring and networking tools...");
                 
                 // Step 1: Core tools for RHEL
@@ -1673,7 +1727,7 @@ PY
                     "curl", "wget", "vim", "nano", "tmux", "jq", "rsync", "lsof"
                 ], { superuser: "require", err: "message" });
                 
-                setBadge("dep-tools", "", "⏳ Installing development tools...");
+                setBadge("dep-tools", "", '<i class="fas fa-clock text-warning"></i> Installing development tools...');
                 log("[Install:SystemTools] Step 2/3: Installing development tools...");
                 
                 // Step 2: Development tools
@@ -1682,7 +1736,7 @@ PY
                     "@development-tools", "cmake", "git", "zip", "unzip", "bzip2"
                 ], { superuser: "require", err: "message" });
                 
-                setBadge("dep-tools", "", "⏳ Installing system services...");
+                setBadge("dep-tools", "", '<i class="fas fa-clock text-warning"></i> Installing system services...');
                 log("[Install:SystemTools] Step 3/3: Installing system services and storage tools...");
                 
                 // Step 3: System services and storage tools (install what's available)
@@ -1694,15 +1748,15 @@ PY
                 ], { superuser: "require", err: "message" });
             }
 
-            setBadge("dep-tools", "ok", "✅ installed");
-            log("[Install:SystemTools] ✅ System tools installed successfully");
+            setBadge("dep-tools", "ok", '<i class="fas fa-check text-success"></i> installed');
+            log("[Install:SystemTools]  System tools installed successfully");
             
             // Refresh detection to verify installation
             if (!isRunningBulkInstall) { setTimeout(() => checkDependencies(), 1000); }
 
         } catch (error) {
-            setBadge("dep-tools", "err", "❌ failed");
-            log("[Install:SystemTools] ❌ Failed: " + (error.message || error));
+            setBadge("dep-tools", "err", '<i class="fas fa-times text-danger"></i> failed');
+            log("[Install:SystemTools]  Failed: " + (error.message || error));
         } finally {
             if (btn) btn.disabled = false;
         }
@@ -1718,7 +1772,7 @@ PY
         if (btn) btn.disabled = true;
 
         try {
-            setBadge("dep-env", "", "⏳ Creating environment...");
+            setBadge("dep-env", "", " Creating environment...");
             log("[Install:Environment] Creating Python virtual environment at /opt/xenv...");
 
             await cockpit.spawn([
@@ -1726,15 +1780,15 @@ PY
                 "mkdir -p /opt && python3 -m venv /opt/xenv"
             ], { superuser: "require", err: "message" });
 
-            setBadge("dep-env", "ok", "✅ present");
-            log("[Install:Environment] ✅ Python environment created successfully");
+            setBadge("dep-env", "ok", '<i class="fas fa-check text-success"></i> present');
+            log("[Install:Environment]  Python environment created successfully");
             
             // Refresh detection to verify installation
             if (!isRunningBulkInstall) { setTimeout(() => checkDependencies(), 1000); }
 
         } catch (error) {
-            setBadge("dep-env", "err", "❌ failed");
-            log("[Install:Environment] ❌ Failed: " + (error.message || error));
+            setBadge("dep-env", "err", '<i class="fas fa-times text-danger"></i> failed');
+            log("[Install:Environment]  Failed: " + (error.message || error));
         } finally {
             if (btn) btn.disabled = false;
         }
@@ -1750,26 +1804,26 @@ PY
         if (btn) btn.disabled = true;
 
         try {
-            setBadge("dep-xdep", "", "⏳ Installing...");
+            setBadge("dep-xdep", "", " Installing...");
             log("[Install:XDeploy] Installing xAVS deployment framework in virtual environment...");
 
             // Check if virtual environment exists
             try {
                 await cockpit.spawn(["test", "-d", "/opt/xenv"], { err: "message" });
             } catch (e) {
-                log("[Install:XDeploy] ❌ Virtual environment not found. Please install Python Environment first.");
-                setBadge("dep-xdep", "err", "❌ venv missing");
+                log("[Install:XDeploy]  Virtual environment not found. Please install Python Environment first.");
+                setBadge("dep-xdep", "err", " venv missing");
                 return;
             }
 
-            setBadge("dep-xdep", "", "⏳ Upgrading pip...");
+            setBadge("dep-xdep", "", " Upgrading pip...");
             log("[Install:XDeploy] Step 1/3: Upgrading pip in virtual environment");
             // Step 1: Upgrade pip
             await cockpit.spawn([
                 "/opt/xenv/bin/pip", "install", "-U", "pip"
             ], { superuser: "require", err: "message" });
             
-            setBadge("dep-xdep", "", "⏳ Installing Ansible...");
+            setBadge("dep-xdep", "", " Installing Ansible...");
             log("[Install:XDeploy] Step 2/3: Installing ansible-core>=2.15,<2.16.99 and kolla-ansible");
             // Step 2: Install ansible-core and kolla-ansible
             await cockpit.spawn([
@@ -1778,7 +1832,7 @@ PY
                 "git+https://opendev.org/openstack/kolla-ansible@stable/2024.1"
             ], { superuser: "require", err: "message" });
 
-            setBadge("dep-xdep", "", "⏳ Installing packages...");
+            setBadge("dep-xdep", "", " Installing packages...");
             log("[Install:XDeploy] Step 3/5: Installing specific Python package versions in virtual environment");
             // Step 3: Install specific package versions in venv
             await cockpit.spawn([
@@ -1788,7 +1842,7 @@ PY
                 "docker==6.1.3"
             ], { superuser: "require", err: "message" });
 
-            setBadge("dep-xdep", "", "⏳ Installing globally...");
+            setBadge("dep-xdep", "", " Installing globally...");
             log("[Install:XDeploy] Step 4/5: Installing specific Python package versions globally");
             // Step 4: Install same package versions globally
             await cockpit.spawn([
@@ -1798,21 +1852,21 @@ PY
                 "docker==6.1.3"
             ], { superuser: "require", err: "message" });
 
-            setBadge("dep-xdep", "", "⏳ Finalizing...");
+            setBadge("dep-xdep", "", " Finalizing...");
             log("[Install:XDeploy] Step 5/5: Installation complete");
 
-            setBadge("dep-xdep", "ok", "✅ ready");
-            log("[Install:XDeploy] ✅ All XDeploy dependencies installed successfully");
-            log("[Install:XDeploy] 📦 Virtual env: ansible-core>=2.15, kolla-ansible@stable/2024.1, requests==2.31.0, urllib3==1.26.20, docker==6.1.3");
-            log("[Install:XDeploy] 🌐 Global: requests==2.31.0, urllib3==1.26.20, docker==6.1.3");
+            setBadge("dep-xdep", "ok", '<i class="fas fa-check text-success"></i> ready');
+            log("[Install:XDeploy]  All XDeploy dependencies installed successfully");
+            log("[Install:XDeploy]  Virtual env: ansible-core>=2.15, kolla-ansible@stable/2024.1, requests==2.31.0, urllib3==1.26.20, docker==6.1.3");
+            log("[Install:XDeploy]  Global: requests==2.31.0, urllib3==1.26.20, docker==6.1.3");
             
             // Refresh detection to verify installation
             if (!isRunningBulkInstall) { setTimeout(() => checkDependencies(), 1000); }
 
         } catch (error) {
-            setBadge("dep-xdep", "err", "❌ failed");
-            log("[Install:XDeploy] ❌ Failed: " + (error.message || error));
-            log("[Install:XDeploy] 💡 Tip: Make sure Python Environment is installed first");
+            setBadge("dep-xdep", "err", '<i class="fas fa-times text-danger"></i> failed');
+            log("[Install:XDeploy]  Failed: " + (error.message || error));
+            log("[Install:XDeploy]  Tip: Make sure Python Environment is installed first");
         } finally {
             if (btn) btn.disabled = false;
         }
@@ -1828,15 +1882,15 @@ PY
         if (btn) btn.disabled = true;
 
         try {
-            setBadge("dep-oscli", "", "⏳ Installing...");
+            setBadge("dep-oscli", "", " Installing...");
             log("[Install:CLIClients] Installing latest CLI clients via pip...");
 
             // Check if pip3 is available first
             try {
                 await cockpit.spawn(["which", "pip3"], { err: "message" });
             } catch (e) {
-                log("[Install:CLIClients] ❌ pip3 not found. Please install Python Dependencies first.");
-                setBadge("dep-oscli", "err", "❌ pip3 missing");
+                log("[Install:CLIClients]  pip3 not found. Please install Python Dependencies first.");
+                setBadge("dep-oscli", "err", " pip3 missing");
                 return;
             }
 
@@ -1858,14 +1912,14 @@ PY
             if (osInfo.branch === "debian") {
                 // Install globally on Debian/Ubuntu (not in venv for direct CLI access)
                 log("[Install:CLIClients] Installing CLI clients globally: " + clients.join(", "));
-                setBadge("dep-oscli", "", "⏳ Upgrading pip...");
+                setBadge("dep-oscli", "", " Upgrading pip...");
                 
                 // First upgrade pip globally
                 await cockpit.spawn([
                     "pip3", "install", "--upgrade", "pip"
                 ], { superuser: "require", err: "message" });
                 
-                setBadge("dep-oscli", "", "⏳ Installing clients...");
+                setBadge("dep-oscli", "", " Installing clients...");
                 // Then install all clients globally
                 await cockpit.spawn([
                     "pip3", "install", "--upgrade", ...clients
@@ -1873,30 +1927,30 @@ PY
             } else if (osInfo.branch === "rhel") {
                 // Install globally on RHEL/Rocky
                 log("[Install:CLIClients] Installing globally: " + clients.join(", "));
-                setBadge("dep-oscli", "", "⏳ Upgrading pip...");
+                setBadge("dep-oscli", "", " Upgrading pip...");
                 
                 // First upgrade pip
                 await cockpit.spawn([
                     "pip3", "install", "--upgrade", "pip"
                 ], { superuser: "require", err: "message" });
                 
-                setBadge("dep-oscli", "", "⏳ Installing clients...");
+                setBadge("dep-oscli", "", " Installing clients...");
                 // Then install all clients
                 await cockpit.spawn([
                     "pip3", "install", "--upgrade", ...clients
                 ], { superuser: "require", err: "message" });
             }
 
-            setBadge("dep-oscli", "ok", "✅ ready");
-            log("[Install:CLIClients] ✅ CLI clients installed successfully");
+            setBadge("dep-oscli", "ok", '<i class="fas fa-check text-success"></i> ready');
+            log("[Install:CLIClients]  CLI clients installed successfully");
             
             // Refresh detection to verify installation
             if (!isRunningBulkInstall) { setTimeout(() => checkDependencies(), 1000); }
 
         } catch (error) {
-            setBadge("dep-oscli", "err", "❌ failed");
-            log("[Install:CLIClients] ❌ Failed: " + (error.message || error));
-            log("[Install:CLIClients] 💡 Tip: Make sure Python Dependencies are installed first");
+            setBadge("dep-oscli", "err", '<i class="fas fa-times text-danger"></i> failed');
+            log("[Install:CLIClients]  Failed: " + (error.message || error));
+            log("[Install:CLIClients]  Tip: Make sure Python Dependencies are installed first");
         } finally {
             if (btn) btn.disabled = false;
         }
@@ -1907,19 +1961,19 @@ PY
         if (btn) btn.disabled = true;
 
         try {
-            setBadge("dep-cfg", "", "⏳ Setting up directories...");
+            setBadge("dep-cfg", "", " Setting up directories...");
             log("[Install:Config] Setting up xavs configuration directories and files...");
 
             // Check if virtual environment and kolla-ansible are available
             try {
                 await cockpit.spawn(["test", "-d", "/opt/xenv/share/kolla-ansible"], { err: "message" });
             } catch (e) {
-                log("[Install:Config] ❌ Kolla-ansible not found. Please install xDeploy Dependencies first.");
-                setBadge("dep-cfg", "err", "❌ kolla missing");
+                log("[Install:Config]  Kolla-ansible not found. Please install xDeploy Dependencies first.");
+                setBadge("dep-cfg", "err", " kolla missing");
                 return;
             }
 
-            setBadge("dep-cfg", "", "⏳ Creating directories...");
+            setBadge("dep-cfg", "", " Creating directories...");
             log("[Install:Config] Step 1/5: Creating /etc/xavs directory with proper ownership");
             // Step 1: Create directory with proper ownership
             await cockpit.spawn([
@@ -1927,7 +1981,7 @@ PY
                 "mkdir -p /etc/xavs && chown root:root /etc/xavs"
             ], { superuser: "require", err: "message" });
 
-            setBadge("dep-cfg", "", "⏳ Copying kolla config...");
+            setBadge("dep-cfg", "", " Copying kolla config...");
             log("[Install:Config] Step 2/5: Copying kolla-ansible configuration files to /etc/xavs");
             // Step 2: Copy kolla configuration files
             await cockpit.spawn([
@@ -1935,7 +1989,7 @@ PY
                 "cp -r /opt/xenv/share/kolla-ansible/etc_examples/kolla/* /etc/xavs"
             ], { superuser: "require", err: "message" });
 
-            setBadge("dep-cfg", "", "⏳ Copying inventory...");
+            setBadge("dep-cfg", "", " Copying inventory...");
             log("[Install:Config] Step 3/5: Copying all-in-one inventory to /etc/xavs/nodes");
             // Step 3: Copy inventory file
             await cockpit.spawn([
@@ -1943,7 +1997,7 @@ PY
                 "cp /opt/xenv/share/kolla-ansible/ansible/inventory/all-in-one /etc/xavs/nodes"
             ], { superuser: "require", err: "message" });
 
-            setBadge("dep-cfg", "", "⏳ Creating symlink...");
+            setBadge("dep-cfg", "", " Creating symlink...");
             log("[Install:Config] Step 4/7: Creating symbolic link /etc/kolla -> /etc/xavs");
             // Step 4: Create symbolic link
             await cockpit.spawn([
@@ -1951,7 +2005,7 @@ PY
                 "ln -sf /etc/xavs /etc/kolla"
             ], { superuser: "require", err: "message" });
 
-            setBadge("dep-cfg", "", "⏳ Installing deps...");
+            setBadge("dep-cfg", "", " Installing deps...");
             log("[Install:Config] Step 5/7: Running kolla-ansible install-deps");
             // Step 5: Install kolla-ansible dependencies
             await cockpit.spawn([
@@ -1959,7 +2013,7 @@ PY
                 "source /opt/xenv/bin/activate && kolla-ansible install-deps"
             ], { superuser: "require", err: "message" });
 
-            setBadge("dep-cfg", "", "⏳ Verifying...");
+            setBadge("dep-cfg", "", " Verifying...");
             log("[Install:Config] Step 6/7: Verifying ansible and collections installation");
             // Step 6: Verify installation
             const verifyResult = await cockpit.spawn([
@@ -1970,21 +2024,21 @@ PY
             log("[Install:Config] Verification output:");
             log(verifyResult.trim());
 
-            setBadge("dep-cfg", "", "⏳ Finalizing...");
+            setBadge("dep-cfg", "", " Finalizing...");
             log("[Install:Config] Step 7/7: Configuration setup complete");
 
-            setBadge("dep-cfg", "ok", "✅ ready");
-            log("[Install:Config] ✅ xavs configuration setup completed successfully");
-            log("[Install:Config] 📁 Created: /etc/xavs (kolla config), /etc/xavs/nodes (inventory), /etc/kolla -> /etc/xavs (symlink)");
-            log("[Install:Config] 🔧 Executed: kolla-ansible install-deps and verified ansible collections");
+            setBadge("dep-cfg", "ok", '<i class="fas fa-check text-success"></i> ready');
+            log("[Install:Config]  xavs configuration setup completed successfully");
+            log("[Install:Config]  Created: /etc/xavs (kolla config), /etc/xavs/nodes (inventory), /etc/kolla -> /etc/xavs (symlink)");
+            log("[Install:Config]  Executed: kolla-ansible install-deps and verified ansible collections");
             
             // Refresh detection to verify installation
             if (!isRunningBulkInstall) { setTimeout(() => checkDependencies(), 1000); }
 
         } catch (error) {
-            setBadge("dep-cfg", "err", "❌ failed");
-            log("[Install:Config] ❌ Failed: " + (error.message || error));
-            log("[Install:Config] 💡 Tip: Make sure xDeploy Dependencies (kolla-ansible) are installed first");
+            setBadge("dep-cfg", "err", '<i class="fas fa-times text-danger"></i> failed');
+            log("[Install:Config]  Failed: " + (error.message || error));
+            log("[Install:Config]  Tip: Make sure xDeploy Dependencies (kolla-ansible) are installed first");
         } finally {
             if (btn) btn.disabled = false;
         }
@@ -1995,7 +2049,7 @@ PY
         if (btn) btn.disabled = true;
 
         try {
-            setBadge("dep-pwd", "", "⏳");
+            setBadge("dep-pwd", "", "");
             log("[Install:Passwords] Generating passwords using kolla-genpwd...");
 
             if (osInfo.branch === "debian") {
@@ -2018,21 +2072,21 @@ PY
                 throw new Error("Unsupported OS branch: " + osInfo.branch);
             }
 
-            setBadge("dep-pwd", "ok", "✅ ready");
-            log("[Install:Passwords] ✅ Passwords generated successfully using kolla-genpwd");
+            setBadge("dep-pwd", "ok", '<i class="fas fa-check text-success"></i> ready');
+            log("[Install:Passwords]  Passwords generated successfully using kolla-genpwd");
             
             // Refresh detection to verify installation
             if (!isRunningBulkInstall) { setTimeout(() => checkDependencies(), 1000); }
 
         } catch (error) {
-            setBadge("dep-pwd", "err", "❌ failed");
-            log("[Install:Passwords] ❌ Failed: " + (error.message || error));
+            setBadge("dep-pwd", "err", '<i class="fas fa-times text-danger"></i> failed');
+            log("[Install:Passwords]  Failed: " + (error.message || error));
         } finally {
             if (btn) btn.disabled = false;
         }
     }
 
-    // ——— Event Listeners ———
+    //  Event Listeners 
     $("btn-detect-os").addEventListener("click", detectOS);
     $("btn-run-hw-top").addEventListener("click", () => {
         document.querySelector('#tabs .nav-link[data-target="panel-hw"]').click();
@@ -2076,7 +2130,7 @@ PY
         const refreshBtn = $("btn-refresh");
         if (refreshBtn) {
             refreshBtn.disabled = true;
-            refreshBtn.textContent = "🔄 Running all detections...";
+            refreshBtn.textContent = " Running all detections...";
         }
         
         try {
@@ -2098,14 +2152,14 @@ PY
             // Dependency checks
             await checkDependencies();
             
-            log("[Refresh] ✅ All detections completed successfully");
+            log("[Refresh]  All detections completed successfully");
         } catch (error) {
-            log("[Refresh] ❌ Error during detection: " + (error.message || error));
+            log("[Refresh]  Error during detection: " + (error.message || error));
         } finally {
             // Re-enable button
             if (refreshBtn) {
                 refreshBtn.disabled = false;
-                refreshBtn.textContent = "🔄 Re-run all detections";
+                refreshBtn.textContent = " Re-run all detections";
             }
         }
     });
@@ -2136,3 +2190,7 @@ PY
         refreshNetworkOverview().catch(console.error);
     }).catch(console.error);
 })();
+
+
+
+

@@ -133,9 +133,9 @@ h4 .fas, h4 .far, h4 .fa {
     font-size: 18px;
 }
 
-html, body { height:100%; }
+html, body { height:100%; width:100%; overflow-x:hidden; }
 body { margin:0; font-family: Tenorite,"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,"Noto Sans","Liberation Sans",sans-serif; color:var(--text); background:var(--surface); line-height:1.5; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
-.container-fluid { max-width:1180px; margin:0 auto; padding:16px; }
+.container-fluid { width:100%; max-width:100%; padding:16px 20px; box-sizing:border-box; }
 
 /* Topbar */
 .topbar { display:flex; align-items:center; justify-content:space-between; margin:6px 0 14px; }
@@ -448,3 +448,107 @@ select option:checked { background:var(--brand); color:#fff; }
 /* Utility classes */
 .mt16 { margin-top: 16px; }
 .mb16 { margin-bottom: 16px; }
+
+/* ===== Responsive Design ===== */
+@media (max-width: 768px) {
+    .container-fluid {
+        padding: 12px 16px 20px;
+    }
+    
+    .topbar {
+        flex-direction: column;
+        gap: 12px;
+        align-items: stretch;
+    }
+    
+    .toolbar {
+        justify-content: center;
+    }
+    
+    .overview-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    
+    .nav-tabs {
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+    
+    .nav-link {
+        font-size: 13px;
+        padding: 8px 12px;
+    }
+}
+
+@media (max-width: 480px) {
+    .container-fluid {
+        padding: 8px 12px 16px;
+    }
+    
+    .app-title {
+        font-size: 20px;
+    }
+    
+    .card {
+        padding: 12px;
+    }
+    
+    .nav-link {
+        font-size: 12px;
+        padding: 6px 8px;
+    }
+}
+
+/* Prevent horizontal scrolling */
+* {
+    box-sizing: border-box;
+}
+
+.container-fluid, .card, .dep-card, .hw-detail-card {
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+.topbar {
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.toolbar {
+    flex-wrap: wrap;
+}
+
+.btn {
+    min-width: auto;
+    white-space: nowrap;
+}
+
+/* Ensure dependency cards don't overflow */
+.dep-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    width: 100%;
+}
+
+.dep-card {
+    min-width: 0;
+    word-wrap: break-word;
+}
+
+/* Responsive grid for small screens */
+@media (max-width: 600px) {
+    .dep-cards {
+        grid-template-columns: 1fr;
+    }
+    
+    .container-fluid {
+        padding: 12px 16px;
+    }
+    
+    .topbar {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
