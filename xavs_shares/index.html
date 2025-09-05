@@ -14,7 +14,9 @@
   <div class="app">
     <!-- Top bar -->
     <header class="topbar">
-      <h1 class="app-title"><i class="fa fa-share-nodes"></i> XAVS Shares</h1>
+      <h1 class="app-title">
+        <img src="logo-x.png" alt="X" class="logo-x">AVS Shares
+      </h1>
       <div class="help" data-tip="This module helps manage network shares:
 • Create and manage NFS exports and mounts
 • Set up and configure iSCSI targets and initiators
@@ -25,13 +27,20 @@
     <!-- Global error banner -->
     <div id="global-error" class="alert alert-warning d-none"></div>
 
-    <!-- Tabs -->
-    <ul class="nav-tabs" id="tabs">
-      <li><a href="#" class="nav-link active" data-tab="tab-overview"><i class="fa fa-tachometer-alt"></i> Overview</a></li>
-      <li><a href="#" class="nav-link" data-tab="tab-nfs"><i class="fa fa-folder-open"></i> NFS</a></li>
-      <li><a href="#" class="nav-link" data-tab="tab-iscsi"><i class="fa fa-hdd"></i> iSCSI</a></li>
-      <li><a href="#" class="nav-link" data-tab="tab-logs"><i class="fa fa-terminal"></i> Logs</a></li>
-    </ul>
+    <!-- Tabs with actions -->
+    <div class="tabs-container">
+      <ul class="nav-tabs" id="tabs">
+        <li><a href="#" class="nav-link active" data-tab="tab-overview"><i class="fa fa-tachometer-alt"></i> Overview</a></li>
+        <li><a href="#" class="nav-link" data-tab="tab-nfs"><i class="fa fa-folder-open"></i> NFS</a></li>
+        <li><a href="#" class="nav-link" data-tab="tab-iscsi"><i class="fa fa-hdd"></i> iSCSI</a></li>
+        <li><a href="#" class="nav-link" data-tab="tab-logs"><i class="fa fa-terminal"></i> Logs</a></li>
+      </ul>
+      <div class="tabs-actions">
+        <button class="btn btn-brand btn-sm" id="refresh-overview-btn">
+          <i class="fa fa-sync-alt"></i> Refresh
+        </button>
+      </div>
+    </div>
 
     <main class="tab-content">
       <!-- TAB 1: OVERVIEW -->
@@ -113,12 +122,6 @@
           </div>
         </div>
 
-        <div class="overview-actions">
-          <button class="btn btn-brand" id="refresh-overview-btn">
-            <i class="fa fa-sync-alt"></i> Refresh Overview
-          </button>
-        </div>
-
         <!-- Active Connections Summary -->
         <div class="connections-section">
           <h3><i class="fa fa-network-wired"></i> Active Connections</h3>
@@ -126,18 +129,9 @@
             <div class="connection-card">
               <div class="connection-header">
                 <h4><i class="fa fa-folder-open"></i> NFS Mounts</h4>
-                <div class="dropdown">
-                  <button class="btn btn-outline-secondary btn-sm dropdown-toggle" id="nfs-mounts-menu" aria-expanded="false">
-                    <i class="fa fa-ellipsis-v"></i>
-                  </button>
-                  <ul class="dropdown-menu" aria-labelledby="nfs-mounts-menu">
-                    <li>
-                      <button class="dropdown-item" id="btn-refresh-nfs-mounts">
-                        <i class="fa fa-refresh"></i> Refresh
-                      </button>
-                    </li>
-                  </ul>
-                </div>
+                <button class="btn btn-outline-secondary btn-sm" id="btn-refresh-nfs-mounts">
+                  <i class="fa fa-refresh"></i>
+                </button>
               </div>
               <div class="connection-body">
                 <ul id="nfs-mounts-list" class="connection-list">
@@ -149,18 +143,9 @@
             <div class="connection-card">
               <div class="connection-header">
                 <h4><i class="fa fa-link"></i> iSCSI Sessions</h4>
-                <div class="dropdown">
-                  <button class="btn btn-outline-secondary btn-sm dropdown-toggle" id="iscsi-sessions-menu" aria-expanded="false">
-                    <i class="fa fa-ellipsis-v"></i>
-                  </button>
-                  <ul class="dropdown-menu" aria-labelledby="iscsi-sessions-menu">
-                    <li>
-                      <button class="dropdown-item" id="btn-refresh-iscsi-sessions">
-                        <i class="fa fa-refresh"></i> Refresh
-                      </button>
-                    </li>
-                  </ul>
-                </div>
+                <button class="btn btn-outline-secondary btn-sm" id="btn-refresh-iscsi-sessions">
+                  <i class="fa fa-refresh"></i>
+                </button>
               </div>
               <div class="connection-body">
                 <ul id="iscsi-sessions-list" class="connection-list">
@@ -520,32 +505,17 @@
       
       <!-- TAB 4: LOGS -->
       <section id="tab-logs" class="tab-pane">
-        <div class="logs-container">
-          <div class="logs-card">
-            <div class="logs-header">
-              <h3><i class="fa fa-terminal"></i> System Activity Log</h3>
-              <div class="logs-actions">
-                <div class="dropdown">
-                  <button class="btn btn-outline-secondary btn-sm dropdown-toggle" id="logs-actions-menu" aria-expanded="false">
-                    <i class="fa fa-ellipsis-v"></i>
-                  </button>
-                  <ul class="dropdown-menu" aria-labelledby="logs-actions-menu">
-                    <li>
-                      <button class="dropdown-item" id="btn-refresh-logs">
-                        <i class="fa fa-refresh"></i> Refresh
-                      </button>
-                    </li>
-                    <li>
-                      <button class="dropdown-item text-danger" id="btn-clear-logs">
-                        <i class="fa fa-trash"></i> Clear Logs
-                      </button>
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-            <div class="logs-body">
-              <pre class="log-terminal" id="log-display"></pre>
+        <div class="config-log-section">
+          <div class="config-log-header">
+            <h6><i class="fa fa-terminal"></i> Activity Log</h6>
+            <button class="btn btn-outline-secondary btn-sm" id="btn-clear-logs" type="button">
+              <i class="fa fa-trash"></i> Clear
+            </button>
+          </div>
+          <div class="config-log-content" id="log-container">
+            <div class="log-entry log-info">
+              <span class="log-time">System</span>
+              <span class="log-message">xAVS Shares module initialized</span>
             </div>
           </div>
         </div>
@@ -553,11 +523,13 @@
     </main>
 
     <!-- Status Bar -->
-    <div class="status-bar">
-      <span id="status-text">Ready</span>
-      <span class="status-actions">
-        <a href="#" class="status-link" data-tab="tab-logs">View Logs</a>
-      </span>
+    <div class="bottom-status-bar" style="display: grid !important; grid-template-columns: 1fr auto !important; align-items: center !important; text-align: left !important;">
+      <div class="status-content" style="justify-self: start !important; text-align: left !important;">
+        <span id="recent-activity" style="text-align: left !important;">Ready</span>
+      </div>
+      <button type="button" id="view-logs-btn" class="btn btn-sm btn-outline-brand" style="justify-self: end !important; text-align: right !important;">
+        View Logs
+      </button>
     </div>
 
     <!-- ===== Inline debug console (hidden by default) ===== -->

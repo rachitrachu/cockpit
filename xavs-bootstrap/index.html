@@ -402,22 +402,31 @@
 
   <!-- Logs -->
   <section id="panel-logs" class="tab-pane">
-      <div class="card">
-        <strong>Execution Log</strong>
-        <pre class="yaml-terminal" id="log"></pre>
-        <div class="footer-actions">
-          <button class="btn btn-outline-muted" id="btn-clear-log" type="button">Clear log</button>
+    <div class="card">
+      <div class="config-log-section">
+        <div class="config-log-header">
+          <h6><i class="fas fa-terminal"></i> Execution Log</h6>
+          <button type="button" id="btn-clear-log" class="btn btn-sm btn-outline-muted">
+            <i class="fas fa-trash"></i> Clear
+          </button>
+        </div>
+        <div id="log" class="config-log-content">
+          <div class="log-entry log-info">
+            <span class="log-time"></span>
+            <span class="log-message">Bootstrap system ready</span>
+          </div>
         </div>
       </div>
-    </section>
+    </div>
+  </section>
   </div>
 
-  <!-- Status Bar -->
-  <div class="status-bar">
-    <span id="status-text">Ready</span>
-    <span class="status-actions">
-      <a href="#" class="status-link" data-tab="tab-logs">View Logs</a>
-    </span>
+  <!-- Bottom Status Bar -->
+  <div class="bottom-status-bar">
+    <div class="status-content">
+      <span id="recent-activity">Ready</span>
+    </div>
+    <button type="button" class="status-link" data-tab="panel-logs">View Logs</button>
   </div>
 
   <script src="index.js"></script>

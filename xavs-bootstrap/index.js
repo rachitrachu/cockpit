@@ -126,64 +126,108 @@
         if (el) el.style.width = Math.max(0, Math.min(100, v)) + "%";
     };
     const logEl = $("log");
-    const log = (t="") => {
+    const log = (t="", type = 'info') => {
         if (!logEl) return;
-        const timestamp = new Date().toLocaleTimeString();
-        const logEntry = `[${timestamp}] ${t}`;
-        logEl.textContent += logEntry + "\n";
+        
+        const timestamp = new Date().toLocaleTimeString('en-US', { 
+            hour12: false, 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit' 
+        });
+        
+        // Create log entry element
+        const logEntry = document.createElement('div');
+        logEntry.className = `log-entry log-${type}`;
+        logEntry.innerHTML = `
+            <span class="log-time">${timestamp}</span>
+            <span class="log-message">${t}</span>
+        `;
+        
+        logEl.appendChild(logEntry);
+        
+        // Auto-scroll to bottom
         logEl.scrollTop = logEl.scrollHeight;
         
         // Update status bar (strip HTML for status bar)
-        const statusElement = $('status-text');
+        const statusElement = $('recent-activity');
         if (statusElement) {
             const cleanText = t.replace(/<[^>]*>/g, '').trim() || "Ready";
-            statusElement.textContent = cleanText;
+            statusElement.textContent = `${timestamp} - ${cleanText}`;
+            
+            // Update status bar color coding
+            const statusBar = document.querySelector('.bottom-status-bar');
+            if (statusBar) {
+                // Remove existing status classes
+                statusBar.classList.remove('status-info', 'status-success', 'status-warning', 'status-error');
+                
+                // Add appropriate status class for color coding
+                const statusClass = type === 'success' ? 'status-success' : 
+                                   type === 'warning' ? 'status-warning' : 
+                                   type === 'error' ? 'status-error' : 'status-info';
+                statusBar.classList.add(statusClass);
+            }
         }
         
         // Store logs for persistence across tabs (localStorage for better cross-tab sync)
         try {
-            const existingLogs = localStorage.getItem('xavs-logs') || '';
-            localStorage.setItem('xavs-logs', existingLogs + logEntry + '\n');
-        } catch (e) {
-            // Fallback to sessionStorage if localStorage fails
-            console.warn('localStorage failed, trying sessionStorage:', e);
-            try {
-                const existingLogs = sessionStorage.getItem('xavs-logs') || '';
-                sessionStorage.setItem('xavs-logs', existingLogs + logEntry + '\n');
-            } catch (e2) {
-                console.warn('Could not store logs:', e2);
+            const logData = { timestamp, message: t, type };
+            const existingLogs = JSON.parse(localStorage.getItem('xavs-bootstrap-logs') || '[]');
+            existingLogs.push(logData);
+            
+            // Keep only last 50 entries
+            if (existingLogs.length > 50) {
+                existingLogs.shift();
             }
+            
+            localStorage.setItem('xavs-bootstrap-logs', JSON.stringify(existingLogs));
+        } catch (e) {
+            console.warn('Could not store logs:', e);
         }
     };
     
     // Load existing logs from storage on page load
     const loadStoredLogs = () => {
         try {
-            let storedLogs = localStorage.getItem('xavs-logs');
-            
-            // Fallback to sessionStorage if localStorage is empty
-            if (!storedLogs) {
-                storedLogs = sessionStorage.getItem('xavs-logs');
-            }
+            let storedLogs = localStorage.getItem('xavs-bootstrap-logs');
             
             if (storedLogs) {
-                // Ensure logEl is available (retry if needed)
+                const logEntries = JSON.parse(storedLogs);
                 const logElement = $("log");
                 if (logElement) {
-                    // Only update if content has changed to avoid unnecessary refreshes
-                    if (logElement.textContent !== storedLogs) {
-                        logElement.textContent = storedLogs;
-                        logElement.scrollTop = logElement.scrollHeight;
-                    }
+                    // Clear existing logs
+                    logElement.innerHTML = '';
+                    
+                    // Add each stored log entry
+                    logEntries.forEach(entry => {
+                        const logEntry = document.createElement('div');
+                        logEntry.className = `log-entry log-${entry.type || 'info'}`;
+                        logEntry.innerHTML = `
+                            <span class="log-time">${entry.timestamp}</span>
+                            <span class="log-message">${entry.message}</span>
+                        `;
+                        logElement.appendChild(logEntry);
+                    });
+                    
+                    logElement.scrollTop = logElement.scrollHeight;
                 } else {
                     // Retry after a short delay if element not ready
                     setTimeout(loadStoredLogs, 100);
                 }
             } else {
-                // No stored logs found
+                // No stored logs found - add initial log
+                const logElement = $("log");
+                if (logElement && logElement.children.length === 0) {
+                    log("Bootstrap system initialized", "info");
+                }
             }
         } catch (e) {
             console.warn('Could not load logs from storage:', e);
+            // Add initial log on error
+            const logElement = $("log");
+            if (logElement && logElement.children.length === 0) {
+                log("Bootstrap system initialized", "info");
+            }
         }
     };
 
@@ -191,11 +235,26 @@
     const startLogSync = () => {
         // Listen for storage changes from other tabs (more efficient than polling)
         window.addEventListener('storage', (e) => {
-            if (e.key === 'xavs-logs' && e.newValue) {
-                const logElement = $("log");
-                if (logElement && logElement.textContent !== e.newValue) {
-                    logElement.textContent = e.newValue;
-                    logElement.scrollTop = logElement.scrollHeight;
+            if (e.key === 'xavs-bootstrap-logs' && e.newValue) {
+                try {
+                    const logEntries = JSON.parse(e.newValue);
+                    const logElement = $("log");
+                    if (logElement) {
+                        // Clear and rebuild log display
+                        logElement.innerHTML = '';
+                        logEntries.forEach(entry => {
+                            const logEntry = document.createElement('div');
+                            logEntry.className = `log-entry log-${entry.type || 'info'}`;
+                            logEntry.innerHTML = `
+                                <span class="log-time">${entry.timestamp}</span>
+                                <span class="log-message">${entry.message}</span>
+                            `;
+                            logElement.appendChild(logEntry);
+                        });
+                        logElement.scrollTop = logElement.scrollHeight;
+                    }
+                } catch (e) {
+                    console.warn('Could not sync logs:', e);
                 }
             }
         });
@@ -255,14 +314,13 @@
     }));
 
     // Wire up status bar link
-    const statusLink = $('.status-link');
+    const statusLink = document.querySelector('.status-link');
     if (statusLink) {
         statusLink.addEventListener('click', (e) => {
             e.preventDefault();
             const targetTab = statusLink.dataset.tab;
             if (targetTab) {
-                const targetPanel = targetTab.replace('tab-', 'panel-');
-                showPanel(targetPanel);
+                showPanel(targetTab);
             }
         });
     }
@@ -281,7 +339,7 @@
     async function detectOS() {
         try {
             setText("os-name", "Detecting");
-            log("[OS] Starting OS detection...");
+            log("[OS] Starting OS detection...", "info");
             
             const out = await cockpit.spawn([
                 "bash", "-c", 
@@ -346,7 +404,7 @@
             setText("os-branch", "");
             setText("os-mode", "");
             showNotification("OS detection failed: " + (error.message || error), 'error');
-            log("[OS] Detection failed: " + (error.message || error));
+            log("[OS] Detection failed: " + (error.message || error), "error");
         }
     }
 
@@ -376,13 +434,13 @@
             const memory = await cockpit.spawn(["bash", "-c", "free -h | awk 'NR==2{printf \"%s / %s (%s)\", $3, $2, $5}'"]);
             setText("sys-memory", memory.trim() || "");
 
-            log("[System] System status updated successfully");
+            log("[System] System status updated successfully", "success");
         } catch (error) {
             setText("sys-uptime", "Error");
             setText("sys-load", "Error");
             setText("sys-cpu", "Error");
             setText("sys-memory", "Error");
-            log("[System] Failed to refresh system status: " + (error.message || error));
+            log("[System] Failed to refresh system status: " + (error.message || error), "error");
         }
     }
 
@@ -433,7 +491,7 @@
                 }
             }
 
-            log("[Storage] Storage overview updated successfully");
+            log("[Storage] Storage overview updated successfully", "success");
         } catch (error) {
             setText("storage-root", "Error");
             setText("storage-disks", "Error");
@@ -476,7 +534,7 @@
                 setText("net-dns", '<i class="fas fa-times text-danger"></i> Failed');
             }
 
-            log("[Network] Network overview updated successfully");
+            log("[Network] Network overview updated successfully", "success");
         } catch (error) {
             setText("net-interfaces", "Error");
             setText("net-connectivity", "Error");
@@ -576,7 +634,7 @@
             const gateway = await cockpit.spawn(["bash", "-c", "ip route | grep default | awk '{print $3}' | head -1 || echo ''"]);
             setText("net-gateway", gateway.trim() || "");
 
-            log("[Hardware] Hardware details updated successfully");
+            log("[Hardware] Hardware details updated successfully", "success");
         } catch (error) {
             log("[Hardware] Failed to refresh hardware details: " + (error.message || error));
         }
@@ -692,7 +750,7 @@ End of Report
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
             
-            log("[Export] System information exported as " + filename);
+            log("[Export] System information exported as " + filename, "success");
         } catch (error) {
             log("[Export] Failed to export system information: " + (error.message || error));
         }
@@ -1453,12 +1511,12 @@ PY
             
             pb("dep-progress", 100);
             setTextSuccess("dep-note", '<i class="fas fa-check text-success"></i> Installation completed successfully!');
-            log("[Install:Debian] Installation completed successfully");
+            log("[Install:Debian] Installation completed successfully", "success");
             
         } catch (error) {
             const errorMsg = error.message || error.toString();
             setTextError("dep-note", '<i class="fas fa-times text-danger"></i> Installation failed - check logs');
-            log("[Install:Debian] Failed: " + errorMsg);
+            log("[Install:Debian] Failed: " + errorMsg, "error");
             if (error.exit_status) {
                 log("[Install:Debian] Exit code: " + error.exit_status);
             }
@@ -1521,7 +1579,7 @@ PY
             
             pb("dep-progress", 100);
             setTextSuccess("dep-note", '<i class="fas fa-check text-success"></i> Installation completed successfully!');
-            log("[Install:RHEL] Installation completed successfully");
+            log("[Install:RHEL] Installation completed successfully", "success");
             
         } catch (error) {
             const errorMsg = error.message || error.toString();
@@ -1606,7 +1664,7 @@ PY
             
             // Show final success message
             setTextSuccess("dep-note", '<i class="fas fa-check text-success"></i> Complete installation successful!');
-            log("[Install:All] All 7 steps completed successfully in proper sequence");
+            log("[Install:All] All 7 steps completed successfully in proper sequence", "success");
             
         } catch (error) {
             const errorMsg = error.message || error.toString();
@@ -2048,7 +2106,7 @@ PY
             log("[Install:Config] Step 7/7: Configuration setup complete");
 
             setBadge("dep-cfg", "ok", '<i class="fas fa-check text-success"></i> ready');
-            log("[Install:Config]  xavs configuration setup completed successfully");
+            log("[Install:Config]  xavs configuration setup completed successfully", "success");
             log("[Install:Config]  Created: /etc/xavs (kolla config), /etc/xavs/nodes (inventory), /etc/kolla -> /etc/xavs (symlink)");
             log("[Install:Config]  Executed: kolla-ansible install-deps and verified ansible collections");
             
@@ -2184,11 +2242,14 @@ PY
         }
     });
     $("btn-clear-log").addEventListener("click", () => {
-        if (logEl) logEl.textContent = "";
+        const logElement = $("log");
+        if (logElement) {
+            logElement.innerHTML = '';
+            log("Log cleared", "info");
+        }
         // Clear stored logs too
         try {
-            sessionStorage.removeItem('xavs-logs');
-            localStorage.removeItem('xavs-logs');
+            localStorage.removeItem('xavs-bootstrap-logs');
         } catch (e) {
             console.warn('Could not clear stored logs:', e);
         }

@@ -19,7 +19,7 @@
     const timestamp = new Date();
     const timeStr = timestamp.toLocaleTimeString();
     
-    console[level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log'](`[XAVS Shares] ${message}`);
+    // Console logging removed - GUI logging only
     
     // Add to activity log
     activityLog.push({
@@ -39,32 +39,69 @@
     
     // Update log display if visible
     updateLogDisplay();
+    
+    // Add to new-style log container
+    addToLog(message, level);
+  }
+  
+  // New xAVS Globals style logging function
+  function addToLog(message, type = 'info') {
+    const timestamp = new Date().toLocaleTimeString();
+    const logContainer = document.getElementById("log-container");
+    
+    if (logContainer) {
+      const logEntry = document.createElement('div');
+      logEntry.className = `log-entry log-${type}`;
+      
+      const timeSpan = document.createElement('span');
+      timeSpan.className = 'log-time';
+      timeSpan.textContent = timestamp;
+      
+      const messageSpan = document.createElement('span');
+      messageSpan.className = 'log-message';
+      messageSpan.textContent = message;
+      
+      logEntry.appendChild(timeSpan);
+      logEntry.appendChild(messageSpan);
+      logContainer.appendChild(logEntry);
+      logContainer.scrollTop = logContainer.scrollHeight;
+      
+      // Limit to 100 entries
+      const entries = logContainer.querySelectorAll('.log-entry');
+      if (entries.length > 100) {
+        entries[0].remove();
+      }
+    }
   }
   
   function updateStatusBar(message, level) {
-    const statusText = $("#status-text");
+    const statusText = document.getElementById("recent-activity");
     if (!statusText) return;
     
     // Determine system status
     if (level === 'error') {
       systemStatus = 'not-ready';
-    } else if (message.includes('Loading') || message.includes('Creating') || message.includes('Mounting') || message.includes('Logging in')) {
+    } else if (message.includes('Checking') || message.includes('Loading') || message.includes('Creating') || message.includes('Mounting') || message.includes('Logging in') || message.includes('Refreshing')) {
       systemStatus = 'working';
-    } else if (systemStatus === 'working' && (message.includes('Success') || message.includes('completed'))) {
+    } else if (systemStatus === 'working' && (message.includes('Success') || message.includes('completed') || message.includes('Found') || message.includes('No ') || message.includes('ready'))) {
       systemStatus = 'ready';
     }
     
     // Update status text and class
-    statusText.className = systemStatus;
-    
-    if (systemStatus === 'ready') {
-      statusText.textContent = 'Ready';
-    } else if (systemStatus === 'not-ready') {
-      statusText.textContent = 'Not Ready';
-    } else {
-      // Show current activity when working
-      statusText.textContent = message.length > 50 ? message.substring(0, 47) + '...' : message;
+    const statusBar = document.querySelector('.bottom-status-bar');
+    if (statusBar) {
+      statusBar.className = statusBar.className.replace(/status-(info|success|warning|error)/g, '');
+      if (level === 'error') statusBar.classList.add('status-error');
+      else if (level === 'warn') statusBar.classList.add('status-warning');
+      else if (level === 'success') statusBar.classList.add('status-success');
+      else statusBar.classList.add('status-info');
     }
+    
+    // Always show the current message
+    statusText.textContent = message.length > 50 ? message.substring(0, 47) + '...' : message;
+    
+    // Force update the display (in case of CSS conflicts)
+    statusText.style.display = 'inline';
   }
   
   function updateLogDisplay() {
@@ -85,6 +122,18 @@
   function clearActivityLog() {
     activityLog = [];
     updateLogDisplay();
+    
+    // Clear new-style log container
+    const logContainer = document.getElementById("log-container");
+    if (logContainer) {
+      logContainer.innerHTML = `
+        <div class="log-entry log-info">
+          <span class="log-time">System</span>
+          <span class="log-message">Log cleared</span>
+        </div>
+      `;
+    }
+    
     log('info', 'Activity log cleared');
   }
 
@@ -544,14 +593,14 @@
 
   // ===== NFS Functions =====
   async function loadNfsExports() {
-    log('info', 'Loading NFS exports...');
+    log('info', 'Checking NFS exports...');
     try {
       // Read from /etc/exports
       let exportsContent = '';
       try {
         exportsContent = await cockpit.file("/etc/exports").read();
       } catch (e) {
-        log('warn', 'Could not read /etc/exports');
+        log('warn', 'Could not read NFS exports configuration');
       }
       
       const exports = [];
@@ -569,7 +618,11 @@
         });
       }
       
-      log('info', `Found ${exports.length} NFS exports`);
+      if (exports.length === 0) {
+        log('info', 'No NFS exports found');
+      } else {
+        log('info', `Found ${exports.length} NFS export${exports.length > 1 ? 's' : ''}`);
+      }
       
       // Update the exports list in NFS tab if it exists
       const exportsList = $("#nfs-exports-list");
@@ -706,7 +759,7 @@
 
   // ===== Disk Management =====
   async function loadAvailableDisks() {
-    log('info', 'Loading available disks...');
+    log('info', 'Checking available disks...');
     try {
       // Get all block devices with detailed info
       const lsblkResult = await cockpit.spawn(['lsblk', '-J', '-o', 'NAME,SIZE,TYPE,MOUNTPOINT,FSTYPE,PKNAME'], { superuser: "require" });
@@ -997,11 +1050,11 @@
   }
 
   async function loadNfsMounts() {
-    log('info', 'Loading NFS mounts...');
+    log('info', 'Checking NFS mounts...');
     const ul = $("#nfs-mounts-list");
     if (!ul) return [];
 
-    ul.innerHTML = '<li class="loading">Loading...</li>';
+    ul.innerHTML = '<li class="loading">Checking...</li>';
     
     try {
       let result;
@@ -1019,6 +1072,7 @@
       
       if (lines.length === 0 || (lines.length === 1 && lines[0] === '')) {
         ul.innerHTML = '<li class="no-items">No NFS mounts found</li>';
+        log('info', 'No active NFS mounts found');
         return [];
       }
 
@@ -1072,11 +1126,13 @@
         }
       }
 
-      log('info', `Found ${mounts.length} NFS mounts`);
+      if (mounts.length > 0) {
+        log('info', `Found ${mounts.length} active NFS mount${mounts.length > 1 ? 's' : ''}`);
+      }
       return mounts;
       
     } catch (error) {
-      log('error', `Failed to load NFS mounts: ${error.message}`);
+      log('error', `Failed to check NFS mounts: ${error.message}`);
       ul.innerHTML = '<li class="error">Failed to load NFS mounts</li>';
       return [];
     }
@@ -1656,7 +1712,7 @@
   }
 
   async function loadIscsiSessions() {
-    log('info', '[SESSION-LOAD] Loading iSCSI sessions...');
+    log('info', 'Checking iSCSI sessions...');
     const ul = $("#iscsi-sessions-list");
     if (!ul) {
       log('warn', '[SESSION-LOAD] Sessions list element not found');
@@ -1670,20 +1726,19 @@
       let result;
       try {
         // Force refresh of iscsiadm database first
-        log('info', '[SESSION-LOAD] Refreshing iscsiadm database...');
+        log('info', 'Refreshing iSCSI session database...');
         await cockpit.spawn(["iscsiadm", "-m", "session", "-R"], { superuser: "try" }).catch(() => {});
         
-        log('info', '[SESSION-LOAD] Querying active sessions...');
+        log('info', 'Querying active sessions...');
         result = await cockpit.spawn(["iscsiadm", "-m", "session"], { superuser: "try" });
-        log('info', `[SESSION-LOAD] Raw session output: "${result}"`);
       } catch (error) {
         // Check if error is really "no sessions" vs actual error
         if (error.exit_status === 21 || error.message.includes("No active sessions")) {
           ul.innerHTML = '<li class="no-items">No iSCSI sessions found</li>';
-          log('info', '[SESSION-LOAD] No active iSCSI sessions found (exit 21 or "No active sessions")');
+          log('info', 'No active iSCSI sessions found');
           return [];
         } else {
-          log('warn', `[SESSION-LOAD] iSCSI session check failed (exit ${error.exit_status}): ${error.message}`);
+          log('warn', `iSCSI session check failed: ${error.message}`);
           ul.innerHTML = '<li class="no-items">Error checking iSCSI sessions</li>';
           return [];
         }
@@ -1917,7 +1972,7 @@
   }
 
   async function loadIscsiTargets() {
-    log('info', 'Loading iSCSI targets...');
+    log('info', 'Checking iSCSI targets...');
     const ul = $("#iscsi-targets-list");
     if (!ul) return [];
 
@@ -1980,11 +2035,15 @@
         });
       }
 
-      log('info', `Found ${targets.length} iSCSI targets`);
+      if (targets.length === 0) {
+        log('info', 'No iSCSI targets found');
+      } else {
+        log('info', `Found ${targets.length} iSCSI target${targets.length > 1 ? 's' : ''}`);
+      }
       return targets;
 
     } catch (error) {
-      log('error', `Failed to load iSCSI targets: ${error.message}`);
+      log('error', `Failed to check iSCSI targets: ${error.message}`);
       ul.innerHTML = '<li class="error">Failed to load iSCSI targets</li>';
       return [];
     }
@@ -2544,7 +2603,7 @@
         await loadIscsiSessions();
       }, 1000);
       
-      alert(`Failed to logout from iSCSI target: ${error.message}\nCheck console for details.`);
+      alert(`Failed to logout from iSCSI target: ${error.message}\nCheck logs for details.`);
     }
   }
 
@@ -3571,7 +3630,7 @@
 
   // ===== Initialize =====
   function initialize() {
-    log('info', 'XAVS Shares module loading...');
+    log('info', 'XAVS Shares module initializing...');
     
     // Load mount tracking data
     loadMountTracking();
@@ -3630,6 +3689,9 @@
     // Log management handlers
     $("#btn-refresh-logs")?.addEventListener("click", loadSystemLogs);
     $("#btn-clear-logs")?.addEventListener("click", clearActivityLog);
+    $("#view-logs-btn")?.addEventListener("click", () => {
+      setActiveTab('tab-logs');
+    });
     
     // Initialize dropdown menus
     initializeDropdowns();

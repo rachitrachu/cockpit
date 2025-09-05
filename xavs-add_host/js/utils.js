@@ -15,16 +15,17 @@ export const isValidIPv4 = ip => /^(\d{1,3}\.){3}\d{1,3}$/.test(ip);
 
 /* ---------- Roles UI ---------- */
 export function renderRoleChips(container, roles, onRemove) {
-  container.querySelectorAll(".xd-chip").forEach(n => n.remove());
+  container.querySelectorAll(".role-tag").forEach(n => n.remove());
   (roles || []).forEach(r => {
     const chip = document.createElement("span");
-    chip.className = "xd-chip";
-    chip.textContent = r + " ";
-    const close = document.createElement("span");
-    close.className = "x"; close.textContent = "×"; close.title = "Remove";
-    close.addEventListener("click", () => onRemove(r));
-    chip.appendChild(close);
-    container.insertBefore(chip, container.querySelector(".xd-select-wrap"));
+    chip.className = "role-tag";
+    chip.innerHTML = `${r} <span class="remove" title="Remove"><i class="fas fa-times"></i></span>`;
+    
+    const closeBtn = chip.querySelector('.remove');
+    closeBtn.addEventListener("click", () => onRemove(r));
+    
+    const selectWrap = container.querySelector(".col-sm-10") || container;
+    selectWrap.insertBefore(chip, selectWrap.firstChild);
   });
 }
 
@@ -44,8 +45,23 @@ export function refreshSelectOptions(selectEl, chosenSet, hasDeploymentSomewhere
 export function setPingState(btn, state) {
   btn.classList.remove("neutral","ok","err","loading");
   btn.classList.add(state);
-  if (state === "loading") { btn.textContent = "Pinging…"; btn.disabled = true; }
-  else { btn.textContent = state === "ok" ? "Ping ✓" : state === "err" ? "Ping ✗" : "Ping"; btn.disabled = false; }
+  
+  // Clear existing content
+  btn.innerHTML = "";
+  
+  if (state === "loading") { 
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Pinging…'; 
+    btn.disabled = true; 
+  } else if (state === "ok") {
+    btn.innerHTML = '<i class="fas fa-check text-success"></i> Ping';
+    btn.disabled = false;
+  } else if (state === "err") {
+    btn.innerHTML = '<i class="fas fa-times text-danger"></i> Ping';
+    btn.disabled = false;
+  } else {
+    btn.innerHTML = '<i class="fas fa-satellite-dish"></i> Ping';
+    btn.disabled = false;
+  }
 }
 
 export function attachPingBehavior(btn, getIP, isValid = isValidIPv4) {

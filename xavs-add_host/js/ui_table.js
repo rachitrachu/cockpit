@@ -128,10 +128,16 @@ export function createTableUI({ getHosts, setHosts, onChange, onDelete }) {
     delBtn.addEventListener("click", async () => {
       const h = getHosts();
       const idx = h.findIndex(x => x.hostname === item.hostname && x.ip === item.ip);
-      if (idx >= 0) { h.splice(idx, 1); setHosts(h); }
+      if (idx >= 0) { 
+        const deletedHost = h[idx];
+        h.splice(idx, 1); 
+        setHosts(h); 
+        // Pass deleted host info to callback
+        await onDelete?.(deletedHost);
+      }
       const filteredLen = getFiltered().length;
       clampPage(filteredLen);
-      renderTable(); onChange && onChange(); await onDelete?.();
+      renderTable(); onChange && onChange();
     });
     tdDel.appendChild(delBtn); tr.appendChild(tdDel);
 

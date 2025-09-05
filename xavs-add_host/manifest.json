@@ -2,12 +2,12 @@
   "version": 1,
   "tools": {
     "xavs-add_host": {
-      "label": "XAVS Hosts",
+      "label": "xAVS Hosts",
       "path": "index.html",
       "order": 15,
       "keywords": [
-        {"matches": ["hosts", "cluster", "nodes", "inventory"]},
-        {"matches": ["deploy", "target", "configuration", "management"]}
+        {"matches": ["hosts", "cluster", "nodes", "inventory", "xavs"]},
+        {"matches": ["deploy", "target", "configuration", "management", "ssh"]}
       ]
     }
   }

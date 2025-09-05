@@ -351,7 +351,7 @@ class FormGenerator {
               <div id="config-log" class="config-log-content">
                 <div class="log-entry log-info">
                   <span class="log-time"></span>
-                  <span class="log-message">Configuration interface initialized</span>
+                  <span class="log-message">Ready</span>
                 </div>
               </div>
             </div>
@@ -908,12 +908,9 @@ function generateYamlContent(config) {
 
 /* ===================== SAVE ===================== */
 async function saveConfiguration() {
-  showStatus('Validating configuration...', 'info');
-  
   // Validate required fields and highlight any missing ones
   const validationErrors = validateRequiredFields();
-  if (validationErrors.length > 0) {
-    addConfigLog(`Validation failed: ${validationErrors.length} required field(s) missing`, 'error');
+  if (!validationErrors) {
     showStatus('Please fill in all required fields (highlighted in red)', 'danger');
     return;
   }
@@ -922,7 +919,6 @@ async function saveConfiguration() {
     if (!formGenerator) throw new Error('Form generator not initialized');
     const errs = formGenerator.validateForm();
     if (errs.length) {
-      addConfigLog('Form validation failed', 'error');
       showStatus('Validation failed. Please check required fields.', 'danger');
       console.error('Validation errors:', errs);
       return;
@@ -949,7 +945,7 @@ async function saveConfiguration() {
     const readback = await cockpit.file(filePath).read();
     if (!readback || !readback.length) throw new Error('Configuration file seems empty');
 
-    addConfigLog(`Configuration successfully saved to ${filePath}`, 'success');
+    addConfigLog(`Configuration saved successfully`, 'success');
     showStatus(`Configuration saved to ${filePath}`, 'success');
     return filePath;
   } catch (e) {
@@ -961,7 +957,6 @@ async function saveConfiguration() {
 
 /* ===================== INIT ===================== */
 document.addEventListener('DOMContentLoaded', async () => {
-  showStatus('Loading configuration interface...', 'info');
   try {
     if (typeof cockpit === 'undefined') await new Promise(r => setTimeout(r, 800));
     if (typeof cockpit === 'undefined') throw new Error('Cockpit API not available. Open inside Cockpit.');
@@ -982,13 +977,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     formGenerator.container.addEventListener('change', async (e) => {
       if (!e.target || !e.target.name) return;
 
-      // Log field changes
+      // Log meaningful field changes (exclude notes, empty values, and file paths)
       const fieldLabel = document.querySelector(`label[for="${e.target.id}"]`)?.textContent.replace('*', '').trim() || e.target.name;
       const newValue = e.target.type === 'checkbox' ? (e.target.checked ? 'Yes' : 'No') : e.target.value;
       
-      if (newValue) {
-        logFieldChange(fieldLabel, newValue);
-        // Remove required field highlighting if filled
+      // Don't log empty values, note fields, or file paths
+      const isFilePath = e.target.id.includes('cert') || fieldLabel.toLowerCase().includes('path') || fieldLabel.toLowerCase().includes('cert');
+      
+      if (newValue && newValue.trim() !== '' && !e.target.id.includes('note_') && !isFilePath) {
+        // Format the field name nicely
+        const cleanFieldName = fieldLabel.replace(/\s*\*\s*$/, '').trim();
+        addConfigLog(`${cleanFieldName} set to "${newValue}"`, 'info');
+      }
+
+      // Remove required field highlighting if filled
+      if (e.target.value || (e.target.type === 'checkbox' && e.target.checked)) {
         e.target.classList.remove('field-required');
       }
 
@@ -1036,7 +1039,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize save button state
     setTimeout(updateSaveButtonState, 500);
     
-    showStatus('Configuration UI ready', 'success');
+    // Set initial status and update timestamp
+    const recentActivity = document.getElementById('recent-activity');
+    if (recentActivity) {
+      const timestamp = new Date().toLocaleTimeString('en-US', { 
+        hour12: false, 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit' 
+      });
+      recentActivity.textContent = `${timestamp} - Ready`;
+    }
   } catch (e) {
     console.error('Init failed:', e);
     showStatus('Failed to load: ' + e.message, 'danger');
@@ -1094,7 +1107,7 @@ function clearConfigLog() {
   const logContainer = document.getElementById('config-log');
   if (logContainer) {
     logContainer.innerHTML = '';
-    addConfigLog('Configuration log cleared', 'info');
+    addConfigLog('Log cleared', 'info');
   }
 }
 
@@ -1120,21 +1133,7 @@ function validateRequiredFields() {
     }
   });
   
-  if (hasErrors) {
-    addConfigLog(`Please fill required fields: ${missingFields.join(', ')}`, 'error');
-    return false;
-  }
-  
-  return true;
-}
-
-function logFieldChange(fieldName, newValue, oldValue = '') {
-  if (newValue !== oldValue) {
-    const message = oldValue 
-      ? `${fieldName} changed from "${oldValue}" to "${newValue}"`
-      : `${fieldName} set to "${newValue}"`;
-    addConfigLog(message, 'info');
-  }
+  return !hasErrors;
 }
 
 /* ===================== ENHANCED STATUS FUNCTION ===================== */
@@ -1159,11 +1158,20 @@ function setupEventListeners() {
       }
     }
     
+    addConfigLog('Saving configuration...', 'info');
     saveConfiguration().catch(console.error); 
   });
-  document.getElementById('load_config_btn')?.addEventListener('click', () => { loadSavedConfiguration().catch(console.error); });
+  document.getElementById('load_config_btn')?.addEventListener('click', () => { 
+    addConfigLog('Loading configuration...', 'info');
+    loadSavedConfiguration().catch(console.error); 
+  });
   document.getElementById('preview_config_btn')?.addEventListener('click', () => { previewConfiguration(); });
-  document.getElementById('download_config_btn')?.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); downloadConfiguration(); });
+  document.getElementById('download_config_btn')?.addEventListener('click', (e) => { 
+    e.preventDefault(); 
+    e.stopPropagation(); 
+    addConfigLog('Generating download...', 'info');
+    downloadConfiguration(); 
+  });
   document.getElementById('reset_config_btn')?.addEventListener('click', () => { resetToDefaults(); });
   
   // Setup dropdown functionality
@@ -1392,7 +1400,7 @@ function downloadConfiguration() {
     document.body.appendChild(a);
     a.click();
     setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 100);
-    showStatus('Configuration downloaded', 'success');
+    addConfigLog('Configuration downloaded', 'success');
   } catch (e) {
     console.error('Download failed:', e);
     showStatus('Failed to download configuration: ' + e.message, 'danger');
@@ -1400,7 +1408,6 @@ function downloadConfiguration() {
 }
 
 async function loadSavedConfiguration() {
-  showStatus('Loading saved configuration...', 'info');
   try {
     const filePath = '/etc/xavs/globals.d/_99_xavs.yml';
     const content  = await cockpit.file(filePath).read();
@@ -1413,6 +1420,7 @@ async function loadSavedConfiguration() {
         hookExternalInterfaceBehavior();
         await updateVGOptionsAndHint();
         wireFlatSwitches();
+        addConfigLog('Configuration loaded successfully', 'success');
         showStatus('Configuration loaded into form', 'success');
       } else {
         showConfigPreview(content);
@@ -1772,7 +1780,7 @@ function resetToDefaults() {
         await updateVGOptionsAndHint();
         evaluateVisibility(formGenerator.container, CONFIG_SCHEMA);
         wireFlatSwitches();
-        showStatus('Configuration reset', 'success');
+        addConfigLog('Configuration reset to defaults', 'success');
       });
     }
   }
