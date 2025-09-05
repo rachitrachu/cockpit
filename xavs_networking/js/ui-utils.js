@@ -277,11 +277,12 @@ class EventEmitter {
 // Global event emitter for the module
 window.networkingEvents = new EventEmitter();
 
-// Export utilities
-window.createStatusBadge = createStatusBadge;
-window.createActionButton = createActionButton;
-window.showToast = showToast;
-window.addLoadingSpinner = addLoadingSpinner;
-window.removeLoadingSpinner = removeLoadingSpinner;
-window.formatBytes = formatBytes;
-window.debounce = debounce;
+// Export utilities (avoid overwriting if another module already defined them)
+window.debounce = window.debounce || debounce;
+window.createActionButton = window.createActionButton || createActionButton;
+// Prefer existing createStatusBadge (e.g., from utils.js) and only set if not already defined
+window.createStatusBadge = window.createStatusBadge || createStatusBadge;
+window.showToast = window.showToast || showToast;
+window.addLoadingSpinner = window.addLoadingSpinner || addLoadingSpinner;
+window.removeLoadingSpinner = window.removeLoadingSpinner || removeLoadingSpinner;
+window.formatBytes = window.formatBytes || formatBytes;

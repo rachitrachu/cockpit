@@ -9,118 +9,110 @@ function setupSearchAndFilters() {
   console.log('Search input element found:', !!searchIface);
 
   if (searchIface) {
-    let searchTimeout;
-    
-    const performSearch = (query) => {
-      console.log('Performing search for:', query);
+    // Core search implementation: filter interface rows and update a status line
+    function performSearch(queryRaw) {
+      const query = (queryRaw || '').toLowerCase().trim();
       const rows = $$('#table-interfaces tbody tr');
-      console.log('Found table rows:', rows.length);
       let visibleCount = 0;
       let totalInterfaces = 0;
-      
+
       rows.forEach(row => {
-        // Skip detail rows - they'll be handled by their parent interface row
-        if (row.style.backgroundColor === 'rgb(248, 249, 250)' || 
-            row.style.borderTop === '2px solid rgb(0, 123, 255)' ||
-            row.classList.contains('detail-row')) {
+        // Skip detail rows
+        if (row.classList.contains('detail-row') ||
+            row.style.backgroundColor === 'rgb(248, 249, 250)' ||
+            row.style.borderTop?.includes('2px solid')) {
           return;
         }
-        
+
         totalInterfaces++;
-        
         const cells = row.querySelectorAll('td');
-        if (cells.length > 0) {
-          // Get text content from interface row
-          const interfaceText = Array.from(cells).map(cell => cell.textContent.toLowerCase()).join(' ');
-          
-          // Check if query matches interface data
-          const matches = !query || 
-            interfaceText.includes(query) ||
-            // Also search in device name, type, IP addresses
-            cells[0]?.textContent.toLowerCase().includes(query) ||  // Device name
-            cells[1]?.textContent.toLowerCase().includes(query) ||  // Type  
-            cells[2]?.textContent.toLowerCase().includes(query) ||  // State
-            cells[3]?.textContent.toLowerCase().includes(query) ||  // IPv4
-            cells[4]?.textContent.toLowerCase().includes(query);    // IPv6
-          
-          // Show/hide the interface row with smooth transition
-          if (matches) {
-            row.style.display = '';
-            row.style.opacity = '1';
-            visibleCount++;
-          } else {
-            row.style.opacity = '0.5';
-            setTimeout(() => {
-              if (row.style.opacity === '0.5') {
-                row.style.display = 'none';
-              }
-            }, 150);
-          }
-          
-          // Handle associated detail row
-          const detailRow = row.nextElementSibling;
-          if (detailRow && (detailRow.style.backgroundColor === 'rgb(248, 249, 250)' || 
-                           detailRow.style.borderTop === '2px solid rgb(0, 123, 255)' ||
-                           detailRow.classList.contains('detail-row'))) {
-            // Hide detail row if parent is hidden
-            if (!matches) {
-              detailRow.style.display = 'none';
-            } else if (detailRow.style.display === 'none' && query) {
-              // If parent becomes visible and we're searching, keep detail hidden until user clicks
-              detailRow.style.display = 'none';
-            }
-          }
+        if (cells.length === 0) return;
+
+        // Extract interface name from first column: first line, first token
+        const nameCellText = (cells[0]?.textContent || '').trim();
+        const firstLine = nameCellText.split('\n')[0].trim();
+        const ifaceName = (firstLine.split(/\s+/)[0] || '').toLowerCase();
+
+        const matches = !query || ifaceName.startsWith(query);
+
+        if (matches) {
+          row.style.display = '';
+          row.style.opacity = '1';
+          visibleCount++;
+        } else {
+          row.style.opacity = '0.5';
+          setTimeout(() => {
+            if (row.style.opacity === '0.5') row.style.display = 'none';
+          }, 120);
+        }
+
+        // Hide following detail row if parent hidden
+        const detailRow = row.nextElementSibling;
+        if (detailRow && (detailRow.classList.contains('detail-row') ||
+                           detailRow.style.backgroundColor === 'rgb(248, 249, 250)' ||
+                           detailRow.style.borderTop?.includes('2px solid'))) {
+          if (!matches) detailRow.style.display = 'none';
         }
       });
-      
-      // Show search status with better messaging
-      const statusMsg = query ? 
-        (visibleCount === 0 ? 
-          `No interfaces found matching "${query}"` :
-          `${visibleCount} of ${totalInterfaces} interface${visibleCount !== 1 ? 's' : ''} matching "${query}"`) :
-        `Showing all ${totalInterfaces} interface${totalInterfaces !== 1 ? 's' : ''}`;
-      
-      // Update or create search status indicator
-      let searchStatus = document.querySelector('#search-status');
-      if (!searchStatus) {
-        searchStatus = document.createElement('div');
-        searchStatus.id = 'search-status';
-        searchIface.parentElement.appendChild(searchStatus);
-      }
-      searchStatus.textContent = statusMsg;
-      
-      // Add visual feedback for empty results
-      searchStatus.style.color = (query && visibleCount === 0) ? '#dc3545' : 'var(--muted-color)';
-    };
 
-    searchIface.addEventListener('input', (e) => {
-      const query = e.target.value.toLowerCase().trim();
-      
-      // Clear previous timeout
-      if (searchTimeout) {
-        clearTimeout(searchTimeout);
+      // Update status helper text
+      const statusMsg = query ?
+        (visibleCount === 0 ? `No interfaces found starting with "${query}"` : `${visibleCount} of ${totalInterfaces} starting with "${query}"`) :
+        `Showing all ${totalInterfaces}`;
+      let statusEl = document.getElementById('search-status');
+      if (!statusEl && searchIface && searchIface.parentElement) {
+        statusEl = document.createElement('div');
+        statusEl.id = 'search-status';
+        searchIface.parentElement.appendChild(statusEl);
       }
-      
-      // Debounce search for better performance
-      searchTimeout = setTimeout(() => {
-        performSearch(query);
-      }, 200);
+      if (statusEl) {
+        statusEl.textContent = statusMsg;
+        statusEl.style.color = (query && visibleCount === 0) ? '#dc3545' : 'var(--muted-color)';
+      }
+    }
+
+  // Expose for immediate initial invocation post-render
+  window.performSearch = performSearch;
+
+    const _debounce = window.debounce || (function(func, wait) {
+      let timeout;
+      return function(...args) {
+        const later = () => {
+          timeout = null;
+          func.apply(this, args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+      };
     });
+
+    const debouncedSearch = _debounce(() => {
+      if (window.performance && performance.mark) {
+        performance.mark('xavs:search:exec');
+        if (performance.getEntriesByName('xavs:search:queued').length && performance.measure) {
+          try {
+            performance.measure('xavs:search:queueDelay', 'xavs:search:queued', 'xavs:search:exec');
+            const m = performance.getEntriesByName('xavs:search:queueDelay').pop();
+            if (m) console.log(`[perf] search queue delay: ${m.duration.toFixed(2)} ms`);
+          } catch (e) { /* ignore */ }
+        }
+      }
+      const input = document.getElementById('interfaceSearchInput') || searchIface;
+      const query = input ? (input.value || '').toLowerCase().trim() : '';
+      performSearch(query);
+  }, 120);
     
     // Expose search function globally for interface loading callback
-    window.updateInterfaceSearch = performSearch;
-    
-    // Initial load - show all interfaces count
-    // Wait for interfaces to be loaded by checking periodically
-    const waitForInterfaces = () => {
-      const rows = $$('#table-interfaces tbody tr');
-      if (rows && rows.length > 0) {
-        performSearch('');
-      } else {
-        setTimeout(waitForInterfaces, 200);
+  searchIface.addEventListener('input', (e) => {
+      if (window.performance && performance.mark) {
+        performance.mark('xavs:search:queued');
       }
-    };
-    setTimeout(waitForInterfaces, 100);
+      debouncedSearch(e);
+    });
+  window.updateInterfaceSearch = debouncedSearch;
+    
+    // Note: Initial search is now triggered by interfaces.js after loading completes
+    // This eliminates the need for polling and prevents duplicate search operations
   }
 
   // Bridge and Bond port filtering

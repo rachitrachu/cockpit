@@ -47,10 +47,8 @@ function initTabSwitching() {
                 case 'interfaces':
                     console.log('🔌 Loading interfaces tab');
                     if (typeof loadInterfaces === 'function') {
-                        if (!NetworkingModule.interfacesLoaded) {
-                            await loadInterfaces();
-                            NetworkingModule.interfacesLoaded = true;
-                        }
+                        // For tab switch, use cache if available (within 5s)
+                        await loadInterfaces(false);
                         // Reset status back to Ready after loading interfaces
                         updateStatus('Ready', 'XOS Networking Management Interface');
                     } else {
@@ -72,7 +70,18 @@ function initTabSwitching() {
                 case 'diagnostics':
                     console.log('🔍 Loading diagnostics tab');
                     if (typeof loadDiagnostics === 'function') {
-                        loadDiagnostics();
+                        if (!NetworkingModule.diagnosticsLoaded) {
+                            try {
+                                console.log('Loading diagnostics for first time...');
+                                await loadDiagnostics();
+                                NetworkingModule.diagnosticsLoaded = true;
+                            } catch (error) {
+                                console.error('Failed to load diagnostics:', error);
+                                showError('Diagnostics Error', 'Failed to load network diagnostics');
+                            }
+                        } else {
+                            console.log('Using cached diagnostics data');
+                        }
                     } else {
                         console.error('❌ loadDiagnostics function not found');
                     }
@@ -286,24 +295,30 @@ async function initNetworkingModule() {
             setupEvents();
         }
         
-        // Load initial data for interfaces tab (only if not already loaded)
-        if (typeof loadInterfaces === 'function' && !NetworkingModule.interfacesLoaded) {
-            await loadInterfaces();
-            NetworkingModule.interfacesLoaded = true;
-            // Reset status back to Ready after loading interfaces
-            updateStatus('Ready', 'XOS Networking Management Interface');
+        // Load initial data for interfaces tab (deferred to idle/next tick to reduce message handler time)
+        if (typeof loadInterfaces === 'function') {
+            console.log('Scheduling initial interface data load...');
+            const scheduleInitialLoad = () => {
+                // Do not await; avoid blocking initialization
+                loadInterfaces(true).then(() => {
+                    NetworkingModule.interfacesLoaded = true;
+                    updateStatus('Ready', 'XOS Networking Management Interface');
+                }).catch(err => {
+                    console.error('Initial interface load failed:', err);
+                });
+            };
+            if (typeof window.requestIdleCallback === 'function') {
+                window.requestIdleCallback(() => scheduleInitialLoad(), { timeout: 1000 });
+            } else {
+                setTimeout(scheduleInitialLoad, 0);
+            }
         }
         
-        // Load initial diagnostics data
-        if (typeof loadDiagnostics === 'function') {
-            await loadDiagnostics();
-        }
+        // Defer diagnostics loading until the diagnostics tab is accessed (performance optimization)
+        // Diagnostics will be loaded on-demand in the tab switching logic
         
-        // Initialize networking forms for constructs tab
-        if (typeof setupNetworkingForms === 'function') {
-            console.log('🏗️ Initializing networking forms...');
-            await setupNetworkingForms();
-        }
+    // Defer constructs form setup until Constructs tab is opened (performance)
+    // Forms will be initialized on-demand in tab switching logic
         
         NetworkingModule.initialized = true;
         

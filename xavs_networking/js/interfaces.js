@@ -1,5 +1,5 @@
 'use strict';
-/* global createButton, createStatusBadge, netplanAction, run, setStatus, setupModal, addAdvancedInterfaceActions, $, $$ */
+/* global createStatusBadge, netplanAction, run, setStatus, setupModal, addAdvancedInterfaceActions, $, $$ */
 
 // Helper function to determine user-friendly interface type names
 function getInterfaceTypeFriendlyName(interfaceName, rawType, fullLine) {
@@ -168,43 +168,235 @@ if (typeof window !== 'undefined') {
   window.getAlternativeInterfaceNames = getAlternativeInterfaceNames;
 }
 
-// Helper function to safely apply netplan configuration with try before apply
-// This ensures network configuration changes are tested before permanent application
-async function safeNetplanApply() {
-  try {
-    console.log('Testing netplan configuration with "netplan try"...');
-    setStatus('Testing netplan configuration...');
+// Helper function to show progress bar during netplan try operation
+function showNetplanTryProgress(timeoutSeconds) {
+  return new Promise((resolve) => {
+    const progressModal = document.createElement('dialog');
+    progressModal.className = 'netplan-progress-modal';
+    progressModal.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>🧪 Testing Network Configuration</h3>
+        </div>
+        <div class="modal-body">
+          <div class="progress-info">
+            <p><strong>Netplan Try in Progress</strong></p>
+            <p>Testing your network configuration safely for <strong>${timeoutSeconds} seconds</strong>.</p>
+            <p>If anything goes wrong, changes will be automatically reverted.</p>
+          </div>
+          
+          <div class="progress-container">
+            <div class="progress-bar">
+              <div class="progress-fill" id="netplan-progress-fill"></div>
+            </div>
+            <div class="progress-text">
+              <span id="countdown-text">${timeoutSeconds}</span> seconds remaining
+            </div>
+          </div>
+          
+          <div class="progress-status">
+            <div class="status-indicator active" id="try-status">
+              <span class="status-dot"></span>
+              <span>Testing configuration...</span>
+            </div>
+            <div class="status-indicator" id="apply-status">
+              <span class="status-dot"></span>
+              <span>Applying configuration...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(progressModal);
+    setupModal(progressModal);
     
-    // First, try the configuration for 10 seconds
-    const tryResult = await netplanAction('try_config', { timeout: 10 });
+    const progressFill = progressModal.querySelector('#netplan-progress-fill');
+    const countdownText = progressModal.querySelector('#countdown-text');
+    const tryStatus = progressModal.querySelector('#try-status');
+    const applyStatus = progressModal.querySelector('#apply-status');
+    
+    let currentSecond = timeoutSeconds;
+    
+    // Update progress every 100ms for smooth animation
+    const updateInterval = setInterval(() => {
+      currentSecond -= 0.1;
+      
+      if (currentSecond <= 0) {
+        clearInterval(updateInterval);
+        currentSecond = 0;
+      }
+      
+      // Update progress bar (reverse progress - starts full, empties as time passes)
+      const progressPercentage = (currentSecond / timeoutSeconds) * 100;
+      progressFill.style.width = `${progressPercentage}%`;
+      
+      // Update countdown text
+      const displaySeconds = Math.ceil(currentSecond);
+      countdownText.textContent = displaySeconds;
+      
+      // Change color as time runs out
+      if (progressPercentage > 50) {
+        progressFill.style.backgroundColor = 'var(--network-success)';
+      } else if (progressPercentage > 20) {
+        progressFill.style.backgroundColor = 'var(--network-warning)';
+      } else {
+        progressFill.style.backgroundColor = 'var(--network-danger)';
+      }
+    }, 100);
+    
+    // Store cleanup function on modal for external access
+    progressModal._cleanup = () => {
+      clearInterval(updateInterval);
+    };
+    
+    // Store modal reference and progress control
+    progressModal._markTryComplete = () => {
+      clearInterval(updateInterval);
+      tryStatus.classList.remove('active');
+      tryStatus.classList.add('complete');
+      applyStatus.classList.add('active');
+      
+      progressFill.style.width = '100%';
+      progressFill.style.backgroundColor = 'var(--network-success)';
+      countdownText.textContent = '✓';
+      
+      const progressInfo = progressModal.querySelector('.progress-info p:last-child');
+      progressInfo.textContent = 'Configuration test completed successfully! Applying changes...';
+    };
+    
+    progressModal._markApplyComplete = () => {
+      applyStatus.classList.remove('active');
+      applyStatus.classList.add('complete');
+      
+      setTimeout(() => {
+        progressModal.close();
+        resolve();
+      }, 1500);
+    };
+    
+    progressModal._markError = (errorMessage) => {
+      clearInterval(updateInterval);
+      tryStatus.classList.remove('active');
+      tryStatus.classList.add('error');
+      
+      progressFill.style.backgroundColor = 'var(--network-danger)';
+      countdownText.textContent = '✗';
+      
+      const progressInfo = progressModal.querySelector('.progress-info p:last-child');
+      progressInfo.textContent = `Error: ${errorMessage}`;
+      progressInfo.style.color = 'var(--network-danger)';
+      
+      setTimeout(() => {
+        progressModal.close();
+        resolve();
+      }, 3000);
+    };
+    
+    progressModal.addEventListener('close', () => {
+      clearInterval(updateInterval);
+    });
+    
+    progressModal.showModal();
+    
+    // Return modal reference for external control
+    return progressModal;
+  });
+}
 
-    if (tryResult.error) {
-      throw new Error(`Netplan try failed: ${tryResult.error}`);
-    }
+// Helper function to safely apply netplan configuration with configurable timeout
+// This ensures network configuration changes are tested before permanent application
+async function safeNetplanApply(options = {}) {
+  try {
+    // Use default timeout of 10 seconds and allow override via options
+    let config = { timeout: 10, skipTry: false };
+    
+    // Use provided options (no modal for timeout configuration)
+    config = { ...config, ...options };
 
-    if (tryResult.warning) {
-      alert('⚠️ ' + tryResult.warning);
-    }
-
-    console.log('Netplan try succeeded or skipped, applying configuration...');
-    setStatus('Applying netplan configuration...');
-
-    // If try succeeded or was skipped, apply the configuration
-    const applyResult = await netplanAction('apply_config');
-
-    if (applyResult.error) {
-      console.warn('Netplan apply had issues:', applyResult.error);
-      // Don't throw error, just warn - the config might still work
-      return { success: true, warning: applyResult.error };
+    if (config.skipTry) {
+      console.log('⚡ Applying netplan configuration directly (skipping try)...');
+      setStatus('Applying netplan configuration directly...');
+      
+      const applyResult = await netplanAction('apply_direct');
+      
+      if (applyResult.error) {
+        console.warn('Netplan apply had issues:', applyResult.error);
+        return { success: true, warning: applyResult.error };
+      } else {
+        console.log('Netplan configuration applied successfully (direct)');
+        return { success: true };
+      }
     } else {
-      console.log('Netplan configuration applied successfully');
-      return { success: true };
+      console.log(`🧪 Testing netplan configuration with "netplan try" (${config.timeout}s timeout)...`);
+      setStatus(`Testing netplan configuration (${config.timeout}s timeout)...`);
+      
+      // Show progress bar modal
+      const progressModalPromise = showNetplanTryProgress(config.timeout);
+      const progressModal = await new Promise(resolve => {
+        setTimeout(() => {
+          const modal = document.querySelector('.netplan-progress-modal');
+          resolve(modal);
+        }, 100);
+      });
+      
+      try {
+        // First, try the configuration with specified timeout
+        const tryResult = await netplanAction('try_config', { timeout: config.timeout });
+
+        if (tryResult.error) {
+          if (progressModal && progressModal._markError) {
+            progressModal._markError(tryResult.error);
+          }
+          throw new Error(`Netplan try failed: ${tryResult.error}`);
+        }
+
+        if (tryResult.warning) {
+          console.warn('⚠️ ' + tryResult.warning);
+        }
+
+        // Mark try as complete
+        if (progressModal && progressModal._markTryComplete) {
+          progressModal._markTryComplete();
+        }
+
+        console.log('Netplan try succeeded, applying configuration...');
+        setStatus('Applying netplan configuration...');
+
+        // If try succeeded, apply the configuration directly (skip try)
+        const applyResult = await netplanAction('apply_direct');
+
+        // Mark apply as complete
+        if (progressModal && progressModal._markApplyComplete) {
+          progressModal._markApplyComplete();
+        }
+
+        if (applyResult.error) {
+          console.warn('Netplan apply had issues:', applyResult.error);
+          // Don't throw error, just warn - the config might still work
+          return { success: true, warning: applyResult.error };
+        } else {
+          console.log('Netplan configuration applied successfully');
+          return { success: true };
+        }
+      } catch (error) {
+        // Handle errors and update progress modal
+        if (progressModal && progressModal._markError) {
+          progressModal._markError(error.message || 'Unknown error');
+        }
+        throw error;
+      }
     }
     
   } catch (error) {
     console.error('Netplan configuration failed:', error);
     throw new Error(`Failed to apply netplan configuration: ${error.message || error}`);
   }
+}
+
+// Convenience function for silent/automated apply with default settings
+async function quickNetplanApply(timeout = 10) {
+  return await safeNetplanApply({ timeout, silent: true });
 }
 
 // Enhanced command runner with interface name fallback
@@ -273,7 +465,11 @@ async function getCachedInterfaceDetails(interfaceName) {
   
   // Get fresh data
   try {
+    const t0 = (window.performance && performance.now) ? performance.now() : Date.now();
     const ifconfigInfo = await run('ifconfig', [interfaceName], { superuser: 'try' });
+    const t1 = (window.performance && performance.now) ? performance.now() : Date.now();
+    const dt = (t1 - t0).toFixed(2);
+    console.log(`Command execution (${interfaceName}): ${dt} ms`);
     
     // Cache the result
     interfaceDetailsCache.set(interfaceName, ifconfigInfo);
@@ -512,6 +708,7 @@ const ALL_INTERFACES_CACHE_TTL = 30000; // 30 seconds
 
 // Loading state to prevent concurrent loads
 let isLoadingInterfaces = false;
+let lastInterfaceLoad = null;
 
 // Cache for individual interface details to reduce ifconfig calls
 let interfaceDetailsCache = new Map();
@@ -601,18 +798,37 @@ function clearPhysicalInterfacesCache() {
   interfaceDetailsCacheTime.clear();
 }
 
-async function loadInterfaces() {
+async function loadInterfaces(force = false) {
+  console.time('loadInterfaces');
+  if (window.performance && performance.mark) {
+    performance.mark('xavs:load:start');
+  }
   // Prevent concurrent loading
   if (isLoadingInterfaces) {
     console.log('Interface loading already in progress, skipping...');
     return;
   }
   
+  // For operations that modify interfaces, force should be true to ensure fresh data
+  const cacheTimeout = force ? 0 : 30000; // 30 seconds for normal loads, no cache for forced loads
+  
+  // Check if we have recently loaded interfaces and cache is still valid
+  if (lastInterfaceLoad && (Date.now() - lastInterfaceLoad) < cacheTimeout) {
+    console.log('Using cached interface data');
+    // Even with cached data, we should refresh the display
+    await sortAndDisplayInterfaces();
+    return;
+  }
+
   isLoadingInterfaces = true;
+  lastInterfaceLoad = Date.now();
   
   try {
-    console.log('Loading interfaces...');
+    console.log(`Loading interfaces${force ? ' (forced)' : ''}...`);
     setStatus('Loading interfaces...');
+    
+    // Clear cached interface classification when reloading interfaces
+    window.cachedInterfaceClassification = null;
 
     const tbody = $('#table-interfaces tbody');
     if (!tbody) {
@@ -621,20 +837,54 @@ async function loadInterfaces() {
       return;
     }
 
-    try {
-      await run('echo', ['test']);
-      console.log('Basic command test passed');
-    } catch (e) {
-      throw new Error('Cockpit command execution not working: ' + e);
+  // If this is a forced load but we already have interfaces in memory, display them immediately
+    if (force && Array.isArray(globalInterfaces) && globalInterfaces.length > 0) {
+      try {
+        console.log('Forced load: rendering cached interfaces immediately (stale-while-revalidate)');
+        await sortAndDisplayInterfaces();
+      } catch (e) {
+        // Ignore rendering cache errors; proceed to fetch fresh data
+      }
     }
+
+  // Skip extra sanity command; rely on downstream error handling
 
     // Use ifconfig for all interface discovery - no fallback
     let interfaces = [];
     
     try {
       console.log('Using ifconfig for interface discovery...');
-      const ifconfigOutput = await getCachedIfconfigData();
+      
+      // Get ifconfig data asynchronously
+      const ifconfigPromise = getCachedIfconfigData();
+      
+      // While waiting for ifconfig, clear the table and show loading state
+      const tbody = $('#table-interfaces tbody');
+      if (tbody) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="8" class="text-center">
+              <div class="spinner-border spinner-border-sm" role="status">
+                <span class="sr-only">Loading...</span>
+              </div>
+              Loading interfaces...
+            </td>
+          </tr>
+        `;
+      }
+      
+      // Now wait for ifconfig data
+      const ifconfigOutput = await ifconfigPromise;
+      if (window.performance && performance.mark) {
+        performance.mark('xavs:ifconfig:received');
+      }
+      
+      // Parse in the background
+      await new Promise(resolve => setTimeout(resolve, 0));
       interfaces = parseIfconfigOutput(ifconfigOutput);
+      if (window.performance && performance.mark) {
+        performance.mark('xavs:ifconfig:parsed');
+      }
       console.log('Successfully parsed interfaces using ifconfig:', interfaces.length);
       
       if (interfaces.length === 0) {
@@ -645,7 +895,8 @@ async function loadInterfaces() {
       throw new Error('Interface discovery failed. Please ensure ifconfig is available on the system.');
     }
 
-    console.log('Parsed', interfaces.length, 'interfaces:', interfaces.map(i => i.dev));
+  // Keep logs light to reduce console overhead during message handling
+  console.log('Parsed', interfaces.length, 'interfaces');
 
     // Store interfaces globally for sorting
     globalInterfaces = interfaces;
@@ -658,15 +909,31 @@ async function loadInterfaces() {
 
     // Display sorted interfaces
     const sortedInterfaces = sortInterfaces(interfaces);
+    if (window.performance && performance.mark) {
+      performance.mark('xavs:display:start');
+    }
     await displayInterfaces(sortedInterfaces);
+    if (window.performance && performance.mark) {
+      performance.mark('xavs:display:end');
+    }
 
     setStatus(`Loaded ${interfaces.length} interfaces`);
     console.log('Interfaces loaded successfully');
     
-    // Trigger search filter update to show correct interface count
-    if (typeof window.updateInterfaceSearch === 'function') {
-      window.updateInterfaceSearch('');
+    // Run one-time immediate search to avoid debounce delay on first render
+    if (typeof window.performSearch === 'function') {
+      try { window.performSearch(''); } catch (e) { /* ignore */ }
+      window.__xavsInitialSearchDone = true;
     }
+    // Defer a secondary search call only if initial couldn't run
+    setTimeout(() => {
+      if (!window.__xavsInitialSearchDone && typeof window.updateInterfaceSearch === 'function') {
+        window.updateInterfaceSearch('');
+      }
+      if (window.performance && performance.mark && performance.measure) {
+        performance.mark('xavs:search:scheduled');
+      }
+    }, 50);
     
   } catch (error) {
     console.error('Failed to load interfaces:', error);
@@ -677,11 +944,24 @@ async function loadInterfaces() {
     tbody.appendChild(row);
   } finally {
     isLoadingInterfaces = false;
+    console.timeEnd('loadInterfaces');
+    if (window.performance && performance.measure) {
+      try {
+        performance.measure('xavs:ifconfig:wait', 'xavs:load:start', 'xavs:ifconfig:received');
+        performance.measure('xavs:parse:duration', 'xavs:ifconfig:received', 'xavs:ifconfig:parsed');
+        performance.measure('xavs:display:duration', 'xavs:display:start', 'xavs:display:end');
+        const measures = performance.getEntriesByType('measure').filter(m => m.name.startsWith('xavs:'));
+        measures.forEach(m => console.log(`[perf] ${m.name}: ${m.duration.toFixed(2)} ms`));
+      } catch (e) {
+        // ignore measure errors if marks missing
+      }
+    }
   }
 }
 
 // Parse ifconfig -a output
 function parseIfconfigOutput(output) {
+  console.time('Ifconfig parsing');
   const interfaces = [];
   const interfaceBlocks = output.split(/\n(?=\S)/); // Split on lines that start with non-whitespace
   
@@ -785,6 +1065,7 @@ function parseIfconfigOutput(output) {
     });
   }
   
+  console.timeEnd('Ifconfig parsing');
   return interfaces;
 }
 
@@ -988,24 +1269,42 @@ function createDetailRow(iface, deviceInfo) {
 }
 
 // Helper functions for interface categorization
+// Cache interface categories and descriptions
+const interfaceCategoryMap = new Map();
+const interfaceDescriptionMap = new Map();
+
 function getInterfaceCategory(iface) {
-  if (iface.dev.startsWith('docker')) return 'Container Network';
-  if (iface.dev.startsWith('virbr')) return 'Virtual Machine Network';
-  if (iface.dev.startsWith('veth')) return 'Virtual Ethernet';
-  if (iface.dev.startsWith('tun') || iface.dev.startsWith('tap')) return 'VPN/Tunnel';
-  if (iface.dev.startsWith('ppp')) return 'Point-to-Point Protocol';
-  return 'Network Interface';
+  const cached = interfaceCategoryMap.get(iface.dev);
+  if (cached) return cached;
+  
+  let category;
+  if (iface.dev.startsWith('docker')) category = 'Container Network';
+  else if (iface.dev.startsWith('virbr')) category = 'Virtual Machine Network';
+  else if (iface.dev.startsWith('veth')) category = 'Virtual Ethernet';
+  else if (iface.dev.startsWith('tun') || iface.dev.startsWith('tap')) category = 'VPN/Tunnel';
+  else if (iface.dev.startsWith('ppp')) category = 'Point-to-Point Protocol';
+  else category = 'Network Interface';
+  
+  interfaceCategoryMap.set(iface.dev, category);
+  return category;
 }
 
 function getInterfaceDescription(iface) {
-  if (iface.dev.startsWith('docker')) return 'Used by Docker containers for networking';
-  if (iface.dev.startsWith('virbr')) return 'Virtual bridge for VM networking';
-  if (iface.dev.startsWith('veth')) return 'Virtual ethernet pair for containers';
-  if (iface.dev.startsWith('tun')) return 'TUN interface for VPN/tunneling';
-  if (iface.dev.startsWith('tap')) return 'TAP interface for VPN/tunneling';
-  if (iface.dev.startsWith('ppp')) return 'Point-to-point connection interface';
-  if (iface.dev === 'lo') return 'System loopback interface (127.0.0.1)';
-  return 'Standard network interface for system connectivity';
+  const cached = interfaceDescriptionMap.get(iface.dev);
+  if (cached) return cached;
+  
+  let description;
+  if (iface.dev.startsWith('docker')) description = 'Used by Docker containers for networking';
+  else if (iface.dev.startsWith('virbr')) description = 'Virtual bridge for VM networking';
+  else if (iface.dev.startsWith('veth')) description = 'Virtual ethernet pair for containers';
+  else if (iface.dev.startsWith('tun')) description = 'TUN interface for VPN/tunneling';
+  else if (iface.dev.startsWith('tap')) description = 'TAP interface for VPN/tunneling';
+  else if (iface.dev.startsWith('ppp')) description = 'Point-to-point connection interface';
+  else if (iface.dev === 'lo') description = 'System loopback interface (127.0.0.1)';
+  else description = 'Standard network interface for system connectivity';
+  
+  interfaceDescriptionMap.set(iface.dev, description);
+  return description;
 }
 
 let globalInterfaces = []; // Store interfaces for sorting
@@ -1023,25 +1322,90 @@ async function displayInterfaces(interfaces) {
   
   tbody.innerHTML = '';
   
-  // Process interfaces with small delays to prevent blocking the UI
-  for (let i = 0; i < interfaces.length; i++) {
-    const iface = interfaces[i];
+  // Cache interface classification once for all interfaces to improve performance
+  if (!window.cachedInterfaceClassification) {
+    try {
+      const classificationResult = await netplanAction('get_interface_classification');
+      if (classificationResult.success) {
+        window.cachedInterfaceClassification = classificationResult.classification;
+        console.log('Interface classification cached for performance');
+      }
+    } catch (error) {
+      console.warn('Failed to cache interface classification:', error);
+      window.cachedInterfaceClassification = { systemManaged: {}, cockpitManaged: {} };
+    }
+  }
+  
+  // Pre-process interface details in smaller chunks to avoid blocking
+  console.log('Pre-processing interface details...');
+  console.time('Pre-processing interface details');
+  const interfaceDetails = [];
+  const chunkSize = 5; // Process 5 interfaces at a time
+  
+  for (let i = 0; i < interfaces.length; i += chunkSize) {
+    const chunk = interfaces.slice(i, i + chunkSize);
+    const chunkDetails = await Promise.all(
+      chunk.map(async (iface) => {
+        const deviceInfo = await createEnhancedDeviceDisplayName(iface.dev, iface.type);
+        return { iface, deviceInfo };
+      })
+    );
+    interfaceDetails.push(...chunkDetails);
     
-    // Yield control every 5 interfaces to prevent blocking (optimized from 3)
-    if (i > 0 && i % 5 === 0) {
+    // Yield to main thread after each chunk
+    if (i + chunkSize < interfaces.length) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+  }
+  
+  console.timeEnd('Pre-processing interface details');
+  console.log('Interface details pre-processed');
+  
+  // Use document fragment for batch DOM operations (performance optimization)
+  const fragment = document.createDocumentFragment();
+  
+  // Process interfaces in larger batches for better performance
+  for (let i = 0; i < interfaceDetails.length; i++) {
+    const { iface, deviceInfo } = interfaceDetails[i];
+    
+    // Yield control every 8 interfaces instead of 5 (less frequent yielding)
+    if (i > 0 && i % 8 === 0) {
       await new Promise(resolve => setTimeout(resolve, 0));
     }
     
     const row = document.createElement('tr');
     row.style.opacity = '0';
     row.style.transform = 'translateY(-10px)';
+    
+    // Check if this interface is system-managed for visual differentiation
+    let isSystemManaged = false;
+    let interfaceClassification = null;
+    
+    // Use cached classification to avoid repeated API calls
+    if (window.cachedInterfaceClassification) {
+      interfaceClassification = window.cachedInterfaceClassification;
+      isSystemManaged = !!(interfaceClassification.systemManaged && interfaceClassification.systemManaged[iface.dev] && 
+                          !(interfaceClassification.cockpitManaged && interfaceClassification.cockpitManaged[iface.dev]));
+    }
 
-    // Enhanced device name display with bonding/bridging info
-    const deviceInfo = await createEnhancedDeviceDisplayName(iface.dev, iface.type);
+    // Enhanced device name display with bonding/bridging info (now synchronous)
     const deviceCell = document.createElement('td');
     
     // Apply styling based on interface type
-    if (deviceInfo.isVlan) {
+    if (isSystemManaged) {
+      deviceCell.innerHTML = `
+        <div style="font-weight: 600; color: var(--warning-color); position: relative;">
+          ${deviceInfo.displayName}
+          <span style="background: #ffa500; color: white; font-size: 0.6rem; padding: 1px 4px; border-radius: 3px; margin-left: 8px;">SYS</span>
+        </div>
+        <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
+          ${deviceInfo.subtitle ? deviceInfo.subtitle + ' • ' : ''}System-managed interface
+        </div>
+      `;
+      row.style.background = 'linear-gradient(90deg, rgba(255,165,0,0.08) 0%, rgba(255,255,255,0) 100%)';
+      row.style.borderLeft = '3px solid #ffa500';
+      row.title = 'System-managed interface (defined in system configuration files)';
+    } else if (deviceInfo.isVlan) {
       deviceCell.innerHTML = `
         <div style="font-weight: 600; color: var(--primary-color);">${deviceInfo.displayName}</div>
         <div style="font-size: 0.75rem; color: var(--muted-color); margin-top: 2px;">
@@ -1175,6 +1539,7 @@ async function displayInterfaces(interfaces) {
       iface.state === 'UP' ? 'state-up' : 'state-down'
     );
 
+    // Use the interface classification we already retrieved
     const btnSetIP = createActionButton('IP', '<i class="fas fa-network-wired"></i>', async () => {
       // Check if interface is critical before allowing IP changes
       const isCritical = checkIfInterfaceCritical(iface);
@@ -1264,8 +1629,7 @@ async function displayInterfaces(interfaces) {
           return;
         }
 
-        const ipRegex = /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/([0-9]|[1-2][0-9]|3[0-2])$/;
-        if (!ipRegex.test(newIp)) {
+  if (!window.isValidCIDR(newIp)) {
           alert('ℹ️ Invalid IP address format! Use CIDR notation (e.g., 192.168.1.100/24)');
           modal.querySelector('#new-ip-addr').focus();
           return;
@@ -1336,14 +1700,39 @@ async function displayInterfaces(interfaces) {
 
     // Add buttons to the container with staggered animation
     actionsContainer.appendChild(btnToggle);
-    actionsContainer.appendChild(btnSetIP);
+    // Note: Removed btnSetIP - IP changes now handled through Edit button
+    
+    // Add visual indication for system-managed interfaces
+    if (isSystemManaged) {
+      actionsContainer.style.borderLeft = '3px solid #ffa500';
+      actionsContainer.title = 'System-managed interface (defined in system configuration)';
+      
+      // Add system badge
+      const systemBadge = document.createElement('span');
+      systemBadge.className = 'badge badge-warning system-managed-badge';
+      systemBadge.textContent = 'SYS';
+      systemBadge.title = 'System-managed interface';
+      systemBadge.style.cssText = `
+        position: absolute;
+        top: -5px;
+        right: -5px;
+        font-size: 0.6rem;
+        background: #ffa500;
+        color: white;
+        border-radius: 3px;
+        padding: 1px 4px;
+        pointer-events: none;
+      `;
+      actionsContainer.style.position = 'relative';
+      actionsContainer.appendChild(systemBadge);
+    }
 
     // Add the container to the cell
     actionsCell.appendChild(actionsContainer);
     
-    // Add subtle staggered animation to buttons
+    // Add subtle staggered animation to buttons (only toggle button now)
     setTimeout(() => {
-      [btnToggle, btnSetIP].forEach((btn, index) => {
+      [btnToggle].forEach((btn, index) => {
         setTimeout(() => {
           btn.style.opacity = '0';
           btn.style.transform = 'scale(0.8)';
@@ -1431,11 +1820,12 @@ async function displayInterfaces(interfaces) {
     // Add the deviceCell as the first cell
     row.insertBefore(deviceCell, row.firstChild);
 
-    tbody.appendChild(row);
+    // Add to fragment instead of direct DOM manipulation
+    fragment.appendChild(row);
     
     // Add detailed information row (initially hidden)
     const detailRow = createDetailRow(iface, deviceInfo);
-    tbody.appendChild(detailRow);
+    fragment.appendChild(detailRow);
     
     // Add click handler to toggle details (click on device name area)
     deviceCell.style.cursor = 'pointer';
@@ -1481,6 +1871,11 @@ async function displayInterfaces(interfaces) {
       row.style.transform = 'translateY(0)';
     }, 50);
   }
+  
+  // Append all rows at once using document fragment (major performance optimization)
+  console.time('DOM updates for interfaces');
+  tbody.appendChild(fragment);
+  console.timeEnd('DOM updates for interfaces');
 }
 
 // Interface dependency checker
@@ -1700,18 +2095,18 @@ async function checkInterfaceDependencies(interfaceName) {
     console.log(`   - usedByBridges: ${dependencies.usedByBridges.length} (${dependencies.usedByBridges.join(', ')})`);
     console.log(`   - bridgePorts: ${bridgePorts.length} (${bridgePorts.map(p => p.name).join(', ')})`);
     console.log(`   - bondSlaves: ${bondSlaves.length} (${bondSlaves.map(s => s.name).join(', ')})`);
-    console.log(`   - hasVlans: ${dependencies.hasVlans.length} (${dependencies.hasVlans.join(', ')})`);
+  console.log(`   - hasVlans: ${dependencies.hasVlans.length} (${dependencies.hasVlans.join(', ')})`);
     
     if (dependencies.usedByBonds.length > 0 || dependencies.usedByBridges.length > 0) {
       // Interface is a member/slave of another construct - block deletion
-      dependencies.canDelete = false;
-      dependencies.warnings.push(`? Cannot delete: Interface is actively used by other network constructs.`);
-      console.log(`?? Blocking deletion: interface is used by other constructs`);
+  dependencies.canDelete = false;
+  dependencies.warnings.push(`✗ Cannot delete: Interface is actively used by other network constructs.`);
+  console.log(`⛔ Blocking deletion: interface is used by other constructs`);
     } else if (bridgePorts.length > 0 || bondSlaves.length > 0 || dependencies.hasVlans.length > 0) {
       // Interface is a bridge/bond/parent with dependents - allow with confirmation
-      dependencies.canDelete = true;
+    dependencies.canDelete = true;
   dependencies.warnings.push(`ℹ️ Deletion allowed but will affect dependent interfaces.`);
-      console.log(`? Allowing deletion with confirmation: interface has dependents`);
+    console.log(`⚠ Allowing deletion with confirmation: interface has dependents`);
     }
 
     // 7. Generate suggested deletion order
@@ -1749,7 +2144,7 @@ async function checkInterfaceDependencies(interfaceName) {
   dependencies.warnings.push(`ℹ️ Could not fully check dependencies: ${error.message}`);
   }
 
-  console.log(`?? Dependency check completed for ${interfaceName}:`, dependencies);
+  console.log(`✅ Dependency check completed for ${interfaceName}:`, dependencies);
   return dependencies;
 }
 
@@ -1800,7 +2195,7 @@ ${dependencies.suggestedOrder.join('\n')}
         ` : ''}
         ` : `
         <div style="margin: 1rem 0; padding: 1rem; background: #d4edda; border: 1px solid #c3e6cb; border-radius: 4px;">
-          <strong style="color: #155724;">? No Dependencies Found</strong>
+          <strong style="color: #155724;">✔ No Dependencies Found</strong>
           <p style="color: #155724; margin: 0.5rem 0;">This interface can be safely deleted without affecting other network constructs.</p>
         </div>
         `}
@@ -1831,7 +2226,7 @@ ${dependencies.suggestedOrder.join('\n')}
 
         <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
           <button type="button" class="btn" id="cancel-dependency-check" style="min-width: 120px; padding: 0.75rem 1.25rem;">
-            ? Cancel
+            ✖ Cancel
           </button>
           ${dependencies.canDelete ? `
           <button type="button" class="btn ${canDeleteClass}" id="confirm-dependency-delete" style="min-width: 200px; padding: 0.75rem 1.25rem;" ${dependencies.hasDependencies ? 'disabled' : ''}>
@@ -2197,3 +2592,6 @@ async function showCriticalInterfaceDownConfirmation(iface, criticalInfo) {
 window.getPhysicalInterfaces = getPhysicalInterfaces;
 window.clearPhysicalInterfacesCache = clearPhysicalInterfacesCache;
 window.loadInterfaces = loadInterfaces;
+window.safeNetplanApply = safeNetplanApply;
+window.quickNetplanApply = quickNetplanApply;
+window.showNetplanTryProgress = showNetplanTryProgress;

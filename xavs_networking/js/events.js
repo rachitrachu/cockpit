@@ -93,6 +93,9 @@ function setupTabs() {
         console.log('Initializing constructs tab...');
         // Forms are already initialized during main loading, no need to reload
         console.log('✅ Constructs tab forms already initialized');
+      } else if (targetId === 'routes') {
+        console.log('Initializing routes tab...');
+        loadRoutesTab();
       }
     });
   });
@@ -121,93 +124,36 @@ function setupEventHandlers() {
   if (btnShowNetplan) {
     btnShowNetplan.addEventListener('click', async () => {
       console.log('Show netplan config button clicked');
-      try {
-        setStatus('Loading netplan configuration...');
-
-        let config = '';
-        let filename = '99-cockpit.yaml';
-
+      
+      // Use the new multi-file UI
+      if (typeof window.showNetplanFileDialog === 'function') {
+        window.showNetplanFileDialog();
+      } else {
+        // Fallback to simple view
         try {
-          config = await run('cat', ['/etc/netplan/99-cockpit.yaml'], { superuser: 'try' });
-        } catch (e) {
-          console.warn('99-cockpit.yaml not found, trying other netplan files');
-
-          try {
-            const allConfigs = await run('bash', ['-c', 'for f in /etc/netplan/*.yaml; do echo "=== $f ==="; cat "$f" 2>/dev/null; echo ""; done'], { superuser: 'try' });
-            config = allConfigs;
-            filename = 'All Netplan Files';
-          } catch (e2) {
-            config = 'No netplan configuration files found.\n\nNetplan files are typically located in /etc/netplan/ and end with .yaml';
-            filename = 'No Configuration Found';
-          }
-        }
-
-        const modal = document.createElement('dialog');
-        modal.style.maxWidth = '80vw';
-        modal.style.maxHeight = '80vh';
-        modal.innerHTML = `
-          <div class="modal-content">
-            <h2><i class="fas fa-file-alt"></i> ${filename}</h2>
-            <div style="margin: 1rem 0;">
-              <label style="font-weight: 500; display: block; margin-bottom: 0.5rem;">
-                <i class="fas fa-cog"></i> Configuration Content:
-              </label>
-              <textarea readonly style="width: 100%; height: 400px; font-family: monospace; font-size: 0.875rem; padding: 1rem; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; resize: vertical;">${config}</textarea>
+          setStatus('Loading netplan configuration...');
+          const config = await run('cat', ['/etc/netplan/99-cockpit.yaml'], { superuser: 'try' });
+          const modal = document.createElement('dialog');
+          modal.innerHTML = `
+            <div class="modal-content">
+              <h2>Netplan Configuration</h2>
+              <pre style="background: var(--card-bg); padding: 1rem; border-radius: 4px; overflow: auto; max-height: 60vh;">${config}</pre>
+              <button class="btn" id="close-fallback-modal">Close</button>
             </div>
-            <div style="display: flex; gap: 1rem; justify-content: space-between; margin-top: 1rem;">
-              <button type="button" class="btn secondary" id="copy-config">
-                <i class="fas fa-copy"></i> Copy to Clipboard
-              </button>
-              <button type="button" class="btn primary" id="close-config-modal">
-                <i class="fas fa-times"></i> Close
-              </button>
-            </div>
-          </div>
-        `;
-
-        document.body.appendChild(modal);
-        setupModal(modal);
-
-        const closeBtn = modal.querySelector('#close-config-modal');
-        if (closeBtn) {
-          closeBtn.addEventListener('click', () => {
-            modal.close();
-          });
+          `;
+          document.body.appendChild(modal);
+          
+          // Add event listener for close button
+          const closeBtn = modal.querySelector('#close-fallback-modal');
+          closeBtn.addEventListener('click', () => modal.close());
+          
+          modal.showModal();
+          modal.addEventListener('close', () => document.body.removeChild(modal));
+        } catch (error) {
+          alert('Failed to load netplan configuration: ' + error.message);
+        } finally {
+          setStatus('Ready');
         }
-
-        const copyBtn = modal.querySelector('#copy-config');
-        if (copyBtn) {
-          copyBtn.addEventListener('click', async () => {
-            try {
-              await navigator.clipboard.writeText(config);
-              copyBtn.innerHTML = '<i class="fas fa-check"></i> Copied!';
-              copyBtn.className = 'btn success';
-              setTimeout(() => {
-                copyBtn.innerHTML = '<i class="fas fa-copy"></i> Copy to Clipboard';
-                copyBtn.className = 'btn secondary';
-              }, 2000);
-            } catch (err) {
-              // Fallback for older browsers
-              const textarea = modal.querySelector('textarea');
-              textarea.select();
-              document.execCommand('copy');
-              copyBtn.innerHTML = '<i class="fas fa-check"></i> Copied!';
-              copyBtn.className = 'btn success';
-              setTimeout(() => {
-                copyBtn.innerHTML = '<i class="fas fa-copy"></i> Copy to Clipboard';
-                copyBtn.className = 'btn secondary';
-              }, 2000);
-            }
-          });
-        }
-
-        modal.showModal();
-
-      } catch (error) {
-        console.error('Show config failed:', error);
-        alert(`Failed to show netplan configuration:\n${error.message || error}`);
-      } finally {
-        setStatus('Ready');
       }
     });
   }
@@ -246,7 +192,7 @@ function setupEventHandlers() {
           console.log('? Backup directory created/exists');
         } catch (e) {
           console.error('? Failed to create backup directory:', e);
-          alert(`? Failed to create backup directory:\n${e}`);
+          alert(`✗ Failed to create backup directory:\n${e}`);
           return;
         }
 
@@ -266,7 +212,7 @@ function setupEventHandlers() {
 `;
             await run('bash', ['-c', `echo '${emptyConfig}' > ${backupDir}/netplan-empty-backup-${timestamp}.txt`], { superuser: 'try' });
             
-            alert(`?? Backup created with warning!\n\nNo netplan .yaml files were found, but a backup record was created at:\n${backupDir}/netplan-empty-backup-${timestamp}.txt`);
+            alert(`⚠ Backup created with warning!\n\nNo netplan .yaml files were found, but a backup record was created at:\n${backupDir}/netplan-empty-backup-${timestamp}.txt`);
             return;
           }
         } catch (e) {
@@ -287,7 +233,7 @@ function setupEventHandlers() {
             await run('bash', ['-c', `cp -r /etc/netplan ${backupDir}/netplan-${timestamp}`], { superuser: 'require' });
             const altBackupPath = `${backupDir}/netplan-${timestamp}`;
             
-            alert(`? Backup created using alternative method!\n\n?? Backup Location:\n${altBackupPath}\n\n?? The netplan directory has been copied to the backup location.`);
+            alert(`ℹ️ Backup created using alternative method!\n\n📁 Backup Location:\n${altBackupPath}\n\nℹ️ The netplan directory has been copied to the backup location.`);
             return;
           } catch (e2) {
             console.error('? Alternative backup method also failed:', e2);
@@ -409,9 +355,9 @@ function setupEventHandlers() {
         console.log('Netplan test result:', result);
 
         if (result.error) {
-          alert(`? Netplan test failed:\n${result.error}\n\nCheck console for details.`);
+          alert(`✗ Netplan test failed:\n${result.error}\n\nCheck console for details.`);
         } else {
-          alert('? Netplan test successful!\n\nCheck /etc/netplan/99-cockpit.yaml for changes.');
+          alert('✔ Netplan test successful!\n\nCheck /etc/netplan/99-cockpit.yaml for changes.');
 
           try {
             const netplanContent = await run('cat', ['/etc/netplan/99-cockpit.yaml'], { superuser: 'try' });
@@ -422,7 +368,7 @@ function setupEventHandlers() {
         }
       } catch (error) {
         console.error('Netplan test error:', error);
-        alert(`? Netplan test failed: ${error}`);
+  alert(`✗ Netplan test failed: ${error}`);
       } finally {
         setStatus('Ready');
       }
@@ -447,7 +393,7 @@ function setupEventHandlers() {
 
         let message = '';
         if (fileExists) {
-          message = `? Netplan file exists at /etc/netplan/99-cockpit.yaml\n\n?? Current contents:\n${fileContent}`;
+          message = `✔ Netplan file exists at /etc/netplan/99-cockpit.yaml\n\nℹ️ Current contents:\n${fileContent}`;
         } else {
           message = 'ℹ️ Netplan file does not exist at /etc/netplan/99-cockpit.yaml\n\nThe file will be created when you first configure an IP address.';
         }
@@ -462,7 +408,7 @@ function setupEventHandlers() {
         }
 
       } catch (error) {
-        alert(`? Failed to check netplan file: ${error}`);
+        alert(`✗ Failed to check netplan file: ${error}`);
       } finally {
         setStatus('Ready');
       }
@@ -519,6 +465,71 @@ function setupEventHandlers() {
           console.error('Traceroute error:', e);
         }
       }
+    });
+  }
+
+  // Routes Tab Event Handlers
+  const btnRefreshRoutes = $('#btn-refresh-routes');
+  if (btnRefreshRoutes) {
+    btnRefreshRoutes.addEventListener('click', () => {
+      console.log('Refresh routes button clicked');
+      loadRoutesTab();
+    });
+  }
+
+  const btnPreserveAllRoutes = $('#btn-preserve-all-routes');
+  if (btnPreserveAllRoutes) {
+    btnPreserveAllRoutes.addEventListener('click', async () => {
+      await preserveAllRoutesAction();
+    });
+  }
+
+  const btnPreserveRoutesDetailed = $('#btn-preserve-routes-detailed');
+  if (btnPreserveRoutesDetailed) {
+    btnPreserveRoutesDetailed.addEventListener('click', async () => {
+      await preserveAllRoutesAction();
+    });
+  }
+
+  const btnAddCustomRoute = $('#btn-add-custom-route');
+  if (btnAddCustomRoute) {
+    btnAddCustomRoute.addEventListener('click', () => {
+      const addRouteCard = $('#add-route-card');
+      if (addRouteCard) {
+        addRouteCard.style.display = addRouteCard.style.display === 'none' ? 'block' : 'none';
+        if (addRouteCard.style.display === 'block') {
+          populateRouteInterfaceDropdown();
+        }
+      }
+    });
+  }
+
+  const btnSaveCustomRoute = $('#btn-save-custom-route');
+  if (btnSaveCustomRoute) {
+    btnSaveCustomRoute.addEventListener('click', async () => {
+      await addCustomRouteAction();
+    });
+  }
+
+  const btnCancelCustomRoute = $('#btn-cancel-custom-route');
+  if (btnCancelCustomRoute) {
+    btnCancelCustomRoute.addEventListener('click', () => {
+      const addRouteCard = $('#add-route-card');
+      if (addRouteCard) {
+        addRouteCard.style.display = 'none';
+        // Clear form
+        $('#route-destination').value = '';
+        $('#route-gateway').value = '';
+        $('#route-interface').value = '';
+        $('#add-route-out').textContent = '';
+      }
+    });
+  }
+
+  const btnExportRoutes = $('#btn-export-routes');
+  if (btnExportRoutes) {
+    btnExportRoutes.addEventListener('click', async () => {
+      await exportRoutesAction();
     });
   }
 
@@ -785,6 +796,313 @@ ${dns}`;
   }
 }
 
+// Routes Tab Functions
+async function loadRoutesTab() {
+  console.log('Loading routes tab...');
+  
+  try {
+    setStatus('Loading routes...');
+    
+    // Get current system routes
+    const routeResult = await netplanAction('get_routes');
+    const systemRoutes = routeResult.success ? routeResult.routes : [];
+    
+    // Get netplan configuration to see which routes are preserved
+    const configResult = await netplanAction('load_netplan');
+    const netplanConfig = configResult.network || {};
+    
+    const routesContainer = $('#routes-table-container');
+    const routesStatus = $('#routes-status');
+    
+    if (routesContainer) {
+      if (systemRoutes.length > 0) {
+        // Show status legend
+        if (routesStatus) {
+          routesStatus.style.display = 'block';
+        }
+        
+        let routeTableHtml = `
+          <table style="width: 100%; border-collapse: collapse; margin: 1rem 0;">
+            <thead>
+              <tr style="background: #f8f9fa;">
+                <th style="padding: 0.75rem; border: 1px solid #dee2e6; text-align: left; font-weight: 600;">Destination</th>
+                <th style="padding: 0.75rem; border: 1px solid #dee2e6; text-align: left; font-weight: 600;">Gateway</th>
+                <th style="padding: 0.75rem; border: 1px solid #dee2e6; text-align: left; font-weight: 600;">Interface</th>
+                <th style="padding: 0.75rem; border: 1px solid #dee2e6; text-align: left; font-weight: 600;">Status</th>
+                <th style="padding: 0.75rem; border: 1px solid #dee2e6; text-align: center; font-weight: 600;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${systemRoutes.map((route, index) => {
+                const isInNetplan = checkRouteInNetplan(route, netplanConfig);
+                const statusIcon = isInNetplan ? '✅' : '⚠️';
+                const statusText = isInNetplan ? 'In Netplan' : 'System Only';
+                const statusColor = isInNetplan ? '#28a745' : '#ffc107';
+                
+                return `
+                  <tr style="border-bottom: 1px solid #dee2e6;">
+                    <td style="padding: 0.75rem; border: 1px solid #dee2e6; font-family: monospace; font-size: 0.9rem;">${route.to}</td>
+                    <td style="padding: 0.75rem; border: 1px solid #dee2e6; font-family: monospace; font-size: 0.9rem;">${route.via || '-'}</td>
+                    <td style="padding: 0.75rem; border: 1px solid #dee2e6; font-family: monospace; font-size: 0.9rem;">${route.dev || '-'}</td>
+                    <td style="padding: 0.75rem; border: 1px solid #dee2e6; color: ${statusColor}; font-weight: 500;">${statusIcon} ${statusText}</td>
+                    <td style="padding: 0.75rem; border: 1px solid #dee2e6; text-align: center;">
+                      ${!isInNetplan && route.dev ? `
+                        <button class="btn btn-sm btn-outline-success" onclick="preserveSpecificRoute(${index})" title="Preserve this route in netplan">
+                          <i class="fas fa-shield-alt"></i>
+                        </button>
+                      ` : ''}
+                      ${isInNetplan ? `
+                        <button class="btn btn-sm btn-outline-danger" onclick="removeSpecificRoute(${index})" title="Remove this route from netplan">
+                          <i class="fas fa-trash"></i>
+                        </button>
+                      ` : ''}
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        `;
+        
+        routesContainer.innerHTML = routeTableHtml;
+        
+        // Store routes globally for action functions
+        window.currentSystemRoutes = systemRoutes;
+        window.currentNetplanConfig = netplanConfig;
+        
+      } else {
+        routesContainer.innerHTML = '<p style="color: #6c757d; font-style: italic; text-align: center; padding: 2rem;">No routes found in system.</p>';
+        if (routesStatus) {
+          routesStatus.style.display = 'none';
+        }
+      }
+    }
+    
+    setStatus('Ready');
+  } catch (error) {
+    console.error('Failed to load routes tab:', error);
+    const routesContainer = $('#routes-table-container');
+    if (routesContainer) {
+      routesContainer.innerHTML = `<p style="color: #dc3545; text-align: center; padding: 2rem;">Failed to load routes: ${error.message}</p>`;
+    }
+    setStatus('Ready');
+  }
+}
+
+async function preserveAllRoutesAction() {
+  try {
+    setStatus('Preserving all system routes...');
+    const result = await netplanAction('preserve_routes');
+    
+    const outputElement = $('#route-actions-out');
+    if (result.error) {
+      if (outputElement) {
+        outputElement.textContent = `❌ Failed to preserve routes: ${result.error}`;
+      }
+      alert('Failed to preserve routes: ' + result.error);
+    } else {
+      if (outputElement) {
+        outputElement.textContent = `✅ ${result.message}`;
+      }
+      alert(`✅ ${result.message}`);
+      
+      // Reload the routes tab to show updated status
+      await loadRoutesTab();
+    }
+  } catch (error) {
+    const outputElement = $('#route-actions-out');
+    if (outputElement) {
+      outputElement.textContent = `❌ Error: ${error.message}`;
+    }
+    alert('Failed to preserve routes: ' + error.message);
+  } finally {
+    setStatus('Ready');
+  }
+}
+
+async function addCustomRouteAction() {
+  const destination = $('#route-destination')?.value?.trim();
+  const gateway = $('#route-gateway')?.value?.trim();
+  const interfaceName = $('#route-interface')?.value;
+  const outputElement = $('#add-route-out');
+  
+  if (!destination || !interfaceName) {
+    if (outputElement) {
+      outputElement.textContent = '❌ Destination and interface are required';
+    }
+    return;
+  }
+  
+  try {
+    setStatus('Adding custom route...');
+    
+    const routes = [{ to: destination, via: gateway || null }];
+    const result = await netplanAction('manage_routes', { 
+      name: interfaceName, 
+      routes: routes, 
+      action: 'add' 
+    });
+    
+    if (result.error) {
+      if (outputElement) {
+        outputElement.textContent = `❌ Failed to add route: ${result.error}`;
+      }
+    } else {
+      if (outputElement) {
+        outputElement.textContent = `✅ Route added successfully`;
+      }
+      
+      // Clear form
+      $('#route-destination').value = '';
+      $('#route-gateway').value = '';
+      $('#route-interface').value = '';
+      
+      // Hide the form
+      const addRouteCard = $('#add-route-card');
+      if (addRouteCard) {
+        addRouteCard.style.display = 'none';
+      }
+      
+      // Reload routes tab
+      await loadRoutesTab();
+    }
+  } catch (error) {
+    if (outputElement) {
+      outputElement.textContent = `❌ Error: ${error.message}`;
+    }
+  } finally {
+    setStatus('Ready');
+  }
+}
+
+async function exportRoutesAction() {
+  try {
+    setStatus('Exporting routes...');
+    
+    const routeResult = await netplanAction('get_routes');
+    const routes = routeResult.success ? routeResult.routes : [];
+    
+    const exportData = {
+      timestamp: new Date().toISOString(),
+      routes: routes,
+      count: routes.length
+    };
+    
+    const dataStr = JSON.stringify(exportData, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(dataBlob);
+    link.download = `routes-export-${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    
+    const outputElement = $('#route-actions-out');
+    if (outputElement) {
+      outputElement.textContent = `✅ Exported ${routes.length} routes to ${link.download}`;
+    }
+    
+  } catch (error) {
+    const outputElement = $('#route-actions-out');
+    if (outputElement) {
+      outputElement.textContent = `❌ Export failed: ${error.message}`;
+    }
+  } finally {
+    setStatus('Ready');
+  }
+}
+
+async function populateRouteInterfaceDropdown() {
+  try {
+    const dropdown = $('#route-interface');
+    if (dropdown && window.interfaceCache) {
+      dropdown.innerHTML = '<option value="">Select interface...</option>';
+      
+      for (const iface of window.interfaceCache) {
+        if (iface.state === 'UP' || iface.state === 'DOWN') {
+          dropdown.innerHTML += `<option value="${iface.dev}">${iface.dev} (${iface.ipv4 || 'No IP'})</option>`;
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to populate interface dropdown:', error);
+  }
+}
+
+// Global functions for route actions (called from HTML onclick)
+window.preserveSpecificRoute = async function(routeIndex) {
+  if (!window.currentSystemRoutes || !window.currentSystemRoutes[routeIndex]) {
+    alert('Route not found');
+    return;
+  }
+  
+  const route = window.currentSystemRoutes[routeIndex];
+  if (!route.dev) {
+    alert('Cannot preserve route without interface information');
+    return;
+  }
+  
+  try {
+    setStatus('Preserving route...');
+    
+    const routes = [{ to: route.to, via: route.via || null }];
+    const result = await netplanAction('manage_routes', {
+      name: route.dev,
+      routes: routes,
+      action: 'add'
+    });
+    
+    if (result.error) {
+      alert('Failed to preserve route: ' + result.error);
+    } else {
+      alert('✅ Route preserved successfully');
+      await loadRoutesTab();
+    }
+  } catch (error) {
+    alert('Failed to preserve route: ' + error.message);
+  } finally {
+    setStatus('Ready');
+  }
+};
+
+window.removeSpecificRoute = async function(routeIndex) {
+  if (!window.currentSystemRoutes || !window.currentSystemRoutes[routeIndex]) {
+    alert('Route not found');
+    return;
+  }
+  
+  const route = window.currentSystemRoutes[routeIndex];
+  if (!route.dev) {
+    alert('Cannot remove route without interface information');
+    return;
+  }
+  
+  if (!confirm(`Remove route ${route.to} from netplan configuration?`)) {
+    return;
+  }
+  
+  try {
+    setStatus('Removing route...');
+    
+    const routes = [{ to: route.to, via: route.via || null }];
+    const result = await netplanAction('manage_routes', {
+      name: route.dev,
+      routes: routes,
+      action: 'remove'
+    });
+    
+    if (result.error) {
+      alert('Failed to remove route: ' + result.error);
+    } else {
+      alert('✅ Route removed successfully');
+      await loadRoutesTab();
+    }
+  } catch (error) {
+    alert('Failed to remove route: ' + error.message);
+  } finally {
+    setStatus('Ready');
+  }
+};
+
 // Main setup function to initialize all events
 function setupEvents() {
   console.log('Setting up all event handlers...');
@@ -809,3 +1127,6 @@ window.loadDiagnostics = loadDiagnostics;
 window.setupTabs = setupTabs;
 window.setupEventHandlers = setupEventHandlers;
 window.setupEvents = setupEvents;
+window.loadRoutesTab = loadRoutesTab;
+window.preserveAllRoutesAction = preserveAllRoutesAction;
+window.addCustomRouteAction = addCustomRouteAction;

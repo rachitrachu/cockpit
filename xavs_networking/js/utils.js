@@ -137,30 +137,19 @@ function setStatus(msg) {
   }
 }
 
-function createButton(label, handler, className = 'btn') {
-  const btn = document.createElement('button');
-  btn.textContent = label;
-  btn.className = className;
-
-  btn.addEventListener('click', async () => {
-    const originalText = btn.textContent;
-    try {
-      btn.disabled = true;
-      btn.textContent = 'Loading...';
-      await handler();
-    } catch (e) {
-      console.error(`${label} failed:`, e);
-      alert(`${label} failed:\n${e}`);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = originalText;
-    }
-  });
-
-  return btn;
+// Validate IPv4 CIDR notation (e.g., 192.168.1.100/24)
+function isValidCIDR(value) {
+  if (!value || typeof value !== 'string') return false;
+  const m = value.trim().match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/);
+  if (!m) return false;
+  const octets = m.slice(1, 5).map(Number);
+  const mask = Number(m[5]);
+  if (mask < 0 || mask > 32) return false;
+  return octets.every(o => o >= 0 && o <= 255);
 }
 
-function createStatusBadge(state) {
+// Simple status badge; prefer ui-utils.createStatusBadge if available
+function createStatusBadgeSimple(state) {
   const span = document.createElement('span');
   const s = (state || 'unknown').toUpperCase();
   span.className = 'badge ' + (s === 'UP' || s === 'CONNECTED' ? 'state-up'
@@ -176,5 +165,10 @@ window.$ = $;
 window.$$ = $$;
 window.setupModal = setupModal;
 window.setStatus = setStatus;
-window.createButton = createButton;
-window.createStatusBadge = createStatusBadge;
+window.isValidCIDR = isValidCIDR;
+// Only assign the simple badge if no richer implementation exists
+if (typeof window.createStatusBadge !== 'function') {
+  window.createStatusBadge = createStatusBadgeSimple;
+}
+// Always expose the simple variant explicitly for opt-in use
+window.createStatusBadgeSimple = createStatusBadgeSimple;

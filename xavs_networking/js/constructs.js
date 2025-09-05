@@ -245,7 +245,7 @@ function setupConstructEventHandlers() {
           if (typeof clearPhysicalInterfacesCache === 'function') {
             clearPhysicalInterfacesCache();
           }
-          await loadInterfaces();
+          await loadInterfaces(true); // Force reload after VLAN creation
         }
       } catch (error) {
         console.error('VLAN creation error:', error);
@@ -365,7 +365,7 @@ function setupConstructEventHandlers() {
           if (typeof clearPhysicalInterfacesCache === 'function') {
             clearPhysicalInterfacesCache();
           }
-          await loadInterfaces();
+          await loadInterfaces(true); // Force reload after bridge creation
         }
       } catch (error) {
         console.error('Bridge creation error:', error);
@@ -490,7 +490,7 @@ function setupConstructEventHandlers() {
           if (typeof clearPhysicalInterfacesCache === 'function') {
             clearPhysicalInterfacesCache();
           }
-          await loadInterfaces();
+          await loadInterfaces(true); // Force reload after bond creation
         }
       } catch (error) {
         console.error('Bond creation error:', error);

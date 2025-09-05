@@ -26,6 +26,9 @@
         <li><a class="nav-link" data-target="panel-constructs" data-tab="constructs">
           <i class="fas fa-project-diagram"></i> VLAN / Bridge / Bond
         </a></li>
+        <li><a class="nav-link" data-target="panel-routes" data-tab="routes">
+          <i class="fas fa-route"></i> Routes
+        </a></li>
         <li><a class="nav-link" data-target="panel-diagnostics" data-tab="diagnostics">
           <i class="fas fa-stethoscope"></i> Diagnostics
         </a></li>
@@ -204,6 +207,108 @@
         </div>
       </section>
 
+      <!-- Routes -->
+      <section id="panel-routes" class="tab-pane">
+        <div class="toolbar">
+          <div class="left">
+            <button id="btn-refresh-routes" class="btn btn-outline-brand">
+              <i class="fas fa-sync-alt"></i> Refresh Routes
+            </button>
+            <button id="btn-preserve-all-routes" class="btn btn-outline-success">
+              <i class="fas fa-shield-alt"></i> Preserve All Routes
+            </button>
+          </div>
+          <div class="right">
+            <button id="btn-add-custom-route" class="btn btn-brand">
+              <i class="fas fa-plus"></i> Add Route
+            </button>
+          </div>
+        </div>
+
+        <div class="grid">
+          <!-- Current Routes Display -->
+          <div class="card" style="grid-column: 1 / -1;">
+            <h3><i class="fas fa-table"></i> Current System Routes</h3>
+            <div id="routes-status" style="margin: 1rem 0; padding: 1rem; background: #f8f9fa; border-radius: 8px; display: none;">
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <i class="fas fa-info-circle" style="color: #0056b3;"></i>
+                <strong>Route Status Legend:</strong>
+              </div>
+              <div style="margin-top: 0.5rem; font-size: 0.9rem;">
+                <span style="color: #28a745;">✅ In Netplan</span> - Route is preserved in configuration<br>
+                <span style="color: #ffc107;">⚠️ System Only</span> - Route may be lost during netplan apply
+              </div>
+            </div>
+            <div id="routes-table-container">
+              <p style="color: #6c757d; font-style: italic; text-align: center; padding: 2rem;">
+                <i class="fas fa-spinner fa-spin"></i> Loading routes...
+              </p>
+            </div>
+          </div>
+
+          <!-- Add Custom Route Form -->
+          <div class="card" id="add-route-card" style="display: none;">
+            <h3><i class="fas fa-plus"></i> Add Custom Route</h3>
+            <label><i class="fas fa-bullseye"></i> Destination Network (CIDR)
+              <input id="route-destination" placeholder="192.168.1.0/24 or 0.0.0.0/0" required>
+              <small>Examples: 192.168.1.0/24, 10.0.0.0/8, 0.0.0.0/0 (default)</small>
+            </label>
+            <label><i class="fas fa-door-open"></i> Gateway (Optional)
+              <input id="route-gateway" placeholder="192.168.1.1">
+              <small>Leave empty for direct routes</small>
+            </label>
+            <label><i class="fas fa-network-wired"></i> Interface
+              <select id="route-interface" required>
+                <option value="">Select interface...</option>
+              </select>
+            </label>
+            <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+              <button id="btn-save-custom-route" class="btn btn-brand">
+                <i class="fas fa-save"></i> Add Route
+              </button>
+              <button id="btn-cancel-custom-route" class="btn btn-outline-muted">
+                <i class="fas fa-times"></i> Cancel
+              </button>
+            </div>
+            <pre id="add-route-out" class="out"></pre>
+          </div>
+
+          <!-- Route Management Actions -->
+          <div class="card">
+            <h3><i class="fas fa-cogs"></i> Route Management</h3>
+            <p style="margin-bottom: 1rem; color: #6c757d;">
+              Manage system routes to prevent connectivity loss during network changes.
+            </p>
+            
+            <div style="margin: 1rem 0;">
+              <h4 style="margin: 0 0 0.5rem 0; font-size: 1rem;">
+                <i class="fas fa-shield-alt" style="color: #28a745;"></i> Route Preservation
+              </h4>
+              <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem; color: #6c757d;">
+                Automatically add all current system routes to netplan configuration to prevent route loss.
+              </p>
+              <button id="btn-preserve-routes-detailed" class="btn btn-outline-success">
+                <i class="fas fa-shield-alt"></i> Preserve All Current Routes
+              </button>
+            </div>
+
+            <div style="margin: 1rem 0;">
+              <h4 style="margin: 0 0 0.5rem 0; font-size: 1rem;">
+                <i class="fas fa-download" style="color: #0056b3;"></i> Export Routes
+              </h4>
+              <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem; color: #6c757d;">
+                Export current route configuration for backup or migration.
+              </p>
+              <button id="btn-export-routes" class="btn btn-outline-info">
+                <i class="fas fa-download"></i> Export Route Config
+              </button>
+            </div>
+
+            <pre id="route-actions-out" class="out"></pre>
+          </div>
+        </div>
+      </section>
+
       <!-- Diagnostics -->
       <section id="panel-diagnostics" class="tab-pane">
         <div class="card">
@@ -248,6 +353,7 @@
   <script src="js/ui-utils.js"></script>
   <script src="js/utils.js"></script>
   <script src="js/netplan-js-manager.js"></script>
+  <script src="js/multi-file-ui.js"></script>
   <script src="js/run.js"></script>
   <script src="js/command-utils.js"></script>
   <script src="js/search-filter.js"></script>
