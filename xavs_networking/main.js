@@ -47,7 +47,10 @@ function initTabSwitching() {
                 case 'interfaces':
                     console.log('🔌 Loading interfaces tab');
                     if (typeof loadInterfaces === 'function') {
-                        await loadInterfaces();
+                        if (!NetworkingModule.interfacesLoaded) {
+                            await loadInterfaces();
+                            NetworkingModule.interfacesLoaded = true;
+                        }
                         // Reset status back to Ready after loading interfaces
                         updateStatus('Ready', 'XOS Networking Management Interface');
                     } else {
@@ -283,9 +286,10 @@ async function initNetworkingModule() {
             setupEvents();
         }
         
-        // Load initial data for interfaces tab
-        if (typeof loadInterfaces === 'function') {
+        // Load initial data for interfaces tab (only if not already loaded)
+        if (typeof loadInterfaces === 'function' && !NetworkingModule.interfacesLoaded) {
             await loadInterfaces();
+            NetworkingModule.interfacesLoaded = true;
             // Reset status back to Ready after loading interfaces
             updateStatus('Ready', 'XOS Networking Management Interface');
         }

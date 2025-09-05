@@ -105,8 +105,51 @@ async function writeNetplanConfig(config) {
   let ethernetYaml = '';
   for (const [name, iface] of Object.entries(ethernets)) {
     ethernetYaml += `
-    ${name}:
-      optional: ${iface.optional || true}`;
+    ${name}:`;
+    if (iface.optional !== undefined) {
+      ethernetYaml += `
+      optional: ${iface.optional}`;
+    }
+    if (iface.dhcp4 !== undefined) {
+      ethernetYaml += `
+      dhcp4: ${iface.dhcp4}`;
+    }
+    if (iface.dhcp6 !== undefined) {
+      ethernetYaml += `
+      dhcp6: ${iface.dhcp6}`;
+    }
+    if (iface.addresses && iface.addresses.length > 0) {
+      ethernetYaml += `
+      addresses:`;
+      iface.addresses.forEach(addr => {
+        ethernetYaml += `
+        - ${addr}`;
+      });
+    }
+    if (iface.gateway4) {
+      ethernetYaml += `
+      gateway4: ${iface.gateway4}`;
+    }
+    if (iface.gateway6) {
+      ethernetYaml += `
+      gateway6: ${iface.gateway6}`;
+    }
+    if (iface.mtu) {
+      ethernetYaml += `
+      mtu: ${iface.mtu}`;
+    }
+    if (iface.nameservers) {
+      ethernetYaml += `
+      nameservers:`;
+      if (iface.nameservers.addresses) {
+        ethernetYaml += `
+        addresses: [${iface.nameservers.addresses.join(', ')}]`;
+      }
+      if (iface.nameservers.search) {
+        ethernetYaml += `
+        search: [${iface.nameservers.search.join(', ')}]`;
+      }
+    }
   }
   
   // Add VLANs
@@ -123,18 +166,41 @@ async function writeNetplanConfig(config) {
         vlanYaml += `
       dhcp4: ${vlan.dhcp4}`;
       }
-      if (vlan.addresses) {
+      if (vlan.dhcp6 !== undefined) {
         vlanYaml += `
-      addresses:
-        - ${vlan.addresses[0]}`;
+      dhcp6: ${vlan.dhcp6}`;
+      }
+      if (vlan.addresses && vlan.addresses.length > 0) {
+        vlanYaml += `
+      addresses:`;
+        vlan.addresses.forEach(addr => {
+          vlanYaml += `
+        - ${addr}`;
+        });
       }
       if (vlan.gateway4) {
         vlanYaml += `
       gateway4: ${vlan.gateway4}`;
       }
+      if (vlan.gateway6) {
+        vlanYaml += `
+      gateway6: ${vlan.gateway6}`;
+      }
       if (vlan.mtu) {
         vlanYaml += `
       mtu: ${vlan.mtu}`;
+      }
+      if (vlan.nameservers) {
+        vlanYaml += `
+      nameservers:`;
+        if (vlan.nameservers.addresses) {
+          vlanYaml += `
+        addresses: [${vlan.nameservers.addresses.join(', ')}]`;
+        }
+        if (vlan.nameservers.search) {
+          vlanYaml += `
+        search: [${vlan.nameservers.search.join(', ')}]`;
+        }
       }
     }
   }
@@ -152,6 +218,42 @@ async function writeNetplanConfig(config) {
         bridgeYaml += `
       dhcp4: ${bridge.dhcp4}`;
       }
+      if (bridge.dhcp6 !== undefined) {
+        bridgeYaml += `
+      dhcp6: ${bridge.dhcp6}`;
+      }
+      if (bridge.addresses && bridge.addresses.length > 0) {
+        bridgeYaml += `
+      addresses:`;
+        bridge.addresses.forEach(addr => {
+          bridgeYaml += `
+        - ${addr}`;
+        });
+      }
+      if (bridge.gateway4) {
+        bridgeYaml += `
+      gateway4: ${bridge.gateway4}`;
+      }
+      if (bridge.gateway6) {
+        bridgeYaml += `
+      gateway6: ${bridge.gateway6}`;
+      }
+      if (bridge.mtu) {
+        bridgeYaml += `
+      mtu: ${bridge.mtu}`;
+      }
+      if (bridge.nameservers) {
+        bridgeYaml += `
+      nameservers:`;
+        if (bridge.nameservers.addresses) {
+          bridgeYaml += `
+        addresses: [${bridge.nameservers.addresses.join(', ')}]`;
+        }
+        if (bridge.nameservers.search) {
+          bridgeYaml += `
+        search: [${bridge.nameservers.search.join(', ')}]`;
+        }
+      }
     }
   }
   
@@ -166,6 +268,50 @@ async function writeNetplanConfig(config) {
       interfaces: [${bond.interfaces.join(', ')}]
       parameters:
         mode: ${bond.parameters.mode}`;
+      
+      // Add other bond parameters
+      if (bond.parameters['mii-monitor-interval']) {
+        bondYaml += `
+        mii-monitor-interval: ${bond.parameters['mii-monitor-interval']}`;
+      }
+      if (bond.parameters['lacp-rate']) {
+        bondYaml += `
+        lacp-rate: ${bond.parameters['lacp-rate']}`;
+      }
+      if (bond.parameters['primary']) {
+        bondYaml += `
+        primary: ${bond.parameters['primary']}`;
+      }
+      
+      // Add IP configuration for bonds
+      if (bond.dhcp4 !== undefined) {
+        bondYaml += `
+      dhcp4: ${bond.dhcp4}`;
+      }
+      if (bond.dhcp6 !== undefined) {
+        bondYaml += `
+      dhcp6: ${bond.dhcp6}`;
+      }
+      if (bond.addresses && bond.addresses.length > 0) {
+        bondYaml += `
+      addresses:`;
+        bond.addresses.forEach(addr => {
+          bondYaml += `
+        - ${addr}`;
+        });
+      }
+      if (bond.gateway4) {
+        bondYaml += `
+      gateway4: ${bond.gateway4}`;
+      }
+      if (bond.gateway6) {
+        bondYaml += `
+      gateway6: ${bond.gateway6}`;
+      }
+      if (bond.mtu) {
+        bondYaml += `
+      mtu: ${bond.mtu}`;
+      }
     }
   }
   
@@ -1023,6 +1169,228 @@ async function getNetplanSummary() {
 }
 
 /**
+ * Set IP address for an interface
+ */
+async function setInterfaceIP(config) {
+  const { name, static_ip } = config;
+  
+  if (!name) {
+    return { error: 'Interface name is required' };
+  }
+  
+  try {
+    console.log(`Setting IP address for ${name} to ${static_ip}`);
+    
+    // Load current configuration
+    const netplanConfig = await loadNetplanConfig();
+    if (netplanConfig.error) {
+      return netplanConfig;
+    }
+    
+    if (!netplanConfig.network) {
+      netplanConfig.network = { version: 2, renderer: 'networkd' };
+    }
+    
+    // Find the interface in the appropriate section
+    let interfaceFound = false;
+    let interfaceSection = null;
+    
+    // Check VLANs
+    if (netplanConfig.network.vlans && netplanConfig.network.vlans[name]) {
+      interfaceSection = netplanConfig.network.vlans[name];
+      interfaceFound = true;
+    }
+    // Check bridges
+    else if (netplanConfig.network.bridges && netplanConfig.network.bridges[name]) {
+      interfaceSection = netplanConfig.network.bridges[name];
+      interfaceFound = true;
+    }
+    // Check bonds
+    else if (netplanConfig.network.bonds && netplanConfig.network.bonds[name]) {
+      interfaceSection = netplanConfig.network.bonds[name];
+      interfaceFound = true;
+    }
+    // Check ethernets
+    else if (netplanConfig.network.ethernets && netplanConfig.network.ethernets[name]) {
+      interfaceSection = netplanConfig.network.ethernets[name];
+      interfaceFound = true;
+    }
+    
+    if (!interfaceFound) {
+      return { error: `Interface ${name} not found in netplan configuration` };
+    }
+    
+    // Update IP configuration
+    if (static_ip && static_ip.trim() !== '') {
+      // Set static IP
+      interfaceSection.addresses = [static_ip];
+      interfaceSection.dhcp4 = false;
+      interfaceSection.dhcp6 = false;
+    } else {
+      // Remove static IP, enable DHCP
+      delete interfaceSection.addresses;
+      interfaceSection.dhcp4 = true;
+    }
+    
+    // Write configuration
+    const writeResult = await writeNetplanConfig(netplanConfig);
+    if (writeResult.error) {
+      return writeResult;
+    }
+    
+    console.log(`IP address for ${name} updated successfully`);
+    return { 
+      success: true, 
+      message: `IP address for ${name} updated to ${static_ip || 'DHCP'}` 
+    };
+    
+  } catch (error) {
+    return { error: `Failed to set IP address: ${error.message}` };
+  }
+}
+
+/**
+ * Set MTU for an interface
+ */
+async function setInterfaceMTU(config) {
+  const { name, mtu } = config;
+  
+  if (!name) {
+    return { error: 'Interface name is required' };
+  }
+  
+  if (!mtu || isNaN(mtu) || mtu < 68 || mtu > 9000) {
+    return { error: 'Valid MTU value (68-9000) is required' };
+  }
+  
+  try {
+    console.log(`Setting MTU for ${name} to ${mtu}`);
+    
+    // Special validation for VLAN interfaces
+    if (name.includes('.')) {
+      const parentInterface = name.split('.')[0];
+      console.log(`VLAN detected: ${name}, parent: ${parentInterface}`);
+      
+      // Check parent interface MTU using ip link show
+      try {
+        const parentMtuCmd = `ip link show ${parentInterface} | grep 'mtu ' | head -1 | sed 's/.*mtu \\([0-9]*\\).*/\\1/'`;
+        console.log(`Checking parent MTU with command: ${parentMtuCmd}`);
+        
+        const parentMtuResult = await executeCommand(parentMtuCmd);
+        console.log(`Parent MTU check result:`, parentMtuResult);
+        
+        if (parentMtuResult.success && parentMtuResult.output.trim()) {
+          const parentMtu = parseInt(parentMtuResult.output.trim());
+          console.log(`Parent interface ${parentInterface} MTU: ${parentMtu}`);
+          
+          if (!isNaN(parentMtu) && mtu > parentMtu) {
+            const errorMsg = `Cannot set VLAN MTU (${mtu}) higher than parent interface ${parentInterface} MTU (${parentMtu}). Please increase parent interface MTU first.`;
+            const hintMsg = `Set ${parentInterface} MTU to at least ${mtu} before setting VLAN MTU`;
+            console.error(errorMsg);
+            return { 
+              error: errorMsg,
+              hint: hintMsg
+            };
+          }
+        } else {
+          console.warn(`Could not determine parent interface MTU for ${parentInterface}`);
+        }
+      } catch (parentError) {
+        console.warn('Could not check parent interface MTU:', parentError);
+        // Continue anyway, let netplan handle the validation
+      }
+    }
+    
+    // Load current configuration
+    const netplanConfig = await loadNetplanConfig();
+    if (netplanConfig.error) {
+      return netplanConfig;
+    }
+    
+    if (!netplanConfig.network) {
+      netplanConfig.network = { version: 2, renderer: 'networkd' };
+    }
+    
+    // Find the interface in the appropriate section
+    let interfaceFound = false;
+    let interfaceSection = null;
+    
+    // Check VLANs
+    if (netplanConfig.network.vlans && netplanConfig.network.vlans[name]) {
+      interfaceSection = netplanConfig.network.vlans[name];
+      interfaceFound = true;
+    }
+    // Check bridges
+    else if (netplanConfig.network.bridges && netplanConfig.network.bridges[name]) {
+      interfaceSection = netplanConfig.network.bridges[name];
+      interfaceFound = true;
+    }
+    // Check bonds
+    else if (netplanConfig.network.bonds && netplanConfig.network.bonds[name]) {
+      interfaceSection = netplanConfig.network.bonds[name];
+      interfaceFound = true;
+    }
+    // Check ethernets
+    else if (netplanConfig.network.ethernets && netplanConfig.network.ethernets[name]) {
+      interfaceSection = netplanConfig.network.ethernets[name];
+      interfaceFound = true;
+    }
+    
+    if (!interfaceFound) {
+      return { error: `Interface ${name} not found in netplan configuration` };
+    }
+    
+    // Update MTU
+    interfaceSection.mtu = parseInt(mtu);
+    
+    // Write configuration
+    const writeResult = await writeNetplanConfig(netplanConfig);
+    if (writeResult.error) {
+      return writeResult;
+    }
+    
+    console.log(`MTU for ${name} updated successfully in netplan configuration`);
+    
+    // Post-validation: Check if the MTU actually took effect for VLANs
+    let actualMtuWarning = '';
+    if (name.includes('.')) {
+      try {
+        const actualMtuCmd = `ip link show ${name} | grep 'mtu ' | head -1 | sed 's/.*mtu \\([0-9]*\\).*/\\1/'`;
+        const actualMtuResult = await executeCommand(actualMtuCmd);
+        
+        if (actualMtuResult.success && actualMtuResult.output.trim()) {
+          const actualMtu = parseInt(actualMtuResult.output.trim());
+          console.log(`Actual interface MTU after netplan apply: ${actualMtu}, expected: ${mtu}`);
+          
+          if (actualMtu !== parseInt(mtu)) {
+            const parentInterface = name.split('.')[0];
+            actualMtuWarning = `\n\n⚠️ Warning: The interface MTU is still ${actualMtu} instead of ${mtu}. This likely means the parent interface (${parentInterface}) has a lower MTU. Please set ${parentInterface} MTU to at least ${mtu} first.`;
+          }
+        }
+      } catch (checkError) {
+        console.warn('Could not verify actual MTU after apply:', checkError);
+      }
+    }
+    
+    // For VLANs, provide additional feedback about parent interface requirements
+    let message = `MTU for ${name} updated to ${mtu}`;
+    if (name.includes('.')) {
+      const parentInterface = name.split('.')[0];
+      message += `\n\nNote: VLAN MTU changes require the parent interface (${parentInterface}) to have an MTU of at least ${mtu}. If the change doesn't take effect, please check the parent interface MTU.`;
+      message += actualMtuWarning;
+    }
+    
+    return { 
+      success: true, 
+      message: message
+    };
+    
+  } catch (error) {
+    return { error: `Failed to set MTU: ${error.message}` };
+  }
+}
+
+/**
  * Main action dispatcher - replaces the Python script
  * Handles all netplan operations using 99-cockpit.yaml
  */
@@ -1044,6 +1412,12 @@ async function netplanJsAction(action, config = {}) {
       case 'delete_interface':
       case 'delete':  // Add support for 'delete' action used by advanced-actions.js
         return await removeInterface(config);
+        
+      case 'set_ip':
+        return await setInterfaceIP(config);
+        
+      case 'set_mtu':
+        return await setInterfaceMTU(config);
         
       case 'load_netplan':
       case 'get_config':
@@ -1075,7 +1449,7 @@ async function netplanJsAction(action, config = {}) {
           { error: tryResult.error };
         
       default:
-        return { error: `Unknown action: ${action}. Available actions: add_vlan, add_bridge, add_bond, remove_interface, load_netplan, get_summary, get_physical_interfaces, apply_config, generate, try` };
+        return { error: `Unknown action: ${action}. Available actions: add_vlan, add_bridge, add_bond, remove_interface, set_ip, set_mtu, load_netplan, get_summary, get_physical_interfaces, apply_config, generate, try` };
     }
   } catch (error) {
     return { error: `Operation failed: ${error.message}` };

@@ -1,5 +1,5 @@
 ﻿'use strict';
-/* global $, $$, run, setStatus, netplanAction, setupModal, createButton, loadInterfaces, runInterfaceCommand, getAlternativeInterfaceNames, createActionButton */
+/* global $, $$, run, setStatus, netplanAction, setupModal, createButton, loadInterfaces, runInterfaceCommand, getAlternativeInterfaceNames, createActionButton, clearPhysicalInterfacesCache */
 
 // Use createActionButton from ui-utils.js
 
@@ -288,7 +288,11 @@ async function saveVlanEdits(modal, iface) {
     if (newMtu && newMtu !== iface.mtu) {
       const result = await netplanAction('set_mtu', { name: iface.dev, mtu: parseInt(newMtu) });
       if (result.error) {
-        console.warn('Failed to persist MTU to netplan:', result.error);
+        alert('Failed to persist MTU to netplan: ' + (result.error + (result.hint ? '\nHint: ' + result.hint : '')));
+        return;
+      } else if (result.message && result.message.includes('Note:')) {
+        // Show the special message for VLAN MTU requirements
+        console.log('MTU update info:', result.message);
       }
     }
 
@@ -318,8 +322,44 @@ async function saveVlanEdits(modal, iface) {
       alert('⚠ Failed to apply netplan changes: ' + e.message);
     }
 
+    // Post-apply validation for VLAN MTU changes
+    let mtuWarning = '';
+    if (newMtu && newMtu !== iface.mtu && iface.dev.includes('.')) {
+      try {
+        // Small delay to let the interface update
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Check if the MTU actually took effect
+        const actualMtuResult = await run('ip', ['link', 'show', iface.dev], { superuser: 'try' });
+        if (actualMtuResult) {
+          const mtuMatch = actualMtuResult.match(/mtu (\d+)/);
+          if (mtuMatch) {
+            const actualMtu = parseInt(mtuMatch[1]);
+            console.log(`Post-apply MTU check: expected ${newMtu}, actual ${actualMtu}`);
+            if (actualMtu !== parseInt(newMtu)) {
+              const parentInterface = iface.dev.split('.')[0];
+              mtuWarning = `\n\n⚠️ Warning: The interface MTU is still ${actualMtu} instead of ${newMtu}. The parent interface (${parentInterface}) likely has a lower MTU. Please set ${parentInterface} MTU to at least ${newMtu} first.`;
+            }
+          }
+        }
+      } catch (checkError) {
+        console.warn('Could not verify actual MTU after apply:', checkError);
+      }
+    }
+
     modal.close();
-    alert('✓ VLAN configuration updated and applied!');
+    
+    // Build success message
+    let successMessage = '✓ VLAN configuration updated and applied!';
+    
+    // Add special note for VLAN MTU changes
+    if (newMtu && newMtu !== iface.mtu && iface.dev.includes('.')) {
+      const parentInterface = iface.dev.split('.')[0];
+      successMessage += `\n\n⚠️ Note: If the MTU change doesn't take effect, please verify that the parent interface (${parentInterface}) has an MTU of at least ${newMtu}.`;
+      successMessage += mtuWarning; // Add the actual verification result
+    }
+    
+    alert(successMessage);
     await loadInterfaces();
 
   } catch (error) {
@@ -571,6 +611,10 @@ async function deleteConstructedInterface(iface) {
     
     // Always reload interfaces to reflect the actual current state
     console.log('Reloading interfaces to reflect current state');
+    // Clear cache since interface was deleted
+    if (typeof clearPhysicalInterfacesCache === 'function') {
+      clearPhysicalInterfacesCache();
+    }
     await loadInterfaces();
 
   } catch (error) {

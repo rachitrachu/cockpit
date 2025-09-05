@@ -162,60 +162,11 @@ function getAlternativeInterfaceNames(interfaceName) {
   return [...new Set(alternatives)];
 }
 
-// Diagnostic function to test interface name handling
-function testInterfaceNameHandling(interfaceName) {
-  console.log(`Testing interface name handling for: '${interfaceName}'`);
-  const alternatives = getAlternativeInterfaceNames(interfaceName);
-  console.log(`  Alternatives: [${alternatives.join(', ')}]`);
-  return alternatives;
-}
-
-// Make functions available globally
+// Make essential functions available globally
 if (typeof window !== 'undefined') {
-  window.testInterfaceNameHandling = testInterfaceNameHandling;
   window.runInterfaceCommand = runInterfaceCommand;
   window.getAlternativeInterfaceNames = getAlternativeInterfaceNames;
-  
-  // Advanced diagnostic function to test actual system interface names
-  window.diagnoseInterface = async function(interfaceName) {
-    console.log(`→ Diagnosing interface: '${interfaceName}'`);
-    const alternatives = getAlternativeInterfaceNames(interfaceName);
-    
-    for (const altName of alternatives) {
-      try {
-        const result = await run('ifconfig', [altName], { superuser: 'try' });
-        console.log(`Interface '${altName}' exists`);
-        return altName;
-      } catch (error) {
-        console.log(`Interface '${altName}' not found`);
-      }
-    }
-    
-    console.log(`No working interface name found for '${interfaceName}'`);
-    return null;
-  };
-  // Test interface state parsing
-  window.testInterfaceParsing = async function() {
-    try {
-      const ifconfigOutput = await run('ifconfig', ['-a'], { superuser: 'try' });
-      const ifconfigInterfaces = parseIfconfigOutput(ifconfigOutput);
-      console.log('ifconfig interfaces:', ifconfigInterfaces.map(i => `${i.dev}:${i.state}`));
-    } catch (e) {
-      console.log('ifconfig command failed:', e);
-    }
-  };
-
-  // Test status badge creation
-  window.testStatusBadges = function() {
-    const testStates = ['UP', 'DOWN', 'UNKNOWN'];
-    testStates.forEach(state => {
-      const badge = createStatusBadge(state);
-      console.log(`${state}: ${badge.className}`);
-    });
-  };
 }
-
-// Use createActionButton from ui-utils.js
 
 // Helper function to safely apply netplan configuration with try before apply
 // This ensures network configuration changes are tested before permanent application
@@ -308,6 +259,33 @@ async function runInterfaceCommand(cmd, args, options = {}) {
 
 // Enhanced device name display with VLAN information
 // Enhanced bonding/bridging member information parser
+// Cached function to get individual interface ifconfig output
+async function getCachedInterfaceDetails(interfaceName) {
+  const now = Date.now();
+  
+  // Check if we have cached data that's still fresh
+  if (interfaceDetailsCache.has(interfaceName)) {
+    const cacheTime = interfaceDetailsCacheTime.get(interfaceName);
+    if (now - cacheTime < INTERFACE_DETAILS_CACHE_TTL) {
+      return interfaceDetailsCache.get(interfaceName);
+    }
+  }
+  
+  // Get fresh data
+  try {
+    const ifconfigInfo = await run('ifconfig', [interfaceName], { superuser: 'try' });
+    
+    // Cache the result
+    interfaceDetailsCache.set(interfaceName, ifconfigInfo);
+    interfaceDetailsCacheTime.set(interfaceName, now);
+    
+    return ifconfigInfo;
+  } catch (error) {
+    console.warn(`Failed to get details for interface ${interfaceName}:`, error);
+    return '';
+  }
+}
+
 async function getBondBridgeDetails(interfaceName) {
   const details = {
     isBond: false,
@@ -396,7 +374,7 @@ async function getBondBridgeDetails(interfaceName) {
         !interfaceName.startsWith('ovs-')) {
       
       try {
-        const ifconfigInfo = await run('ifconfig', [interfaceName], { superuser: 'try' });
+        const ifconfigInfo = await getCachedInterfaceDetails(interfaceName);
         
         // Check ifconfig output for SLAVE flag (this is much more reliable)
         if (ifconfigInfo && ifconfigInfo.includes('SLAVE')) {
@@ -522,10 +500,58 @@ async function createEnhancedDeviceDisplayName(interfaceName, interfaceType) {
   return displayInfo;
 }
 
+// Cache for physical interfaces to avoid redundant calls
+let physicalInterfacesCache = null;
+let physicalInterfacesCacheTime = 0;
+const PHYSICAL_INTERFACES_CACHE_TTL = 30000; // 30 seconds
+
+// Shared cache for all interface data to avoid duplicate ifconfig calls
+let allInterfacesCache = null;
+let allInterfacesCacheTime = 0;
+const ALL_INTERFACES_CACHE_TTL = 30000; // 30 seconds
+
+// Loading state to prevent concurrent loads
+let isLoadingInterfaces = false;
+
+// Cache for individual interface details to reduce ifconfig calls
+let interfaceDetailsCache = new Map();
+let interfaceDetailsCacheTime = new Map();
+const INTERFACE_DETAILS_CACHE_TTL = 30000; // 30 seconds
+
+// Shared function to get ifconfig data with caching
+async function getCachedIfconfigData() {
+  const now = Date.now();
+  
+  // Return cached data if it's still fresh
+  if (allInterfacesCache && (now - allInterfacesCacheTime < ALL_INTERFACES_CACHE_TTL)) {
+    console.log('Using cached ifconfig data');
+    return allInterfacesCache;
+  }
+  
+  console.log('Loading fresh ifconfig data...');
+  const output = await run('ifconfig', ['-a'], { superuser: 'try' });
+  
+  // Cache the raw output
+  allInterfacesCache = output;
+  allInterfacesCacheTime = now;
+  
+  return output;
+}
+
 async function getPhysicalInterfaces() {
   try {
-    // Use ifconfig to get physical interfaces instead of ip command
-    const output = await run('ifconfig', ['-a'], { superuser: 'try' });
+    const now = Date.now();
+    
+    // Return cached interfaces if they're still fresh
+    if (physicalInterfacesCache && (now - physicalInterfacesCacheTime < PHYSICAL_INTERFACES_CACHE_TTL)) {
+      console.log('Using cached physical interfaces:', physicalInterfacesCache);
+      return physicalInterfacesCache;
+    }
+    
+    console.log('Loading fresh physical interfaces...');
+    
+    // Use cached ifconfig data to avoid duplicate calls
+    const output = await getCachedIfconfigData();
     const interfaces = [];
 
     // Parse ifconfig output to get physical interfaces
@@ -551,6 +577,10 @@ async function getPhysicalInterfaces() {
       }
     });
 
+    // Cache the results
+    physicalInterfacesCache = interfaces;
+    physicalInterfacesCacheTime = now;
+
     console.log('Found physical interfaces:', interfaces);
     return interfaces;
   } catch (e) {
@@ -561,18 +591,36 @@ async function getPhysicalInterfaces() {
   }
 }
 
-async function loadInterfaces() {
-  console.log('Loading interfaces...');
-  setStatus('Loading interfaces...');
+// Function to clear physical interfaces cache
+function clearPhysicalInterfacesCache() {
+  console.log('Clearing physical interfaces cache');
+  physicalInterfacesCache = null;
+  physicalInterfacesCacheTime = 0;
+  // Also clear the interface details cache
+  interfaceDetailsCache.clear();
+  interfaceDetailsCacheTime.clear();
+}
 
-  const tbody = $('#table-interfaces tbody');
-  if (!tbody) {
-    console.error('Interface table body not found');
-    setStatus('Interface table not found');
+async function loadInterfaces() {
+  // Prevent concurrent loading
+  if (isLoadingInterfaces) {
+    console.log('Interface loading already in progress, skipping...');
     return;
   }
-
+  
+  isLoadingInterfaces = true;
+  
   try {
+    console.log('Loading interfaces...');
+    setStatus('Loading interfaces...');
+
+    const tbody = $('#table-interfaces tbody');
+    if (!tbody) {
+      console.error('Interface table body not found');
+      setStatus('Interface table not found');
+      return;
+    }
+
     try {
       await run('echo', ['test']);
       console.log('Basic command test passed');
@@ -585,7 +633,7 @@ async function loadInterfaces() {
     
     try {
       console.log('Using ifconfig for interface discovery...');
-      const ifconfigOutput = await run('ifconfig', ['-a'], { superuser: 'try' });
+      const ifconfigOutput = await getCachedIfconfigData();
       interfaces = parseIfconfigOutput(ifconfigOutput);
       console.log('Successfully parsed interfaces using ifconfig:', interfaces.length);
       
@@ -627,6 +675,8 @@ async function loadInterfaces() {
     const row = document.createElement('tr');
     row.innerHTML = `<td colspan="8" style="text-align: center; color: red; padding: 2rem;">Error: ${error.message}</td>`;
     tbody.appendChild(row);
+  } finally {
+    isLoadingInterfaces = false;
   }
 }
 
@@ -634,6 +684,9 @@ async function loadInterfaces() {
 function parseIfconfigOutput(output) {
   const interfaces = [];
   const interfaceBlocks = output.split(/\n(?=\S)/); // Split on lines that start with non-whitespace
+  
+  // Pre-populate interface details cache while parsing
+  const now = Date.now();
   
   for (const block of interfaceBlocks) {
     if (!block.trim() || !block.includes(':')) continue;
@@ -714,6 +767,10 @@ function parseIfconfigOutput(output) {
     
     // Normalize interface name (remove any @parent suffix for display consistency)
     const displayDev = dev.includes('@') ? dev.split('@')[0] : dev;
+    
+    // Pre-populate the interface details cache with this block data
+    interfaceDetailsCache.set(displayDev, block);
+    interfaceDetailsCacheTime.set(displayDev, now);
     
     // Ensure we have proper default values instead of empty strings
     interfaces.push({ 
@@ -966,7 +1023,15 @@ async function displayInterfaces(interfaces) {
   
   tbody.innerHTML = '';
   
-  for (const iface of interfaces) {
+  // Process interfaces with small delays to prevent blocking the UI
+  for (let i = 0; i < interfaces.length; i++) {
+    const iface = interfaces[i];
+    
+    // Yield control every 5 interfaces to prevent blocking (optimized from 3)
+    if (i > 0 && i % 5 === 0) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    
     const row = document.createElement('tr');
     row.style.opacity = '0';
     row.style.transform = 'translateY(-10px)';
@@ -2128,321 +2193,7 @@ async function showCriticalInterfaceDownConfirmation(iface, criticalInfo) {
   });
 }
 
-// Test function for expandable interface details
-function testExpandableDetails() {
-  console.log('?? Testing expandable interface details...');
-  
-  const interfaceRows = document.querySelectorAll('tbody tr');
-  let mainRows = [];
-  let detailRows = [];
-  
-  interfaceRows.forEach(row => {
-    if (row.style.display === 'none' || row.style.backgroundColor === '#f8f9fa') {
-      detailRows.push(row);
-    } else {
-      mainRows.push(row);
-    }
-  });
-  
-  console.log(`?? Found ${mainRows.length} interface rows and ${detailRows.length} detail rows`);
-  
-  // Test clicking on first interface if available
-  if (mainRows.length > 0) {
-    const firstRow = mainRows[0];
-    const deviceCell = firstRow.querySelector('td');
-    
-    if (deviceCell && deviceCell.style.cursor === 'pointer') {
-      console.log('? First interface has clickable device cell');
-      console.log('??? Click on interface name to test expandable details');
-      
-      // Simulate a click for testing
-      setTimeout(() => {
-        deviceCell.click();
-        console.log('?? Simulated click on first interface');
-        
-        // Check if detail row appeared
-        setTimeout(() => {
-          const detailRow = firstRow.nextElementSibling;
-          if (detailRow && detailRow.style.display === 'table-row') {
-            console.log('? Detail row successfully expanded!');
-            console.log('?? Detail content preview:', detailRow.textContent.substring(0, 100) + '...');
-          } else {
-            console.log('? Detail row did not expand properly');
-          }
-        }, 500);
-      }, 1000);
-      
-      return { success: true, mainRows: mainRows.length, detailRows: detailRows.length };
-    } else {
-      console.log('? First interface device cell is not clickable');
-      return { success: false, reason: 'Device cell not clickable' };
-    }
-  } else {
-    console.log('? No interface rows found for testing');
-    return { success: false, reason: 'No interface rows found' };
-  }
-}
-
-// Test function for null value handling
-function testNullValueHandling() {
-  console.log('?? Testing null value handling in interface display...');
-  
-  // Check all table cells for null values
-  const tableCells = document.querySelectorAll('#table-interfaces tbody td');
-  let nullCount = 0;
-  let fixedCount = 0;
-  
-  tableCells.forEach(cell => {
-    const text = cell.textContent.trim();
-    if (text === 'null' || text === '') {
-      nullCount++;
-      console.log('? Found null/empty value:', cell.textContent, 'in cell:', cell);
-    } else if (text.includes('Not assigned') || text.includes('Virtual') || text.includes('Managed')) {
-      fixedCount++;
-    }
-  });
-  
-  console.log(`?? Analysis Results:`);
-  console.log(`  � Null/empty values found: ${nullCount}`);
-  console.log(`  � Meaningful substitutions: ${fixedCount}`);
-  
-  if (nullCount === 0) {
-    console.log('? All null values have been properly handled!');
-  } else {
-    console.log('?? Some null values still exist and need attention');
-  }
-  
-  // Test specific interface types
-  const interfaces = Array.from(document.querySelectorAll('#table-interfaces tbody tr')).filter((row, index) => index % 2 === 0); // Skip detail rows
-  console.log(`?? Found ${interfaces.length} interface rows`);
-  
-  interfaces.forEach((row, index) => {
-    const cells = row.querySelectorAll('td');
-    if (cells.length > 3) {
-      const name = cells[0].textContent.trim();
-      const mac = cells[3].textContent.trim();
-      const ipv4 = cells[4].textContent.trim();
-      
-      console.log(`  Interface ${name}: MAC="${mac}", IPv4="${ipv4}"`);
-    }
-  });
-  
-  return { nullCount, fixedCount, interfaceCount: interfaces.length };
-}
-
-// Test function for device name null handling
-function testDeviceNameNullHandling() {
-  console.log('?? Testing device name null handling...');
-  
-  // Check all device cells for null subtitles
-  const deviceCells = document.querySelectorAll('#table-interfaces tbody tr td:first-child');
-  let nullSubtitleCount = 0;
-  let properSubtitleCount = 0;
-  
-  deviceCells.forEach(cell => {
-    const divs = cell.querySelectorAll('div');
-    if (divs.length > 1) {
-      const subtitleDiv = divs[1];
-      const subtitleText = subtitleDiv.textContent.trim();
-      
-      if (subtitleText === 'null' || subtitleText === 'undefined') {
-        nullSubtitleCount++;
-        console.log('? Found null subtitle in device cell:', cell.textContent);
-      } else if (subtitleText.length > 0) {
-        properSubtitleCount++;
-        console.log('? Good subtitle:', subtitleText);
-      }
-    }
-  });
-  
-  console.log(`?? Device Name Analysis Results:`);
-  console.log(`  � Null subtitles found: ${nullSubtitleCount}`);
-  console.log(`  � Proper subtitles: ${properSubtitleCount}`);
-  
-  if (nullSubtitleCount === 0) {
-    console.log('? All device name null values have been properly handled!');
-  } else {
-    console.log('?? Some device name null values still exist and need attention');
-  }
-  
-  return { nullSubtitleCount, properSubtitleCount };
-}
-
-// Test function for interface-specific tooltips
-function testInterfaceTooltips() {
-  console.log('?? Testing interface-specific tooltips...');
-  
-  const deviceCells = document.querySelectorAll('#table-interfaces tbody tr td:first-child');
-  const tooltipTypes = {};
-  
-  deviceCells.forEach(cell => {
-    const tooltip = cell.title;
-    const interfaceName = cell.textContent.split('\n')[0].trim(); // Get first line (interface name)
-    
-    if (tooltip) {
-      console.log(`Interface ${interfaceName}: "${tooltip}"`);
-      tooltipTypes[tooltip] = (tooltipTypes[tooltip] || 0) + 1;
-    }
-  });
-  
-  console.log('?? Tooltip Summary:');
-  Object.entries(tooltipTypes).forEach(([tooltip, count]) => {
-    console.log(`  � "${tooltip}": ${count} interface(s)`);
-  });
-  
-  // Check for bond interfaces specifically
-  const bondInterfaces = Array.from(deviceCells).filter(cell => {
-    const interfaceName = cell.textContent.split('\n')[0].trim();
-    return interfaceName.startsWith('bond');
-  });
-  
-  const bondWithCorrectTooltip = bondInterfaces.filter(cell => cell.title === 'Bond Interface');
-  
-  console.log(`?? Bond Interface Analysis:`);
-  console.log(`  � Total bond interfaces: ${bondInterfaces.length}`);
-  console.log(`  � With "Bond Interface" tooltip: ${bondWithCorrectTooltip.length}`);
-  
-  if (bondInterfaces.length === bondWithCorrectTooltip.length && bondInterfaces.length > 0) {
-    console.log('? All bond interfaces have correct tooltip!');
-  }
-  
-  return { 
-    total: deviceCells.length, 
-    bondTotal: bondInterfaces.length, 
-    bondCorrect: bondWithCorrectTooltip.length,
-    tooltipTypes 
-  };
-}
-
-// Test function for bond interface subtitle truncation
-function testBondSubtitleTruncation() {
-  console.log('?? Testing bond interface subtitle truncation...');
-  
-  const deviceCells = document.querySelectorAll('#table-interfaces tbody tr td:first-child');
-  const bondSubtitles = [];
-  
-  deviceCells.forEach(cell => {
-    const divs = cell.querySelectorAll('div');
-    if (divs.length > 1) {
-      const interfaceName = divs[0].textContent.trim();
-      const subtitle = divs[1].textContent.trim();
-      
-      if (interfaceName.startsWith('bond')) {
-        bondSubtitles.push({ interface: interfaceName, subtitle });
-        console.log(`${interfaceName}: "${subtitle}"`);
-        
-        // Check if subtitle contains bond mode details
-        if (subtitle.includes('(') && subtitle.includes(')')) {
-          console.log('??  Bond subtitle still contains details in parentheses');
-        } else if (subtitle === '?? Bond interface') {
-          console.log('? Bond subtitle properly truncated');
-        }
-      }
-    }
-  });
-  
-  console.log(`?? Found ${bondSubtitles.length} bond interface(s)`);
-  
-  const truncatedCount = bondSubtitles.filter(b => b.subtitle === '?? Bond interface').length;
-  const detailedCount = bondSubtitles.filter(b => b.subtitle.includes('(')).length;
-  
-  console.log(`  � Properly truncated: ${truncatedCount}`);
-  console.log(`  � Still showing details: ${detailedCount}`);
-  
-  if (truncatedCount === bondSubtitles.length && bondSubtitles.length > 0) {
-    console.log('? All bond interfaces have truncated subtitles!');
-  }
-  
-  return { total: bondSubtitles.length, truncated: truncatedCount, detailed: detailedCount };
-}
-
-// Test function for all interface subtitle truncation
-function testAllInterfaceSubtitleTruncation() {
-  console.log('?? Testing all interface subtitle truncation...');
-  
-  const deviceCells = document.querySelectorAll('#table-interfaces tbody tr td:first-child');
-  const results = {
-    bond: { total: 0, truncated: 0, detailed: 0 },
-    bridge: { total: 0, truncated: 0, detailed: 0 },
-    vlan: { total: 0, truncated: 0, detailed: 0 },
-    member: { total: 0, truncated: 0, detailed: 0 }
-  };
-  
-  deviceCells.forEach(cell => {
-    const divs = cell.querySelectorAll('div');
-    if (divs.length > 1) {
-      const interfaceName = divs[0].textContent.trim();
-      const subtitle = divs[1].textContent.trim();
-      
-      console.log(`${interfaceName}: "${subtitle}"`);
-      
-      // Check bond interfaces
-      if (interfaceName.startsWith('bond') || subtitle.includes('??')) {
-        results.bond.total++;
-        if (subtitle === '?? Bond interface') {
-          results.bond.truncated++;
-        } else if (subtitle.includes('(') || subtitle.includes('members')) {
-          results.bond.detailed++;
-        }
-      }
-      
-      // Check bridge interfaces
-      if (interfaceName.startsWith('br-') || interfaceName.startsWith('virbr') || subtitle.includes('??')) {
-        results.bridge.total++;
-        if (subtitle === '?? Bridge interface') {
-          results.bridge.truncated++;
-        } else if (subtitle.includes('(') || subtitle.includes('ports')) {
-          results.bridge.detailed++;
-        }
-      }
-      
-      // Check VLAN interfaces
-      if (interfaceName.includes('.') || subtitle.includes('???')) {
-        results.vlan.total++;
-        if (subtitle === '??? VLAN interface') {
-          results.vlan.truncated++;
-        } else if (subtitle.includes('on ') || subtitle.includes('VLAN ')) {
-          results.vlan.detailed++;
-        }
-      }
-      
-      // Check member interfaces
-      if (subtitle.includes('??')) {
-        results.member.total++;
-        if (subtitle === '?? Member interface') {
-          results.member.truncated++;
-        } else if (subtitle.includes(' of ')) {
-          results.member.detailed++;
-        }
-      }
-    }
-  });
-  
-  console.log('?? Subtitle Truncation Results:');
-  console.log(`?? Bond interfaces: ${results.bond.total} total, ${results.bond.truncated} truncated, ${results.bond.detailed} detailed`);
-  console.log(`?? Bridge interfaces: ${results.bridge.total} total, ${results.bridge.truncated} truncated, ${results.bridge.detailed} detailed`);
-  console.log(`??? VLAN interfaces: ${results.vlan.total} total, ${results.vlan.truncated} truncated, ${results.vlan.detailed} detailed`);
-  console.log(`?? Member interfaces: ${results.member.total} total, ${results.member.truncated} truncated, ${results.member.detailed} detailed`);
-  
-  const totalTruncated = results.bond.truncated + results.bridge.truncated + results.vlan.truncated + results.member.truncated;
-  const totalDetailed = results.bond.detailed + results.bridge.detailed + results.vlan.detailed + results.member.detailed;
-  
-  if (totalDetailed === 0 && totalTruncated > 0) {
-    console.log('? All interface subtitles have been successfully truncated!');
-  } else if (totalDetailed > 0) {
-    console.log('?? Some interface subtitles still contain detailed information');
-  }
-  
-  return results;
-}
-
-// expose
+// Expose core functions only
 window.getPhysicalInterfaces = getPhysicalInterfaces;
+window.clearPhysicalInterfacesCache = clearPhysicalInterfacesCache;
 window.loadInterfaces = loadInterfaces;
-window.initializeTableSorting = initializeTableSorting;
-window.testExpandableDetails = testExpandableDetails;
-window.testNullValueHandling = testNullValueHandling;
-window.testDeviceNameNullHandling = testDeviceNameNullHandling;
-window.testInterfaceTooltips = testInterfaceTooltips;
-window.testBondSubtitleTruncation = testBondSubtitleTruncation;
-window.testAllInterfaceSubtitleTruncation = testAllInterfaceSubtitleTruncation;

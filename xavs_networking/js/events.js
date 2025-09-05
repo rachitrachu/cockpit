@@ -91,13 +91,8 @@ function setupTabs() {
       // Tab-specific initialization
       if (targetId === 'constructs') {
         console.log('Initializing constructs tab...');
-        if (typeof setupNetworkingForms === 'function') {
-          setupNetworkingForms().then(() => {
-            console.log('✅ Constructs tab forms initialized');
-          }).catch(error => {
-            console.error('❌ Error initializing constructs tab:', error);
-          });
-        }
+        // Forms are already initialized during main loading, no need to reload
+        console.log('✅ Constructs tab forms already initialized');
       }
     });
   });
@@ -110,6 +105,14 @@ function setupEventHandlers() {
   if (refreshIfacesBtn) {
     refreshIfacesBtn.addEventListener('click', async () => {
       console.log('Refresh interfaces button clicked');
+      // Clear the physical interfaces cache to force fresh data
+      if (typeof clearPhysicalInterfacesCache === 'function') {
+        clearPhysicalInterfacesCache();
+      }
+      // Reset the interfaces loaded flag to force reload
+      if (typeof NetworkingModule !== 'undefined') {
+        NetworkingModule.interfacesLoaded = false;
+      }
       await loadInterfaces();
     });
   }
@@ -794,10 +797,8 @@ function setupEvents() {
     setupSearchAndFilters();
   }
   
-  // Set up networking forms
-  if (typeof setupNetworkingForms === 'function') {
-    setupNetworkingForms();
-  }
+  // Networking forms are initialized separately in main.js
+  console.log('Event handlers setup complete - networking forms handled separately');
   
   console.log('All event handlers setup complete');
 }

@@ -1,5 +1,5 @@
 'use strict';
-/* global $, $$, run, setStatus, netplanAction, getPhysicalInterfaces, loadInterfaces */
+/* global $, $$, run, setStatus, netplanAction, getPhysicalInterfaces, loadInterfaces, clearPhysicalInterfacesCache */
 
 async function setupNetworkingForms() {
   console.log('Setting up networking forms...');
@@ -241,6 +241,10 @@ function setupConstructEventHandlers() {
             const el = $(sel);
             if (el) el.value = '';
           });
+          // Clear cache since we created a new interface
+          if (typeof clearPhysicalInterfacesCache === 'function') {
+            clearPhysicalInterfacesCache();
+          }
           await loadInterfaces();
         }
       } catch (error) {
@@ -357,6 +361,10 @@ function setupConstructEventHandlers() {
           const helloTimeField = $('#br-hello-time');
           if (helloTimeField) helloTimeField.value = '';
           
+          // Clear cache since we created a new interface
+          if (typeof clearPhysicalInterfacesCache === 'function') {
+            clearPhysicalInterfacesCache();
+          }
           await loadInterfaces();
         }
       } catch (error) {
@@ -478,6 +486,10 @@ function setupConstructEventHandlers() {
           const primaryField = $('#bond-primary');
           if (primaryField) primaryField.value = '';
           
+          // Clear cache since we created a new interface
+          if (typeof clearPhysicalInterfacesCache === 'function') {
+            clearPhysicalInterfacesCache();
+          }
           await loadInterfaces();
         }
       } catch (error) {
