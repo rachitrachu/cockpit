@@ -2159,6 +2159,11 @@ async function setInterfaceIP(config) {
   try {
     console.log(`Setting IP address for ${name} to ${static_ip}`);
     
+    // CRITICAL: Preserve existing routes before any changes
+    const currentConfig = await loadNetplanConfig();
+    const existingRoutes = extractExistingRoutes(currentConfig, name);
+    console.log(`Preserving ${existingRoutes.length} existing routes for ${name}:`, existingRoutes);
+    
     // First, classify the interface
     const classification = await classifyInterfaces();
     const isSystemManaged = classification.systemManaged[name];
@@ -2171,6 +2176,7 @@ async function setInterfaceIP(config) {
       // This is a system interface - create override
       console.log(`${name} is system-managed, creating override...`);
       targetFile = determineTargetFile(name, 'override');
+      await ensureNetplanFile(targetFile, 'Configuration overrides for system-managed interfaces');
       netplanConfig = await loadNetplanFile(targetFile);
       
       // Initialize structure if needed
@@ -2196,9 +2202,15 @@ async function setInterfaceIP(config) {
         _original_file: isSystemManaged.file
       };
       
+      // Preserve existing routes
+      if (existingRoutes.length > 0) {
+        netplanConfig.network[interfaceType][name].routes = existingRoutes;
+      }
+      
     } else {
       // Use our standard managed file
       targetFile = determineTargetFile(name, 'manage');
+      await ensureNetplanFile(targetFile, 'Physical interfaces and VLANs');
       netplanConfig = await loadNetplanFile(targetFile);
       
       if (!netplanConfig.network) {
@@ -2259,6 +2271,12 @@ async function setInterfaceIP(config) {
       } else {
         delete interfaceSection.addresses;
         interfaceSection.dhcp4 = true;
+      }
+      
+      // CRITICAL: Preserve existing routes
+      if (existingRoutes.length > 0) {
+        interfaceSection.routes = existingRoutes;
+        console.log(`Preserved ${existingRoutes.length} routes for ${name} in ${interfaceType} section`);
       }
     }
     
