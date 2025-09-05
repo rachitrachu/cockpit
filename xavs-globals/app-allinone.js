@@ -178,7 +178,10 @@ const CONFIG_SCHEMA = {
         options: [],
         default: '',
         required: true,
-        visibleWhen: { field: 'volume_driver', equals: 'LVM' }
+        visibleWhen: [
+          { field: 'enable_cinder', equals: 'yes' },
+          { field: 'volume_driver', equals: 'LVM' }
+        ]
       },
       enable_cinder_backend_nfs: {
         type: 'toggle',
@@ -187,6 +190,18 @@ const CONFIG_SCHEMA = {
         default: 'no',
         required: false,
         visibleWhen: { field: 'volume_driver', equals: 'NFS' }
+      },
+      nfs_share_path: {
+        type: 'text',
+        label: 'NFS Share Path',
+        description: 'NFS share path for Cinder volumes (e.g., nfs-server:/path/to/share)',
+        placeholder: '192.168.1.100:/srv/nfs/cinder',
+        required: false,
+        visibleWhen: [
+          { field: 'enable_cinder', equals: 'yes' },
+          { field: 'volume_driver', equals: 'NFS' },
+          { field: 'enable_cinder_backend_nfs', equals: 'yes' }
+        ]
       },
       note_ceph: {
         type: 'note',
@@ -235,7 +250,7 @@ const CONFIG_SCHEMA = {
         type: 'textarea',
         label: 'Custom YAML Configuration',
         description: `<div class="custom-config-help">
-          <h6>🔧 Custom YAML Guidelines:</h6>
+          <h6><i class="fas fa-wrench"></i> Custom YAML Guidelines:</h6>
           <ul>
             <li>Use proper YAML syntax with <code>key: value</code> format</li>
             <li>Use 2 spaces for indentation (no tabs)</li>
@@ -258,6 +273,14 @@ const CONFIG_SCHEMA = {
         required: false
       }
     }
+  },
+
+  logs: {
+    title: 'Logs',
+    description: 'Configuration and activity logs',
+    fields: {
+      // This will be handled specially in the form generator
+    }
   }
 };
 
@@ -278,12 +301,24 @@ class FormGenerator {
     `;
     let keys = Object.keys(this.schema);
     let isFirst = true;
+    
+    // Tab icons mapping
+    const tabIcons = {
+      'basics': 'fas fa-cog',
+      'network': 'fas fa-network-wired', 
+      'storage': 'fas fa-hdd',
+      'monitoring': 'fas fa-chart-line',
+      'custom': 'fas fa-wrench',
+      'logs': 'fas fa-terminal'
+    };
+    
     for (const [sectionKey, section] of Object.entries(this.schema)) {
+      const icon = tabIcons[sectionKey] || 'fas fa-cog';
       formHtml += `
         <li class="nav-item" role="presentation">
           <button class="nav-link ${isFirst ? 'active' : ''}" id="${sectionKey}-tab" data-bs-toggle="tab"
                   data-bs-target="#${sectionKey}-pane" type="button" role="tab">
-            ${section.title}
+            <i class="${icon}"></i> ${section.title}
           </button>
         </li>`;
       isFirst = false;
@@ -302,7 +337,28 @@ class FormGenerator {
               <div class="row">`;
 
       // Fields loop
-      for (const [fieldKey, field] of Object.entries(section.fields)) {
+      if (sectionKey === 'logs') {
+        // Special handling for logs section
+        formHtml += `
+          <div class="col-12">
+            <div class="config-log-section">
+              <div class="config-log-header">
+                <h6><i class="fas fa-terminal"></i> Configuration Log</h6>
+                <button type="button" id="clear-log-btn" class="btn btn-sm btn-outline-muted">
+                  <i class="fas fa-trash"></i> Clear
+                </button>
+              </div>
+              <div id="config-log" class="config-log-content">
+                <div class="log-entry log-info">
+                  <span class="log-time"></span>
+                  <span class="log-message">Configuration interface initialized</span>
+                </div>
+              </div>
+            </div>
+          </div>`;
+      } else {
+        // Regular fields
+        for (const [fieldKey, field] of Object.entries(section.fields)) {
         const fieldId = `${sectionKey}_${fieldKey}`;
         const requiredMark = field.required ? '<span class="text-danger">*</span>' : '';
         const isTextArea = field.type === 'textarea';
@@ -316,11 +372,23 @@ class FormGenerator {
             <div style="display:flex;align-items:center;justify-content:space-between;">
               <label class="form-label" style="margin:0 12px 0 0;">${field.label} ${requiredMark}</label>
 
-              <!-- switch-flat control -->
-              <label class="switch switch-flat" style="margin:0;">
-                <input class="switch-input" type="checkbox" id="${fieldId}" name="${fieldId}" ${defYes ? 'checked' : ''}/>
-                <span class="switch-label" data-on="YES" data-off="NO"></span>
-                <span class="switch-handle"></span>
+              <!-- EXACT HTML from button.html -->
+              <label class="switch">
+                <input ${defYes ? 'checked' : ''} type="checkbox" id="${fieldId}" name="${fieldId}" class="switch-input">
+                <div class="slider">
+                  <div class="circle">
+                    <svg class="cross" xml:space="preserve" style="enable-background:new 0 0 512 512" viewBox="0 0 365.696 365.696" y="0" x="0" height="6" width="6" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" xmlns="http://www.w3.org/2000/svg">
+                      <g>
+                        <path data-original="#000000" fill="currentColor" d="M243.188 182.86 356.32 69.726c12.5-12.5 12.5-32.766 0-45.247L341.238 9.398c-12.504-12.503-32.77-12.503-45.25 0L182.86 122.528 69.727 9.374c-12.5-12.5-32.766-12.5-45.247 0L9.375 24.457c-12.5 12.504-12.5 32.77 0 45.25l113.152 113.152L9.398 295.99c-12.503 12.503-12.503 32.769 0 45.25L24.48 356.32c12.5 12.5 32.766 12.5 45.247 0l113.132-113.132L295.99 356.32c12.503 12.5 32.769 12.5 45.25 0l15.081-15.082c12.5-12.504 12.5-32.77 0-45.25zm0 0"></path>
+                      </g>
+                    </svg>
+                    <svg class="checkmark" xml:space="preserve" style="enable-background:new 0 0 512 512" viewBox="0 0 24 24" y="0" x="0" height="10" width="10" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" xmlns="http://www.w3.org/2000/svg">
+                      <g>
+                        <path class="" data-original="#000000" fill="currentColor" d="M9.707 19.121a.997.997 0 0 1-1.414 0l-5.646-5.647a1.5 1.5 0 0 1 0-2.121l.707-.707a1.5 1.5 0 0 1 2.121 0L9 14.171l9.525-9.525a1.5 1.5 0 0 1 2.121 0l.707.707a1.5 1.5 0 0 1 0 2.121z"></path>
+                      </g>
+                    </svg>
+                  </div>
+                </div>
               </label>
             </div>`;
           if (field.description)
@@ -366,6 +434,7 @@ class FormGenerator {
 
         formHtml += `</div>`;
       }
+      } // Close the else block for regular fields
 
       // Per-tab nav
       const prevDisabled = (idx === 0) ? 'disabled' : '';
@@ -390,6 +459,9 @@ class FormGenerator {
     populateSelectOptionsFromSchema(this.container, this.schema);
     wireTabNav();
     wireFlatSwitches(); // set yes/no values on checkbox switches
+    
+    // Evaluate visibility after switches are set to defaults
+    evaluateVisibility(this.container, this.schema);
   }
 
   initializeTabs() {
@@ -468,6 +540,193 @@ class FormGenerator {
   }
 }
 
+/* ===================== VALIDATION UTILITIES ===================== */
+function isValidIPv4(ip) {
+  const ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+  return ipv4Regex.test(ip);
+}
+
+function isValidDomain(domain) {
+  const domainRegex = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
+  return domainRegex.test(domain) && domain.length <= 253;
+}
+
+function validateField(input, fieldDef) {
+  const value = input.value.trim();
+  const errors = [];
+
+  // Check if required
+  if (fieldDef.required && !value) {
+    errors.push('This field is required');
+    return errors;
+  }
+
+  // Skip validation if empty and not required
+  if (!value) return errors;
+
+  // Check specific field types by name/id
+  const fieldId = input.id || input.name || '';
+  
+  if (fieldId.includes('vip_address') || fieldId.includes('ip_address')) {
+    if (!isValidIPv4(value)) {
+      errors.push('Please enter a valid IP address (e.g., 192.168.1.100)');
+    }
+  }
+
+  if (fieldId.includes('fqdn') || fieldId.includes('domain')) {
+    if (!isValidDomain(value)) {
+      errors.push('Please enter a valid domain name (e.g., example.com)');
+    }
+  }
+
+  // Check regex validation if provided
+  if (fieldDef.validation && !fieldDef.validation.test(value)) {
+    errors.push('Invalid format');
+  }
+
+  return errors;
+}
+
+function validateAllFields() {
+  if (!formGenerator) return { isValid: false, errors: [] };
+  
+  const allErrors = [];
+  let isValid = true;
+  
+  // Get current form values for conditional validation
+  const formValues = {};
+  const inputs = formGenerator.container.querySelectorAll('input, select, textarea');
+  inputs.forEach(input => {
+    const parts = (input.name || '').split('_');
+    if (parts.length >= 2) {
+      const section = parts[0];
+      const key = parts.slice(1).join('_');
+      const value = input.classList.contains('switch-input') ? (input.checked ? 'yes' : 'no') : input.value;
+      formValues[`${section}.${key}`] = value;
+    }
+  });
+  
+  inputs.forEach(input => {
+    // Skip hidden fields
+    const wrapper = input.closest('[style*="margin-bottom"]');
+    if (wrapper && wrapper.style.display === 'none') return;
+    
+    // Get field definition
+    const parts = (input.name || '').split('_');
+    if (parts.length < 2) return;
+    const section = parts[0];
+    const key = parts.slice(1).join('_');
+    const fieldDef = CONFIG_SCHEMA?.[section]?.fields?.[key];
+    if (!fieldDef) return;
+    
+    // Skip toggles and notes
+    if (fieldDef.type === 'toggle' || fieldDef.type === 'note') return;
+    
+    const fieldId = `${section}_${key}`;
+    const fieldLabel = wrapper?.querySelector('.form-label')?.textContent?.replace('*', '').trim() || key;
+    
+    // Check if this field should be conditionally required
+    let isConditionallyRequired = fieldDef.required;
+    
+    // Apply your specific conditional requirements
+    
+    // 1. Internal VIP address is always required (already marked as required: true)
+    
+    // 2. If domain setup is enabled then internal FQDN is required
+    if (fieldId === 'basics_kolla_internal_fqdn') {
+      isConditionallyRequired = formValues['basics.domain_setup'] === 'yes';
+    }
+    
+    // 3. If any TLS option is enabled - then path for cert file required
+    if (fieldId === 'basics_kolla_internal_fqdn_cert') {
+      isConditionallyRequired = formValues['basics.kolla_enable_tls_internal'] === 'yes';
+    }
+    if (fieldId === 'basics_kolla_external_fqdn_cert') {
+      isConditionallyRequired = formValues['basics.kolla_enable_tls_external'] === 'yes';
+    }
+    
+    // 4. If Cinder is enabled and volume driver is LVM then VG is required
+    if (fieldId === 'storage_cinder_volume_group') {
+      isConditionallyRequired = formValues['storage.enable_cinder'] === 'yes' && 
+                               formValues['storage.volume_driver'] === 'LVM';
+    }
+    
+    // 4. If Cinder is enabled and volume driver is NFS then NFS backend must be enabled
+    if (fieldId === 'storage_enable_cinder_backend_nfs') {
+      if (formValues['storage.enable_cinder'] === 'yes' && formValues['storage.volume_driver'] === 'NFS') {
+        // For NFS, the toggle must be enabled
+        const isNfsEnabled = input.classList.contains('switch-input') ? input.checked : input.value === 'yes';
+        if (!isNfsEnabled) {
+          isValid = false;
+          input.classList.add('field-required');
+          allErrors.push({
+            field: fieldId,
+            label: fieldLabel,
+            errors: ['NFS backend must be enabled when using NFS volume driver']
+          });
+          return; // Skip other validation for this field
+        }
+      }
+    }
+    
+    // 5. If NFS backend is enabled then NFS share path is required
+    if (fieldId === 'storage_nfs_share_path') {
+      isConditionallyRequired = formValues['storage.enable_cinder'] === 'yes' && 
+                               formValues['storage.volume_driver'] === 'NFS' &&
+                               formValues['storage.enable_cinder_backend_nfs'] === 'yes';
+    }
+    
+    // Validate regular field requirements
+    if (isConditionallyRequired) {
+      const fieldErrors = validateField(input, { ...fieldDef, required: true });
+      if (fieldErrors.length > 0) {
+        isValid = false;
+        input.classList.add('field-required');
+        allErrors.push({
+          field: fieldId,
+          label: fieldLabel,
+          errors: fieldErrors
+        });
+      } else {
+        input.classList.remove('field-required');
+      }
+    } else {
+      // Field is not required, just validate format if value exists
+      const fieldErrors = validateField(input, { ...fieldDef, required: false });
+      if (fieldErrors.length > 0) {
+        isValid = false;
+        input.classList.add('field-required');
+        allErrors.push({
+          field: fieldId,
+          label: fieldLabel,
+          errors: fieldErrors
+        });
+      } else {
+        input.classList.remove('field-required');
+      }
+    }
+  });
+  
+  return { isValid, errors: allErrors };
+}
+
+function updateSaveButtonState() {
+  const saveBtn = document.getElementById('save');
+  if (!saveBtn) return;
+  
+  const validation = validateAllFields();
+  
+  if (validation.isValid) {
+    saveBtn.disabled = false;
+    saveBtn.classList.remove('btn-disabled');
+    saveBtn.classList.add('btn-brand');
+  } else {
+    saveBtn.disabled = true;
+    saveBtn.classList.add('btn-disabled');
+    saveBtn.classList.remove('btn-brand');
+  }
+}
+
 let formGenerator = null;
 
 /* ===================== THEME FOLLOW (Cockpit) ===================== */
@@ -533,67 +792,15 @@ function wireTabNav() {
   });
 }
 
-/* ========== switch-flat CSS injection (brand, compact) ========== */
+/* ========== Switch CSS now in style.css - no injection needed ========== */
 function injectSwitchCSS() {
-  if (document.getElementById('xavs-switch-css')) return;
-  const css = `
-/* Base switch */
-.switch { position: relative; display: inline-block; vertical-align: middle; }
-.switch-input { position: absolute; left: -9999px; }
-
-.switch-label {
-  display: block; position: relative;
-  width: 78px; height: 28px;               /* compact pill */
-  border-radius: 9999px;
-  border: 2px solid ${BRAND_RED};
-  background: ${BRAND_RED};
-  cursor: pointer; user-select: none;
-  transition: background-color .18s ease, border-color .18s ease;
-}
-
-/* Off/On text via data attributes */
-.switch-label:before,
-.switch-label:after {
-  position: absolute; top: 50%; transform: translateY(-50%);
-  font-size: 12px; font-weight: 700; letter-spacing: .2px;
-  color: #fff;
-}
-.switch-label:before { content: attr(data-off); left: 12px; opacity: 1; }
-.switch-label:after  { content: attr(data-on);  right: 12px; opacity: 0; }
-
-/* Knob */
-.switch-handle {
-  position: absolute; top: 5px; left: 5px;
-  width: 20px; height: 20px; border-radius: 50%;
-  background: #dadada;
-  box-shadow: 0 2px 4px rgba(0,0,0,.2);
-  transition: left .18s ease, background .18s ease;
-}
-
-/* Checked state (YES) */
-.switch-input:checked ~ .switch-label {
-  border-color: ${BRAND_GREEN};
-  background: ${BRAND_GREEN};
-}
-.switch-input:checked ~ .switch-label:before { opacity: 0; }
-.switch-input:checked ~ .switch-label:after  { opacity: 1; }
-/* Move knob to the right (78 - (20 + 5 + 5) = 48) */
-.switch-input:checked ~ .switch-handle { left: 53px; background: ${BRAND_GREEN}; }
-
-/* Flat variant baseline */
-.switch-flat { padding: 0; background: transparent; }
-.switch-flat .switch-label { box-shadow: none; }
-.switch-flat .switch-handle { box-shadow: none; }
-  `;
-  const style = document.createElement('style');
-  style.id = 'xavs-switch-css';
-  style.textContent = css;
-  document.head.appendChild(style);
+  // Switch CSS is now properly defined in style.css
+  // No injection needed to avoid conflicts
 }
 
 /* Ensure checkbox switches store 'yes'/'no' values */
 function wireFlatSwitches() {
-  document.querySelectorAll('.switch-input').forEach(chk => {
+  document.querySelectorAll('.switch input[type="checkbox"]').forEach(chk => {
     const setVal = () => { chk.value = chk.checked ? 'yes' : 'no'; };
     setVal();
     chk.addEventListener('change', setVal);
@@ -602,12 +809,18 @@ function wireFlatSwitches() {
 
 /* Status panel */
 function showStatus(message, type = 'info') {
-  const el = document.getElementById('status_panel');
-  if (el) {
-    el.className = `alert alert-${type}`;
-    el.textContent = message;
-    el.style.display = 'block';
-    if (type === 'success') setTimeout(() => { el.style.display = 'none'; }, 5000);
+  // Add to log instead of showing banner
+  addConfigLog(message, type);
+  
+  // Only show banner for critical errors
+  if (type === 'danger' || type === 'error') {
+    const el = document.getElementById('status_panel');
+    if (el) {
+      el.className = `alert alert-${type === 'error' ? 'danger' : type}`;
+      el.textContent = message;
+      el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 5000);
+    }
   }
 }
 
@@ -650,7 +863,7 @@ function generateYamlContent(config) {
       if (value === undefined || value === null || value === '') continue;
       if (YAML_SKIP_KEYS.has(key)) continue;
       if (YAML_ONLY_IF_YES.has(key) && String(value).toLowerCase() !== 'yes') continue;
-      if (isStorage && (key === 'enable_cinder_backend_nfs' || key === 'cinder_volume_group')) continue;
+      if (isStorage && (key === 'enable_cinder_backend_nfs' || key === 'cinder_volume_group' || key === 'nfs_share_path')) continue;
       writeKV(key, value);
     }
 
@@ -662,8 +875,13 @@ function generateYamlContent(config) {
           const vg = sectionValue.cinder_volume_group || '';
           if (vg) { writeKV('enable_cinder_backend_lvm', 'yes'); writeKV('cinder_volume_group', vg); }
         } else if (driver === 'NFS') {
-          if (String(sectionValue.enable_cinder_backend_nfs || 'no').toLowerCase() === 'yes')
+          if (String(sectionValue.enable_cinder_backend_nfs || 'no').toLowerCase() === 'yes') {
             writeKV('enable_cinder_backend_nfs', 'yes');
+            const nfsPath = sectionValue.nfs_share_path || '';
+            if (nfsPath) {
+              writeKV('nfs_share_path', nfsPath);
+            }
+          }
         }
       }
     }
@@ -691,10 +909,20 @@ function generateYamlContent(config) {
 /* ===================== SAVE ===================== */
 async function saveConfiguration() {
   showStatus('Validating configuration...', 'info');
+  
+  // Validate required fields and highlight any missing ones
+  const validationErrors = validateRequiredFields();
+  if (validationErrors.length > 0) {
+    addConfigLog(`Validation failed: ${validationErrors.length} required field(s) missing`, 'error');
+    showStatus('Please fill in all required fields (highlighted in red)', 'danger');
+    return;
+  }
+  
   try {
     if (!formGenerator) throw new Error('Form generator not initialized');
     const errs = formGenerator.validateForm();
     if (errs.length) {
+      addConfigLog('Form validation failed', 'error');
       showStatus('Validation failed. Please check required fields.', 'danger');
       console.error('Validation errors:', errs);
       return;
@@ -721,10 +949,12 @@ async function saveConfiguration() {
     const readback = await cockpit.file(filePath).read();
     if (!readback || !readback.length) throw new Error('Configuration file seems empty');
 
+    addConfigLog(`Configuration successfully saved to ${filePath}`, 'success');
     showStatus(`Configuration saved to ${filePath}`, 'success');
     return filePath;
   } catch (e) {
     console.error('Save failed:', e);
+    addConfigLog(`Save failed: ${e.message}`, 'error');
     showStatus('Failed to save configuration: ' + e.message, 'danger');
   }
 }
@@ -752,6 +982,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     formGenerator.container.addEventListener('change', async (e) => {
       if (!e.target || !e.target.name) return;
 
+      // Log field changes
+      const fieldLabel = document.querySelector(`label[for="${e.target.id}"]`)?.textContent.replace('*', '').trim() || e.target.name;
+      const newValue = e.target.type === 'checkbox' ? (e.target.checked ? 'Yes' : 'No') : e.target.value;
+      
+      if (newValue) {
+        logFieldChange(fieldLabel, newValue);
+        // Remove required field highlighting if filled
+        e.target.classList.remove('field-required');
+      }
+
       if (e.target.id === 'basics_network_interface') syncExternalInterfaceOptions();
       if (e.target.id === 'network_neutron_external_interface') hookExternalInterfaceBehavior();
 
@@ -759,11 +999,43 @@ document.addEventListener('DOMContentLoaded', async () => {
         await updateVGOptionsAndHint();
 
       evaluateVisibility(formGenerator.container, CONFIG_SCHEMA);
+      
+      // Update save button state after any change
+      setTimeout(updateSaveButtonState, 100);
+    });
+
+    // Add input event listeners for real-time validation
+    formGenerator.container.addEventListener('input', (e) => {
+      // Get field definition for validation
+      const parts = (e.target.name || '').split('_');
+      if (parts.length >= 2) {
+        const section = parts[0];
+        const key = parts.slice(1).join('_');
+        const fieldDef = CONFIG_SCHEMA?.[section]?.fields?.[key];
+        
+        if (fieldDef) {
+          const errors = validateField(e.target, fieldDef);
+          if (errors.length > 0) {
+            e.target.classList.add('field-required');
+            e.target.title = errors.join(', ');
+          } else {
+            e.target.classList.remove('field-required');
+            e.target.title = '';
+          }
+        }
+      }
+      
+      // Update save button state after input
+      setTimeout(updateSaveButtonState, 100);
     });
 
     setupEventListeners();
     setupHelpUX();     // hover & click
     evaluateVisibility(formGenerator.container, CONFIG_SCHEMA);
+    
+    // Initialize save button state
+    setTimeout(updateSaveButtonState, 500);
+    
     showStatus('Configuration UI ready', 'success');
   } catch (e) {
     console.error('Init failed:', e);
@@ -771,13 +1043,142 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
-/* ===================== EVENTS & HELP ===================== */
+/* ===================== CONFIGURATION LOGGING ===================== */
+function addConfigLog(message, type = 'info') {
+  const logContainer = document.getElementById('config-log');
+  if (!logContainer) return;
+  
+  const timestamp = new Date().toLocaleTimeString('en-US', { 
+    hour12: false, 
+    hour: '2-digit', 
+    minute: '2-digit', 
+    second: '2-digit' 
+  });
+  
+  const logEntry = document.createElement('div');
+  logEntry.className = `log-entry log-${type}`;
+  logEntry.innerHTML = `
+    <span class="log-time">${timestamp}</span>
+    <span class="log-message">${message}</span>
+  `;
+  
+  logContainer.appendChild(logEntry);
+  
+  // Auto-scroll to bottom
+  logContainer.scrollTop = logContainer.scrollHeight;
+  
+  // Update bottom status bar with most recent activity and color coding
+  const recentActivity = document.getElementById('recent-activity');
+  const statusBar = document.querySelector('.bottom-status-bar');
+  if (recentActivity && statusBar) {
+    recentActivity.textContent = `${timestamp} - ${message}`;
+    
+    // Remove existing status classes
+    statusBar.classList.remove('status-info', 'status-success', 'status-warning', 'status-error');
+    
+    // Add appropriate status class for color coding
+    const statusClass = type === 'success' ? 'status-success' : 
+                       type === 'warning' ? 'status-warning' : 
+                       type === 'error' ? 'status-error' : 'status-info';
+    statusBar.classList.add(statusClass);
+  }
+  
+  // Limit to 50 entries
+  const entries = logContainer.querySelectorAll('.log-entry');
+  if (entries.length > 50) {
+    entries[0].remove();
+  }
+}
+
+function clearConfigLog() {
+  const logContainer = document.getElementById('config-log');
+  if (logContainer) {
+    logContainer.innerHTML = '';
+    addConfigLog('Configuration log cleared', 'info');
+  }
+}
+
+function validateRequiredFields() {
+  const requiredFields = document.querySelectorAll('[required]');
+  let hasErrors = false;
+  let missingFields = [];
+  
+  requiredFields.forEach(field => {
+    const value = field.type === 'checkbox' ? field.checked : field.value.trim();
+    const isEmpty = field.type === 'checkbox' ? !value : !value;
+    
+    if (isEmpty) {
+      field.classList.add('field-required');
+      hasErrors = true;
+      
+      // Get field label
+      const label = document.querySelector(`label[for="${field.id}"]`);
+      const fieldName = label ? label.textContent.replace('*', '').trim() : field.name;
+      missingFields.push(fieldName);
+    } else {
+      field.classList.remove('field-required');
+    }
+  });
+  
+  if (hasErrors) {
+    addConfigLog(`Please fill required fields: ${missingFields.join(', ')}`, 'error');
+    return false;
+  }
+  
+  return true;
+}
+
+function logFieldChange(fieldName, newValue, oldValue = '') {
+  if (newValue !== oldValue) {
+    const message = oldValue 
+      ? `${fieldName} changed from "${oldValue}" to "${newValue}"`
+      : `${fieldName} set to "${newValue}"`;
+    addConfigLog(message, 'info');
+  }
+}
+
+/* ===================== ENHANCED STATUS FUNCTION ===================== */
 function setupEventListeners() {
-  document.getElementById('save')?.addEventListener('click', () => { saveConfiguration().catch(console.error); });
+  document.getElementById('save')?.addEventListener('click', (e) => { 
+    // Check if button is disabled
+    if (e.target.disabled || e.target.classList.contains('btn-disabled')) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      // Show validation popup
+      const validation = validateAllFields();
+      if (!validation.isValid) {
+        let errorMessage = 'Please fill out required details first:\n\n';
+        validation.errors.forEach(error => {
+          errorMessage += `• ${error.label}: ${error.errors.join(', ')}\n`;
+        });
+        
+        // Create a modal instead of alert
+        showValidationModal(errorMessage);
+        return false;
+      }
+    }
+    
+    saveConfiguration().catch(console.error); 
+  });
   document.getElementById('load_config_btn')?.addEventListener('click', () => { loadSavedConfiguration().catch(console.error); });
   document.getElementById('preview_config_btn')?.addEventListener('click', () => { previewConfiguration(); });
   document.getElementById('download_config_btn')?.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); downloadConfiguration(); });
   document.getElementById('reset_config_btn')?.addEventListener('click', () => { resetToDefaults(); });
+  
+  // Setup dropdown functionality
+  setupDropdownMenus();
+  
+  // Setup clear log button
+  document.getElementById('clear-log-btn')?.addEventListener('click', clearConfigLog);
+  
+  // Setup tab functionality
+  setupTabFunctionality();
+  
+  // Setup view logs button
+  document.getElementById('view-logs-btn')?.addEventListener('click', () => {
+    switchToLogsTab();
+  });
 
   // Help button click opens modal with quick tips
   document.getElementById('help_btn')?.addEventListener('click', () => openHelpModal());
@@ -854,6 +1255,95 @@ function openHelpModal() {
   const close = () => { m.remove(); };
   document.getElementById('help_ok_modal')?.addEventListener('click', close, { once: true });
   m.addEventListener('click', (e) => { if (e.target === m) close(); }, { once: true });
+}
+
+/* ===================== TAB FUNCTIONALITY ===================== */
+function setupTabFunctionality() {
+  // The tabs are already handled by the existing form generator
+  // No additional setup needed for the built-in tab system
+}
+
+function switchToTab(activeTab, configTab, logsTab, configPane, logsPane) {
+  // Not needed - using original tab system
+}
+
+function switchToLogsTab() {
+  // Switch to the logs tab using the original tab system
+  const logsTab = document.getElementById('logs-tab');
+  if (logsTab) {
+    logsTab.click();
+  }
+}
+
+function showValidationModal(message) {
+  // Remove existing modal if any
+  const existingModal = document.getElementById('validationModal');
+  if (existingModal) existingModal.remove();
+  
+  const html = `
+    <div class="modal" id="validationModal" role="dialog" aria-modal="true" style="z-index:11000;">
+      <div class="modal-content" style="border-radius:12px;border:1px solid #ef4444;max-width:500px;">
+        <div class="modal-body" style="padding:20px;">
+          <h5 style="color:#ef4444;margin-bottom:16px;display:flex;align-items:center;gap:8px;">
+            <i class="fas fa-exclamation-triangle"></i>
+            Validation Required
+          </h5>
+          <div style="white-space:pre-line;font-size:14px;line-height:1.5;">${message}</div>
+        </div>
+        <div class="modal-foot" style="border-top:1px solid var(--border,#d1d5db);padding:12px 20px;display:flex;justify-content:flex-end;gap:8px;">
+          <button class="btn btn-brand" id="validation_ok_modal">Understood</button>
+        </div>
+      </div>
+    </div>`;
+  
+  document.body.insertAdjacentHTML('beforeend', html);
+  const modal = document.getElementById('validationModal');
+  
+  const close = () => { modal.remove(); };
+  document.getElementById('validation_ok_modal')?.addEventListener('click', close, { once: true });
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); }, { once: true });
+}
+
+/* ===================== DROPDOWN MENUS ===================== */
+function setupDropdownMenus() {
+  // Setup actions dropdown
+  const actionsBtn = document.querySelector('.dropdown-toggle');
+  const actionsMenu = document.querySelector('.dropdown-menu');
+  
+  if (actionsBtn && actionsMenu) {
+    // Toggle dropdown on button click
+    actionsBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      actionsMenu.classList.toggle('show');
+    });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!actionsBtn.contains(e.target) && !actionsMenu.contains(e.target)) {
+        actionsMenu.classList.remove('show');
+      }
+    });
+    
+    // Handle dropdown item clicks
+    actionsMenu.addEventListener('click', (e) => {
+      const item = e.target.closest('.dropdown-item');
+      if (!item) return;
+      
+      e.preventDefault();
+      actionsMenu.classList.remove('show');
+      
+      // Handle different actions based on text content
+      const text = item.textContent.trim();
+      if (text.includes('Load Configuration')) {
+        loadSavedConfiguration().catch(console.error);
+      } else if (text.includes('Preview YAML')) {
+        previewConfiguration();
+      } else if (text.includes('Export YAML')) {
+        downloadConfiguration();
+      }
+    });
+  }
 }
 
 /* ===================== PREVIEW / DOWNLOAD / LOAD ===================== */
@@ -1011,6 +1501,7 @@ function mapKeyToSection(key) {
     'cinder_volume_group': 'storage',
     'enable_cinder_backend_lvm': 'storage',
     'enable_cinder_backend_nfs': 'storage',
+    'nfs_share_path': 'storage',
 
     // monitoring
     'enable_prometheus': 'monitoring',
@@ -1067,11 +1558,24 @@ function evaluateVisibility(container, schema) {
 
       let show = true;
       if (field.visibleWhen) {
-        const depVal = values[`${sectionKey}.${field.visibleWhen.field}`] || '';
-        if (field.visibleWhen.equals === '__NONEMPTY__') {
-          show = depVal.trim() !== '';
+        if (Array.isArray(field.visibleWhen)) {
+          // Multiple conditions - ALL must be true
+          show = field.visibleWhen.every(condition => {
+            const depVal = values[`${sectionKey}.${condition.field}`] || '';
+            if (condition.equals === '__NONEMPTY__') {
+              return depVal.trim() !== '';
+            } else {
+              return (depVal === condition.equals);
+            }
+          });
         } else {
-          show = (depVal === field.visibleWhen.equals);
+          // Single condition
+          const depVal = values[`${sectionKey}.${field.visibleWhen.field}`] || '';
+          if (field.visibleWhen.equals === '__NONEMPTY__') {
+            show = depVal.trim() !== '';
+          } else {
+            show = (depVal === field.visibleWhen.equals);
+          }
         }
       }
       wrap.style.display = show ? '' : 'none';

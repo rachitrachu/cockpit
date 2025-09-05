@@ -4,26 +4,21 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link href="style.css" rel="stylesheet" />
+  <link rel="stylesheet" href="fontawesome/css/all.min.css">
   <title>XAVS Configuration</title>
 </head>
 <body>
   <div class="container-fluid">
     <!-- Top bar: Title + Help -->
     <div class="topbar">
-      <h1 class="app-title">XAVS Configuration</h1>
-      <!-- No data-tooltip here; hover text is created by JS so we can fully control it -->
-      <button id="help_btn" class="icon-btn" aria-label="Help">?</button>
-    </div>
-
-    <!-- Actions toolbar -->
-    <div class="toolbar">
-      <div class="left">
-        <button type="button" id="load_config_btn" class="btn btn-outline-brand">Load Configuration</button>
-      </div>
-      <div class="right">
-        <button type="button" id="preview_config_btn" class="btn btn-outline-brand">Preview YAML</button>
-        <button type="button" id="download_config_btn" class="btn btn-brand">Export YAML</button>
-      </div>
+      <h1 class="app-title">
+        <img src="logo-x.png" alt="X" class="logo-x">AVS Configuration
+      </h1>
+      <div class="help" data-tip="This module helps configure xAVS cloud infrastructure settings:
+• Configure global settings and parameters for xAVS deployment
+• Manage service configurations with real-time validation  
+• Export and import configuration files in YAML format
+• Preview changes before applying to your environment">?</div>
     </div>
 
     <!-- Status Panel -->
@@ -41,8 +36,40 @@
 
     <!-- Footer actions -->
     <div class="footer-actions">
-      <button type="button" id="reset_config_btn" class="btn btn-outline-muted">Reset to Defaults</button>
-      <button id="save" class="btn btn-brand btn-lg">Save Configuration</button>
+      <button type="button" id="reset_config_btn" class="btn btn-outline-muted">
+        <i class="fas fa-undo"></i> Reset to Defaults
+      </button>
+      <div class="d-flex gap-2">
+        <div class="dropdown">
+          <button class="btn btn-outline-brand dropdown-toggle" type="button">
+            <i class="fas fa-ellipsis-v"></i>
+          </button>
+          <div class="dropdown-menu">
+            <button type="button" id="load_config_btn" class="dropdown-item">
+              <i class="fas fa-folder-open"></i> Load Configuration
+            </button>
+            <button type="button" id="preview_config_btn" class="dropdown-item">
+              <i class="fas fa-eye"></i> Preview YAML
+            </button>
+            <button type="button" id="download_config_btn" class="dropdown-item">
+              <i class="fas fa-download"></i> Export YAML
+            </button>
+          </div>
+        </div>
+        <button id="save" class="btn btn-brand btn-lg">
+          <i class="fas fa-save"></i> Save Configuration
+        </button>
+      </div>
+    </div>
+
+    <!-- Bottom Status Bar -->
+    <div class="bottom-status-bar">
+      <div class="status-content">
+        <span id="recent-activity">Ready</span>
+      </div>
+      <button type="button" id="view-logs-btn" class="btn btn-sm btn-outline-brand">
+        View Logs
+      </button>
     </div>
   </div>
 
