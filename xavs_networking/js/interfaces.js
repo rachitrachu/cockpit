@@ -308,8 +308,8 @@ function showNetplanTryProgress(timeoutSeconds) {
 // This ensures network configuration changes are tested before permanent application
 async function safeNetplanApply(options = {}) {
   try {
-    // Use default timeout of 10 seconds and allow override via options
-    let config = { timeout: 10, skipTry: false };
+    // Use default timeout of 30 seconds (increased from 10) and allow override via options
+    let config = { timeout: 30, skipTry: false };
     
     // Use provided options (no modal for timeout configuration)
     config = { ...config, ...options };
@@ -350,6 +350,12 @@ async function safeNetplanApply(options = {}) {
           if (tryResult.reverted) {
             errorMessage = `Configuration was automatically reverted for safety: ${tryResult.message || tryResult.error}`;
             console.log('🔄 Configuration was reverted due to timeout - this is expected safety behavior');
+            
+            // For timeout issues, suggest longer timeout or direct apply
+            if (tryResult.error && tryResult.error.includes('timed out')) {
+              console.log('💡 Timeout detected - consider using longer timeout or direct apply');
+              errorMessage += '\n\nTip: You can try with a longer timeout or apply directly (skips safety test)';
+            }
           }
           
           if (progressModal && progressModal._markError) {

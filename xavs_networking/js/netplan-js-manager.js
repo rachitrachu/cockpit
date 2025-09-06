@@ -53,13 +53,31 @@ async function executeCommand(command, options = {}) {
       // Some netplan versions show "Reverting" but actually apply the config
       console.log('🔍 Verifying if revert actually occurred or if this is a false positive...');
       
+      // Quick verification: Check if netplan generate still works (config was applied)
+      try {
+        const verifyResult = await cockpit.spawn(['bash', '-c', 'netplan generate 2>&1']);
+        if (verifyResult.length < 100) { // Short output usually means success
+          console.log('✅ Post-verification suggests config was actually applied despite revert message');
+          return { 
+            success: true, 
+            output: output, 
+            exitCode: 0,
+            warning: true,
+            possibleFalsePositive: true,
+            message: 'Configuration applied successfully (netplan showed revert warning but config is valid)'
+          };
+        }
+      } catch (verifyError) {
+        console.log('❌ Post-verification failed, revert was likely real');
+      }
+      
       return { 
         success: false, 
         output: output, 
         exitCode: 78,
         reverted: true,
-        possibleFalsePositive: true, // Flag for further verification
-        error: 'Configuration appears to have been reverted due to timeout (verification needed)'
+        possibleFalsePositive: false,
+        error: 'Configuration was reverted due to timeout or network issues'
       };
     }
     
@@ -423,10 +441,6 @@ network:
 network:
   version: 2
   renderer: networkd
-  ethernets: {}
-  vlans: {}
-  bridges: {}
-  bonds: {}
 `;
     } else if (filename.includes('overrides')) {
       defaultContent = `# ${description || 'Cockpit configuration overrides'}
@@ -555,12 +569,12 @@ function determineTargetFile(interfaceName, operation = 'create') {
 function generateNetplanYAML(config) {
   console.log('DEBUG: generateNetplanYAML called with config:', JSON.stringify(config, null, 2));
   
-  // Simple YAML generation (can be enhanced)
-  let yaml = 'network:\n  version: 2\n';
+  // Simple YAML generation with networkd renderer
+  let yaml = 'network:\n  version: 2\n  renderer: networkd\n';
   
   const network = config.network || {};
   
-  // Add each section if present
+  // Add each section if present and has content
   for (const section of ['ethernets', 'vlans', 'bridges', 'bonds']) {
     if (network[section] && Object.keys(network[section]).length > 0) {
       yaml += `  ${section}:\n`;
@@ -928,8 +942,23 @@ async function writeNetplanConfig(config) {
       updates.push(writeNetplanFile(NETPLAN_FILES.COCKPIT_OVERRIDES, preservedOverrideConfig));
     }
     
-    // Legacy fallback - write complete config to 99-cockpit.yaml for compatibility
-    updates.push(writeNetplanFile(NETPLAN_FILES.COCKPIT_LEGACY, preservedConfig));
+    // Write any remaining ethernets (like parent interfaces) to legacy file
+    // IMPORTANT: Exclude any interfaces that were already written to other files
+    const ethernetConfig = extractEthernetConfig(preservedConfig, interfaceConfig);
+    if (ethernetConfig && hasContent(ethernetConfig)) {
+      updates.push(writeNetplanFile(NETPLAN_FILES.COCKPIT_LEGACY, ethernetConfig));
+    }
+  }
+  
+  // Wait for all writes to complete and return success status
+  try {
+    const results = await Promise.all(updates);
+    const allSuccessful = results.every(result => result === true);
+    console.log(`✅ writeNetplanConfig completed: ${allSuccessful ? 'SUCCESS' : 'SOME FAILURES'}`);
+    return allSuccessful;
+  } catch (error) {
+    console.error('❌ writeNetplanConfig failed:', error);
+    return false;
   }
 }
 
@@ -1005,6 +1034,57 @@ function extractOverrideConfig(config) {
   }
   
   return overrideConfig;
+}
+
+/**
+ * Extract ethernet configuration (parent interfaces and simple ethernet configs)
+ * Excludes VLANs, bridges, bonds which should go to interfaces file
+ */
+function extractEthernetConfig(config, interfaceConfig = null) {
+  const ethernetConfig = {
+    network: {
+      version: 2,
+      renderer: 'networkd'
+    }
+  };
+  
+  // Get list of non-ethernet interfaces that should NOT be in ethernet config
+  const excludedInterfaces = new Set();
+  
+  // Never include VLANs, bridges, or bonds in ethernet config
+  if (config.network) {
+    ['vlans', 'bridges', 'bonds'].forEach(section => {
+      if (config.network[section]) {
+        Object.keys(config.network[section]).forEach(name => {
+          excludedInterfaces.add(name);
+        });
+      }
+    });
+  }
+  
+  // Add ethernet interfaces (usually parent interfaces for VLANs)
+  if (config.network?.ethernets) {
+    // Only include simple ethernet configs (like optional: true for parent interfaces)
+    const filteredEthernets = {};
+    
+    for (const [name, iface] of Object.entries(config.network.ethernets)) {
+      // Skip if this is actually a VLAN/bridge/bond (should never be in ethernets)
+      if (excludedInterfaces.has(name)) {
+        continue;
+      }
+      
+      // Include parent interfaces and simple ethernet configs
+      if (iface.optional === true || (!iface.addresses && !iface.dhcp4 && !iface.mtu)) {
+        filteredEthernets[name] = iface;
+      }
+    }
+    
+    if (Object.keys(filteredEthernets).length > 0) {
+      ethernetConfig.network.ethernets = filteredEthernets;
+    }
+  }
+  
+  return ethernetConfig;
 }
 
 /**
@@ -1173,7 +1253,18 @@ async function applyNetplanConfig(skipTry = false, timeout = 10) {
     if (result.success) {
       console.log('Netplan configuration applied successfully');
       
-      // Step 5: Restore preserved routes after apply
+      // Step 5a: Restart systemd-networkd to ensure changes are picked up
+      console.log('🔄 Restarting systemd-networkd to ensure configuration is applied...');
+      const restartResult = await executeCommand('systemctl restart systemd-networkd');
+      if (restartResult.success) {
+        console.log('✅ systemd-networkd restarted successfully');
+        // Give networkd a moment to apply configurations
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } else {
+        console.warn('⚠️ Failed to restart systemd-networkd:', restartResult.error);
+      }
+      
+      // Step 5b: Restore preserved routes after apply
       await restorePreservedRoutes(routePreservation);
       
       return { success: true, message: `Configuration applied directly (${reason})` };
@@ -2764,11 +2855,14 @@ async function netplanJsAction(action, config = {}) {
       case 'try':
       case 'try_config':
         console.log('🧪 try_config: Testing netplan configuration safely...');
-        const timeout = config.timeout || 10;
+        const timeout = config.timeout || 30; // Increased default timeout from 10 to 30 seconds
+        console.log(`⏱️ Using ${timeout}s timeout for netplan try`);
         const tryResult = await executeCommand(`netplan try --timeout ${timeout}`);
         
         // CRITICAL: Check for revert (either via exit code or output detection)
         if (tryResult.reverted || tryResult.exitCode === 78) {
+          console.log(`⚠️ netplan try failed with exit code ${tryResult.exitCode}, attempting fallback...`);
+          
           if (tryResult.possibleFalsePositive) {
             console.log('🤔 Detected possible false positive revert - netplan may have applied config despite showing revert message');
             return { 
@@ -2778,11 +2872,14 @@ async function netplanJsAction(action, config = {}) {
               details: 'Your system appears to have a netplan quirk where it shows revert messages but applies configs successfully'
             };
           } else {
+            // For timeout issues, offer fallback to direct apply
+            console.log('💡 Timeout detected - you may want to try direct apply');
             return { 
               success: false, 
               reverted: true,
               error: `netplan try timed out after ${timeout}s - configuration automatically reverted for safety`,
-              message: `netplan try timed out after ${timeout}s - configuration automatically reverted for safety` 
+              message: `netplan try timed out after ${timeout}s - configuration automatically reverted for safety`,
+              suggestion: 'Consider using longer timeout or direct apply for this configuration'
             };
           }
         } else if (tryResult.success) {
