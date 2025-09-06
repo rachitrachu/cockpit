@@ -1496,9 +1496,9 @@ PY
                 err: "message"
             });
             
-            pb("dep-progress", 95);
+            pb("dep-progress", 85);
             setTextWithSpinner("dep-note", "Setting up configuration directories...");
-            log("[Install:Debian] Step 5/5: Creating configuration directories");
+            log("[Install:Debian] Step 5/6: Creating configuration directories");
             
             // Step 5: Create config directories
             await cockpit.spawn([
@@ -1508,6 +1508,39 @@ PY
                 superuser: "require",
                 err: "message"
             });
+
+            pb("dep-progress", 90);
+            setTextWithSpinner("dep-note", "Creating globals.yml configuration...");
+            log("[Install:Debian] Step 6/6: Creating xAVS globals.yml configuration");
+            
+            // Step 6: Create globals.yml file with xAVS configuration
+            const globalsContent = `---
+# xdeploy generated globals for XAVS
+
+config_strategy: "COPY_ALWAYS"
+workaround_ansible_issue_8743: yes
+openstack_release: "2024.1"
+
+prometheus_port: "9291"
+prometheus_node_exporter_port: "9290"
+prometheus_alertmanager_port: "9296"
+prometheus_alertmanager_cluster_port: "9294"
+grafana_server_port: "3200"
+
+
+
+octavia_loadbalancer_topology: "ACTIVE_STANDBY"
+`;
+
+            try {
+                await cockpit.spawn(["tee", "/etc/xavs/globals.yml"], { 
+                    superuser: "require", 
+                    err: "message" 
+                }).input(globalsContent);
+                log("[Install:Debian]  Created /etc/xavs/globals.yml with default configuration");
+            } catch (e) {
+                log("[Install:Debian]  Warning: Could not create globals.yml - " + (e.message || e));
+            }
             
             pb("dep-progress", 100);
             setTextSuccess("dep-note", '<i class="fas fa-check text-success"></i> Installation completed successfully!');
@@ -1564,9 +1597,9 @@ PY
                 err: "message"
             });
             
-            pb("dep-progress", 95);
+            pb("dep-progress", 85);
             setTextWithSpinner("dep-note", "Setting up configuration directories...");
-            log("[Install:RHEL] Step 4/4: Creating configuration directories");
+            log("[Install:RHEL] Step 4/5: Creating configuration directories");
             
             // Step 4: Create config directories
             await cockpit.spawn([
@@ -1576,6 +1609,39 @@ PY
                 superuser: "require",
                 err: "message"
             });
+
+            pb("dep-progress", 90);
+            setTextWithSpinner("dep-note", "Creating globals.yml configuration...");
+            log("[Install:RHEL] Step 5/5: Creating xAVS globals.yml configuration");
+            
+            // Step 5: Create globals.yml file with xAVS configuration
+            const globalsContent = `---
+# xdeploy generated globals for XAVS
+
+config_strategy: "COPY_ALWAYS"
+workaround_ansible_issue_8743: yes
+openstack_release: "2024.1"
+
+prometheus_port: "9291"
+prometheus_node_exporter_port: "9290"
+prometheus_alertmanager_port: "9296"
+prometheus_alertmanager_cluster_port: "9294"
+grafana_server_port: "3200"
+
+
+
+octavia_loadbalancer_topology: "ACTIVE_STANDBY"
+`;
+
+            try {
+                await cockpit.spawn(["tee", "/etc/xavs/globals.yml"], { 
+                    superuser: "require", 
+                    err: "message" 
+                }).input(globalsContent);
+                log("[Install:RHEL]  Created /etc/xavs/globals.yml with default configuration");
+            } catch (e) {
+                log("[Install:RHEL]  Warning: Could not create globals.yml - " + (e.message || e));
+            }
             
             pb("dep-progress", 100);
             setTextSuccess("dep-note", '<i class="fas fa-check text-success"></i> Installation completed successfully!');
@@ -1930,8 +1996,49 @@ PY
                 "docker==6.1.3"
             ], { superuser: "require", err: "message" });
 
+            setBadge("dep-xdep", "", " Creating config...");
+            log("[Install:XDeploy] Step 5/6: Creating xAVS configuration directory and globals.yml");
+            
+            // Step 5: Create /etc/xavs directory if it doesn't exist
+            try {
+                await cockpit.spawn(["mkdir", "-p", "/etc/xavs"], { superuser: "require", err: "message" });
+                log("[Install:XDeploy]  Created /etc/xavs directory");
+            } catch (e) {
+                // Directory might already exist, that's fine
+                log("[Install:XDeploy]  /etc/xavs directory exists or created");
+            }
+
+            // Step 6: Create globals.yml file with xAVS configuration
+            const globalsContent = `---
+# xdeploy generated globals for XAVS
+
+config_strategy: "COPY_ALWAYS"
+workaround_ansible_issue_8743: yes
+openstack_release: "2024.1"
+
+prometheus_port: "9291"
+prometheus_node_exporter_port: "9290"
+prometheus_alertmanager_port: "9296"
+prometheus_alertmanager_cluster_port: "9294"
+grafana_server_port: "3200"
+
+
+
+octavia_loadbalancer_topology: "ACTIVE_STANDBY"
+`;
+
+            try {
+                await cockpit.spawn(["tee", "/etc/xavs/globals.yml"], { 
+                    superuser: "require", 
+                    err: "message" 
+                }).input(globalsContent);
+                log("[Install:XDeploy]  Created /etc/xavs/globals.yml with default configuration");
+            } catch (e) {
+                log("[Install:XDeploy]  Warning: Could not create globals.yml - " + (e.message || e));
+            }
+
             setBadge("dep-xdep", "", " Finalizing...");
-            log("[Install:XDeploy] Step 5/5: Installation complete");
+            log("[Install:XDeploy] Step 6/6: Installation complete");
 
             setBadge("dep-xdep", "ok", '<i class="fas fa-check text-success"></i> ready');
             log("[Install:XDeploy]  All XDeploy dependencies installed successfully");
