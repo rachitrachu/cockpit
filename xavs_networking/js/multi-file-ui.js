@@ -16,7 +16,7 @@ function showNetplanFileDialog() {
     <div class="modal-content">
       <div class="modal-header">
         <h2><i class="fas fa-file-code"></i> View Netplan Configuration</h2>
-        <button class="close-btn" onclick="this.closest('dialog').close()">&times;</button>
+        <button class="close-btn" data-action="close-modal">&times;</button>
       </div>
       <div class="modal-body">
         <p style="color: var(--muted-color); margin-bottom: 1rem;">Choose which configuration to view:</p>
@@ -69,7 +69,21 @@ function showNetplanFileDialog() {
       setStatus(`Loading ${description}...`);
       const config = await run('bash', ['-c', command], { superuser: 'try' });
       fileDialog.close();
-      showConfigModal(config || `# ${description} not found or empty`, `${description} (${filename})`);
+      
+      if (!config || config.trim() === '' || config.trim() === '# File not found') {
+        const emptyMessage = `# ${description} is empty or not found
+#
+# This is normal for the new multi-file netplan configuration.
+# Individual configuration files may be empty if no relevant
+# configuration has been applied yet.
+#
+# To see the complete merged configuration, use "View Merged Config"
+# which combines all active netplan files.
+`;
+        showConfigModal(emptyMessage, `${description} (${filename})`);
+      } else {
+        showConfigModal(config, `${description} (${filename})`);
+      }
     } catch (error) {
       console.warn(`Failed to load ${description}:`, error);
       fileDialog.close();
@@ -108,6 +122,11 @@ function showNetplanFileDialog() {
       if (typeof window.loadNetplanConfig === 'function') {
         const mergedConfig = await window.loadNetplanConfig();
         fileDialog.close();
+
+  // Close button event handler
+  fileDialog.querySelector('[data-action="close-modal"]').addEventListener('click', () => {
+    fileDialog.close();
+  });
         
         // Convert config to YAML-like format for display
         const yamlContent = convertConfigToYAML(mergedConfig);
@@ -151,7 +170,7 @@ function showConfigModal(config, title) {
     <div class="modal-content">
       <div class="modal-header">
         <h2><i class="fas fa-file-code"></i> ${title}</h2>
-        <button class="close-btn" onclick="this.closest('dialog').close()">&times;</button>
+        <button class="close-btn" data-action="close-modal">&times;</button>
       </div>
       <div class="modal-body">
         <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
@@ -168,7 +187,7 @@ function showConfigModal(config, title) {
         <pre style="background: var(--card-bg); padding: 1rem; border-radius: 4px; overflow: auto; max-height: 60vh; font-family: 'Courier New', monospace; font-size: 0.9rem; white-space: pre-wrap; line-height: 1.4;">${config}</pre>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="this.closest('dialog').close()">Close</button>
+        <button class="btn btn-secondary" data-action="close-modal">Close</button>
       </div>
     </div>
   `;
@@ -216,6 +235,11 @@ function showConfigModal(config, title) {
     if (typeof window.showToast === 'function') {
       window.showToast('Configuration downloaded', 'success', 2000);
     }
+  });
+
+  // Close button functionality
+  modal.querySelector('[data-action="close-modal"]').addEventListener('click', () => {
+    modal.close();
   });
 
   // Auto-cleanup

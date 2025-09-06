@@ -345,10 +345,17 @@ async function safeNetplanApply(options = {}) {
         const tryResult = await netplanAction('try_config', { timeout: config.timeout });
 
         if (tryResult.error) {
-          if (progressModal && progressModal._markError) {
-            progressModal._markError(tryResult.error);
+          let errorMessage = `Netplan try failed: ${tryResult.error}`;
+          
+          if (tryResult.reverted) {
+            errorMessage = `Configuration was automatically reverted for safety: ${tryResult.message || tryResult.error}`;
+            console.log('🔄 Configuration was reverted due to timeout - this is expected safety behavior');
           }
-          throw new Error(`Netplan try failed: ${tryResult.error}`);
+          
+          if (progressModal && progressModal._markError) {
+            progressModal._markError(errorMessage);
+          }
+          throw new Error(errorMessage);
         }
 
         if (tryResult.warning) {

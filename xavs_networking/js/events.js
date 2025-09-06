@@ -355,7 +355,11 @@ function setupEventHandlers() {
         console.log('Netplan test result:', result);
 
         if (result.error) {
-          alert(`✗ Netplan test failed:\n${result.error}\n\nCheck console for details.`);
+          if (result.reverted) {
+            alert(`⚠️ Configuration was automatically reverted for safety:\n${result.message || result.error}\n\nThis usually means the network configuration would have caused connectivity loss.`);
+          } else {
+            alert(`✗ Netplan test failed:\n${result.error}\n\nCheck console for details.`);
+          }
         } else {
           alert('✔ Netplan test successful!\n\nCheck /etc/netplan/99-cockpit.yaml for changes.');
 
@@ -847,12 +851,12 @@ async function loadRoutesTab() {
                     <td style="padding: 0.75rem; border: 1px solid #dee2e6; color: ${statusColor}; font-weight: 500;">${statusIcon} ${statusText}</td>
                     <td style="padding: 0.75rem; border: 1px solid #dee2e6; text-align: center;">
                       ${!isInNetplan && route.dev ? `
-                        <button class="btn btn-sm btn-outline-success" onclick="preserveSpecificRoute(${index})" title="Preserve this route in netplan">
+                        <button class="btn btn-sm btn-outline-success" data-action="preserve-route" data-route-index="${index}" title="Preserve this route in netplan">
                           <i class="fas fa-shield-alt"></i>
                         </button>
                       ` : ''}
                       ${isInNetplan ? `
-                        <button class="btn btn-sm btn-outline-danger" onclick="removeSpecificRoute(${index})" title="Remove this route from netplan">
+                        <button class="btn btn-sm btn-outline-danger" data-action="remove-route" data-route-index="${index}" title="Remove this route from netplan">
                           <i class="fas fa-trash"></i>
                         </button>
                       ` : ''}
@@ -869,6 +873,21 @@ async function loadRoutesTab() {
         // Store routes globally for action functions
         window.currentSystemRoutes = systemRoutes;
         window.currentNetplanConfig = netplanConfig;
+        
+        // Add event delegation for route action buttons
+        routesContainer.addEventListener('click', (e) => {
+          const target = e.target.closest('[data-action]');
+          if (!target) return;
+          
+          const action = target.dataset.action;
+          const routeIndex = parseInt(target.dataset.routeIndex);
+          
+          if (action === 'preserve-route') {
+            preserveSpecificRoute(routeIndex);
+          } else if (action === 'remove-route') {
+            removeSpecificRoute(routeIndex);
+          }
+        });
         
       } else {
         routesContainer.innerHTML = '<p style="color: #6c757d; font-style: italic; text-align: center; padding: 2rem;">No routes found in system.</p>';

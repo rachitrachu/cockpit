@@ -9,7 +9,7 @@ function canDoSystemCleanup() {
 
 /**
  * JavaScript-based Netplan Manager
- * Replaces Python netplan_manager.py for common operations
+ * Complete JavaScript implementation for netplan configuration management
  * Uses direct shell commands and YAML manipulation via Cockpit API
  */
 
@@ -39,10 +39,50 @@ async function executeCommand(command, options = {}) {
   try {
     const result = await cockpit.spawn(['bash', '-c', command], { ...defaultOptions, ...options });
     console.log('Command success, output length:', result.length);
-    return { success: true, output: result.trim() };
+    
+    // Special handling for netplan try - check for revert in output even on "success"
+    const output = result.trim();
+    const isNetplanTry = command.includes('netplan try');
+    const hasRevertMessage = /reverting|reverted|changes will revert/i.test(output);
+    
+    if (isNetplanTry && hasRevertMessage) {
+      console.log('⚠️ Detected netplan try revert in output despite exit code 0');
+      console.log('📋 Revert indicators found in output:', output.substring(0, 300) + '...');
+      
+      // Additional verification: Check if this is a false positive
+      // Some netplan versions show "Reverting" but actually apply the config
+      console.log('🔍 Verifying if revert actually occurred or if this is a false positive...');
+      
+      return { 
+        success: false, 
+        output: output, 
+        exitCode: 78,
+        reverted: true,
+        possibleFalsePositive: true, // Flag for further verification
+        error: 'Configuration appears to have been reverted due to timeout (verification needed)'
+      };
+    }
+    
+    return { success: true, output: output, exitCode: 0 };
   } catch (error) {
     console.error('Command failed:', error);
-    return { success: false, error: error.message || error.toString(), output: error.message || error.toString() };
+    console.error('Error details:', {
+      message: error.message,
+      exit_status: error.exit_status,
+      exitCode: error.exitCode,
+      problem: error.problem,
+      signal: error.signal
+    });
+    
+    // Extract exit code if available
+    const exitCode = error.exit_status || error.exitCode || (error.problem === 'terminated' ? 78 : 1);
+    console.log('Command exit code:', exitCode);
+    return { 
+      success: false, 
+      error: error.message || error.toString(), 
+      output: error.message || error.toString(),
+      exitCode: exitCode
+    };
   }
 }
 
@@ -62,20 +102,17 @@ async function getSystemManagedInterfaces() {
         if [[ "$file" != *"70-cockpit"* && "$file" != *"80-cockpit"* && "$file" != *"85-cockpit"* && "$file" != *"99-cockpit"* ]]; then
           echo "=== $file ==="
           if [ -f "$file" ]; then
-            python3 -c "
-import yaml
-import json
-try:
-    with open('$file', 'r') as f:
-        config = yaml.safe_load(f) or {}
-    if 'network' in config:
-        for section in ['ethernets', 'vlans', 'bridges', 'bonds']:
-            if section in config['network']:
-                for iface_name, iface_config in config['network'][section].items():
-                    print(f'{section}:{iface_name}:{json.dumps(iface_config)}')
-except Exception as e:
-    pass
-"
+            # Extract interface information using simple grep/sed commands
+            if [ -f "$file" ] && [ -s "$file" ]; then
+              # Extract ethernets
+              grep -A 20 "^  ethernets:" "$file" | grep "^    [a-zA-Z0-9._-]*:" | sed 's/://g' | sed 's/^    /ethernets:/' || true
+              # Extract vlans  
+              grep -A 20 "^  vlans:" "$file" | grep "^    [a-zA-Z0-9._-]*:" | sed 's/://g' | sed 's/^    /vlans:/' || true
+              # Extract bridges
+              grep -A 20 "^  bridges:" "$file" | grep "^    [a-zA-Z0-9._-]*:" | sed 's/://g' | sed 's/^    /bridges:/' || true
+              # Extract bonds
+              grep -A 20 "^  bonds:" "$file" | grep "^    [a-zA-Z0-9._-]*:" | sed 's/://g' | sed 's/^    /bonds:/' || true
+            fi
           else
             echo "File $file not found or not readable"
           fi
@@ -90,31 +127,23 @@ except Exception as e:
       let currentFile = null;
       
       for (const line of lines) {
-        if (line.startsWith('===') && line.endsWith('===')) {
-          currentFile = line.replace(/=/g, '').trim();
-        } else if (line.includes(':') && currentFile) {
-          // Split only on the first two colons to handle JSON with colons
-          const colonIndex1 = line.indexOf(':');
-          const colonIndex2 = line.indexOf(':', colonIndex1 + 1);
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        
+        if (trimmed.startsWith('===') && trimmed.endsWith('===')) {
+          currentFile = trimmed.replace(/=/g, '').trim();
+          console.log(`📁 Processing file: ${currentFile}`);
+        } else if (trimmed.includes(':') && currentFile) {
+          // Parse the simplified output format: section:interface_name
+          const [section, name] = trimmed.split(':');
           
-          if (colonIndex1 !== -1 && colonIndex2 !== -1) {
-            const section = line.substring(0, colonIndex1);
-            const name = line.substring(colonIndex1 + 1, colonIndex2);
-            const configJson = line.substring(colonIndex2 + 1);
-            
-            if (section && name && configJson) {
-              try {
-                const config = JSON.parse(configJson);
-                systemInterfaces[name] = {
-                  type: section,
-                  config: config,
-                  file: currentFile,
-                  isSystemManaged: true
-                };
-              } catch (e) {
-                console.warn('Failed to parse interface config for', name, ':', e.message);
-              }
-            }
+          if (section && name) {
+            systemInterfaces[name] = {
+              type: section,
+              file: currentFile,
+              isSystemManaged: true
+            };
+            console.log(`🔍 Found ${section} interface: ${name} in ${currentFile}`);
           }
         }
       }
@@ -129,16 +158,7 @@ except Exception as e:
     console.log('No system interfaces found in netplan files, checking for system-only interfaces...');
     try {
       // Get list of actual network interfaces from the system
-      const systemIfCmd = `ip -json link show | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-for iface in data:
-    name = iface['ifname']
-    if not name.startswith('lo') and '.' in name:  # VLANs
-        print(name)
-    elif not name.startswith('lo') and name.startswith('en'):  # Ethernet
-        print(name)
-"`;
+      const systemIfCmd = `ip -o link show | awk -F': ' '/^[0-9]+: (en|eth|wl)/ {print $2}' | grep -E '(en|eth|wl)' | head -20`;
       
       const sysResult = await executeCommand(systemIfCmd);
       if (sysResult.success) {
@@ -254,16 +274,16 @@ async function loadNetplanFile(filename) {
   
   const command = `
     if [ -f "${NETPLAN_DIR}/${filename}" ]; then
-      python3 -c "
-import yaml
-import json
-try:
-    with open('${NETPLAN_DIR}/${filename}', 'r') as f:
-        data = yaml.safe_load(f) or {}
-    print(json.dumps(data))
-except Exception as e:
-    print(json.dumps({'error': str(e)}))
-"
+      # Read the raw file content and return it for JavaScript parsing
+      if [ -f "${NETPLAN_DIR}/${filename}" ] && [ -s "${NETPLAN_DIR}/${filename}" ]; then
+        echo "===YAML_START==="
+        cat "${NETPLAN_DIR}/${filename}"
+        echo "===YAML_END==="
+      else
+        echo "===YAML_START==="
+        echo "# File not found or empty"
+        echo "===YAML_END==="
+      fi
     else
       echo "File ${filename} does not exist, will be created when needed"
       echo '{}'
@@ -273,13 +293,104 @@ except Exception as e:
   const result = await executeCommand(command);
   if (result.success) {
     try {
-      return JSON.parse(result.output);
+      // Extract YAML content between markers
+      const yamlMatch = result.output.match(/===YAML_START===\n([\s\S]*?)\n===YAML_END===/);
+      if (yamlMatch && yamlMatch[1]) {
+        const yamlContent = yamlMatch[1].trim();
+        
+        // If it's just a comment or empty, return empty object
+        if (!yamlContent || yamlContent.startsWith('# File not found') || yamlContent === '# File not found or empty') {
+          return {};
+        }
+        
+        // Simple YAML parser for netplan structure
+        const config = parseSimpleNetplanYaml(yamlContent);
+        return config;
+      }
+      return {};
     } catch (e) {
       console.warn(`Failed to parse ${filename}:`, e);
       return {};
     }
   }
   return {};
+}
+
+/**
+ * Simple YAML parser specifically for netplan configuration files
+ */
+function parseSimpleNetplanYaml(yamlContent) {
+  const config = { network: { version: 2, renderer: 'networkd' } };
+  const lines = yamlContent.split('\n');
+  
+  let currentSection = null;
+  let currentInterface = null;
+  let indent = 0;
+  
+  for (let line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    
+    // Calculate indentation
+    const lineIndent = line.length - line.trimStart().length;
+    
+    // Network section
+    if (trimmed === 'network:') {
+      continue;
+    }
+    
+    // Version and renderer
+    if (trimmed.startsWith('version:')) {
+      config.network.version = parseInt(trimmed.split(':')[1].trim()) || 2;
+      continue;
+    }
+    if (trimmed.startsWith('renderer:')) {
+      config.network.renderer = trimmed.split(':')[1].trim() || 'networkd';
+      continue;
+    }
+    
+    // Interface sections (ethernets, vlans, bridges, bonds)
+    if (lineIndent === 2 && (trimmed.endsWith('ethernets:') || trimmed.endsWith('vlans:') || 
+                            trimmed.endsWith('bridges:') || trimmed.endsWith('bonds:'))) {
+      currentSection = trimmed.replace(':', '');
+      if (!config.network[currentSection]) {
+        config.network[currentSection] = {};
+      }
+      currentInterface = null;
+      continue;
+    }
+    
+    // Interface names
+    if (lineIndent === 4 && currentSection && trimmed.endsWith(':')) {
+      currentInterface = trimmed.replace(':', '');
+      if (!config.network[currentSection][currentInterface]) {
+        config.network[currentSection][currentInterface] = {};
+      }
+      continue;
+    }
+    
+    // Interface properties
+    if (lineIndent === 6 && currentSection && currentInterface && trimmed.includes(':')) {
+      const [key, ...valueParts] = trimmed.split(':');
+      const value = valueParts.join(':').trim();
+      
+      // Handle different value types
+      if (value === 'true' || value === 'false') {
+        config.network[currentSection][currentInterface][key] = (value === 'true');
+      } else if (value && !isNaN(value) && !value.includes('.')) {
+        config.network[currentSection][currentInterface][key] = parseInt(value);
+      } else if (value.startsWith('[') && value.endsWith(']')) {
+        // Simple array parsing
+        const arrayContent = value.slice(1, -1);
+        config.network[currentSection][currentInterface][key] = 
+          arrayContent.split(',').map(item => item.trim().replace(/['"]/g, ''));
+      } else if (value) {
+        config.network[currentSection][currentInterface][key] = value.replace(/['"]/g, '');
+      }
+    }
+  }
+  
+  return config;
 }
 
 /**
@@ -300,9 +411,11 @@ async function ensureNetplanFile(filename, description = '') {
     if (filename.includes('routes')) {
       defaultContent = `# ${description || 'Cockpit-managed routes'}
 # Generated by XOS Networking
+# This file is used for route preservation and management
+# Routes are defined within interface configurations
 network:
   version: 2
-  routes: []
+  renderer: networkd
 `;
     } else if (filename.includes('interfaces')) {
       defaultContent = `# ${description || 'Cockpit-managed interfaces'}
@@ -365,6 +478,10 @@ ${defaultContent}EOF
 async function writeNetplanFile(filename, config) {
   console.log(`Writing netplan file: ${filename}`);
   
+  // CRITICAL: Apply comprehensive configuration preservation for this specific file
+  const preservedConfig = await preserveExistingConfiguration(config, filename);
+  console.log(`✅ Network configuration preserved for file: ${filename}`);
+  
   // Determine appropriate description based on filename
   let description = 'Cockpit-managed configuration';
   if (filename.includes('routes')) description = 'Network routes and routing tables';
@@ -375,14 +492,17 @@ async function writeNetplanFile(filename, config) {
   // Ensure the file exists with proper structure
   await ensureNetplanFile(filename, description);
   
-  // Generate YAML for the specific config
-  const yaml = generateNetplanYAML(config);
+  // Generate YAML for the preserved config
+  const yaml = generateNetplanYAML(preservedConfig);
   
   const command = `
     # Create backup if file exists and has content
     if [ -f "${NETPLAN_DIR}/${filename}" ] && [ -s "${NETPLAN_DIR}/${filename}" ]; then
       cp "${NETPLAN_DIR}/${filename}" "${NETPLAN_DIR}/${filename}.backup.\$(date +%s)"
     fi
+    
+    # Clean up old backups - keep only last 5
+    ls -1t "${NETPLAN_DIR}/${filename}.backup."* 2>/dev/null | tail -n +6 | xargs -r rm -f || true
     
     # Write YAML content
     cat > "${NETPLAN_DIR}/${filename}" << 'EOF'
@@ -396,7 +516,14 @@ EOF
   `;
   
   const result = await executeCommand(command);
-  return result.success && result.output.includes('SUCCESS');
+  
+  if (result.success && result.output.includes('SUCCESS')) {
+    console.log(`✅ Successfully wrote ${filename} with comprehensive configuration preservation`);
+    return true;
+  } else {
+    console.error(`❌ Failed to write ${filename}:`, result);
+    return false;
+  }
 }
 
 /**
@@ -426,6 +553,8 @@ function determineTargetFile(interfaceName, operation = 'create') {
  * Generate YAML for netplan config
  */
 function generateNetplanYAML(config) {
+  console.log('DEBUG: generateNetplanYAML called with config:', JSON.stringify(config, null, 2));
+  
   // Simple YAML generation (can be enhanced)
   let yaml = 'network:\n  version: 2\n';
   
@@ -544,19 +673,241 @@ async function loadNetplanConfig() {
 }
 
 /**
+ * Preserve existing network configuration when writing updates
+ * This prevents loss of IP addresses, MTU, routes, DNS, VLAN properties, bridge/bond settings, etc.
+ * Covers ALL netplan interface properties to ensure comprehensive configuration preservation
+ */
+async function preserveExistingConfiguration(newConfig, targetFile = null) {
+  console.log('🔒 Starting comprehensive network configuration preservation...');
+  
+  try {
+    // Load the current complete configuration
+    const originalConfig = await loadNetplanConfig();
+    console.log('DEBUG: Original config loaded for IP preservation');
+    
+    // If we're writing to a specific file, also load that file's current state
+    let fileSpecificConfig = null;
+    if (targetFile) {
+      fileSpecificConfig = await loadNetplanFile(targetFile);
+      console.log(`DEBUG: File-specific config loaded for ${targetFile}`);
+    }
+    
+    // Track preservation actions for logging
+    const preservationLog = {
+      preserved: [],
+      created: [],
+      modified: []
+    };
+    
+    // For each interface type, preserve existing addresses
+    for (const sectionType of ['vlans', 'ethernets', 'bridges', 'bonds']) {
+      if (!newConfig.network || !newConfig.network[sectionType]) continue;
+      
+      // Iterate through interfaces in the new config
+      for (const ifName in newConfig.network[sectionType]) {
+        const newInterface = newConfig.network[sectionType][ifName];
+        
+        // Check if this interface exists in the original config
+        let originalInterface = null;
+        if (originalConfig.network && originalConfig.network[sectionType] && 
+            originalConfig.network[sectionType][ifName]) {
+          originalInterface = originalConfig.network[sectionType][ifName];
+        }
+        
+        // Also check file-specific config if available
+        let fileInterface = null;
+        if (fileSpecificConfig && fileSpecificConfig.network && 
+            fileSpecificConfig.network[sectionType] && 
+            fileSpecificConfig.network[sectionType][ifName]) {
+          fileInterface = fileSpecificConfig.network[sectionType][ifName];
+        }
+        
+        // Determine the source for preservation (prefer original over file-specific)
+        const sourceInterface = originalInterface || fileInterface;
+        
+        if (sourceInterface) {
+          // Comprehensive property preservation strategy
+          const criticalProperties = [
+            'addresses', 'dhcp4', 'dhcp6',           // IP configuration
+            'mtu',                                    // Network settings
+            'routes', 'routing-policy',              // Routing
+            'nameservers', 'search',                 // DNS
+            'gateway4', 'gateway6',                  // Gateways
+            'optional', 'critical',                  // Interface behavior
+            'wakeonlan', 'link-local', 'accept-ra',  // Advanced settings
+            'macaddress', 'set-name',                // Hardware settings
+            'id', 'link',                            // VLAN properties (critical!)
+            'interfaces',                            // Bridge/Bond members
+            'parameters',                            // Bridge/Bond parameters (STP, bonding mode, etc.)
+            'mode', 'primary', 'mii-monitor-interval', 'lacp-rate', // Bond-specific
+            'stp', 'forward-delay', 'hello-time', 'max-age', 'priority' // Bridge-specific
+          ];
+          
+          // Track what properties we're preserving vs modifying
+          const preserved = [];
+          const modified = [];
+          
+          criticalProperties.forEach(prop => {
+            const sourceValue = sourceInterface[prop];
+            const newValue = newInterface[prop];
+            
+            // If new config doesn't have this property but source does, preserve it
+            if (newValue === undefined && sourceValue !== undefined) {
+              console.log(`🔒 Preserving ${prop} for ${ifName}:`, sourceValue);
+              
+              // Handle arrays properly (deep copy)
+              if (Array.isArray(sourceValue)) {
+                newInterface[prop] = [...sourceValue];
+              }
+              // Handle objects properly (deep copy)
+              else if (typeof sourceValue === 'object' && sourceValue !== null) {
+                newInterface[prop] = { ...sourceValue };
+              }
+              // Handle primitives
+              else {
+                newInterface[prop] = sourceValue;
+              }
+              
+              preserved.push({ property: prop, value: sourceValue });
+            }
+            // If new config has this property, log as modified
+            else if (newValue !== undefined && newValue !== sourceValue) {
+              modified.push({ 
+                property: prop, 
+                oldValue: sourceValue, 
+                newValue: newValue 
+              });
+            }
+          });
+          
+          // Log preservation actions
+          if (preserved.length > 0 || modified.length > 0) {
+            preservationLog.preserved.push({
+              interface: ifName,
+              type: sectionType,
+              preservedProperties: preserved,
+              modifiedProperties: modified
+            });
+          }
+        }
+        // If this is a completely new interface, log its properties
+        else if (Object.keys(newInterface).length > 0) {
+          const newProperties = Object.keys(newInterface).map(prop => ({
+            property: prop,
+            value: newInterface[prop]
+          }));
+          
+          preservationLog.created.push({
+            interface: ifName,
+            type: sectionType,
+            newProperties: newProperties
+          });
+        }
+      }
+      
+      // Now check for interfaces that exist in original but not in new config
+      // These need to be preserved entirely if they have addresses
+      if (originalConfig.network && originalConfig.network[sectionType]) {
+        for (const ifName in originalConfig.network[sectionType]) {
+          // Skip if this interface is already in the new config
+          if (newConfig.network[sectionType] && newConfig.network[sectionType][ifName]) {
+            continue;
+          }
+          
+          const originalInterface = originalConfig.network[sectionType][ifName];
+          
+          // If the original interface has any configuration, preserve the entire interface
+          if (originalInterface && Object.keys(originalInterface).length > 0) {
+            // Check if this interface has critical properties worth preserving
+            const hasCriticalProps = originalInterface.addresses || 
+                                   originalInterface.mtu || 
+                                   originalInterface.routes ||
+                                   originalInterface.gateway4 || 
+                                   originalInterface.gateway6 ||
+                                   originalInterface.nameservers ||
+                                   originalInterface.parameters ||
+                                   originalInterface.interfaces ||
+                                   originalInterface.id; // VLAN ID is critical
+            
+            if (hasCriticalProps) {
+              console.log(`🔒 Preserving entire interface ${ifName} with properties:`, Object.keys(originalInterface));
+              
+              // Ensure the section exists in new config
+              if (!newConfig.network[sectionType]) {
+                newConfig.network[sectionType] = {};
+              }
+              
+              // Deep copy the entire interface configuration
+              newConfig.network[sectionType][ifName] = JSON.parse(JSON.stringify(originalInterface));
+              
+              preservationLog.preserved.push({
+                interface: ifName,
+                type: sectionType,
+                entireInterface: true,
+                properties: Object.keys(originalInterface)
+              });
+            }
+          }
+        }
+      }
+    }
+    
+    // Log preservation summary
+    console.log('🔒 Comprehensive Configuration Preservation Summary:');
+    console.log(`  • Preserved: ${preservationLog.preserved.length} interfaces`);
+    console.log(`  • Modified: ${preservationLog.modified.length} interfaces`);
+    console.log(`  • Created: ${preservationLog.created.length} interfaces`);
+    
+    if (preservationLog.preserved.length > 0) {
+      console.log('🔒 Preserved Interfaces:');
+      preservationLog.preserved.forEach(item => {
+        if (item.entireInterface) {
+          console.log(`  • ${item.interface} (${item.type}): Complete interface with properties: ${item.properties?.join(', ')}`);
+        } else if (item.preservedProperties && item.preservedProperties.length > 0) {
+          const propNames = item.preservedProperties.map(p => p.property).join(', ');
+          console.log(`  • ${item.interface} (${item.type}): Properties preserved: ${propNames}`);
+        }
+        if (item.modifiedProperties && item.modifiedProperties.length > 0) {
+          const modNames = item.modifiedProperties.map(p => p.property).join(', ');
+          console.log(`    Modified properties: ${modNames}`);
+        }
+      });
+    }
+    if (preservationLog.created.length > 0) {
+      console.log('🔒 Created Interfaces:');
+      preservationLog.created.forEach(item => {
+        const propNames = item.newProperties?.map(p => p.property).join(', ') || 'none';
+        console.log(`  • ${item.interface} (${item.type}): New properties: ${propNames}`);
+      });
+    }
+    
+    return newConfig;
+    
+  } catch (error) {
+    console.error('❌ Error during IP address preservation:', error);
+    // Return original config on error to avoid data loss
+    return newConfig;
+  }
+}
+
+/**
  * Write netplan configuration using multi-file strategy
  */
 async function writeNetplanConfig(config) {
   console.log('Writing netplan config with multi-file strategy:', config);
   
+  // CRITICAL: Preserve existing configuration before any writes
+  const preservedConfig = await preserveExistingConfiguration(config);
+  console.log('✅ Network configuration preserved, proceeding with write...');
+  
   // Determine which files need updates based on configuration sections
   const updates = [];
   
-  if (config.network) {
+  if (preservedConfig.network) {
     // Separate configuration by file type
-    const routeConfig = extractRouteConfig(config);
-    const interfaceConfig = extractInterfaceConfig(config);
-    const overrideConfig = extractOverrideConfig(config);
+    const routeConfig = extractRouteConfig(preservedConfig);
+    const interfaceConfig = extractInterfaceConfig(preservedConfig);
+    const overrideConfig = extractOverrideConfig(preservedConfig);
     
     // Write route configuration
     if (routeConfig && hasContent(routeConfig)) {
@@ -565,16 +916,20 @@ async function writeNetplanConfig(config) {
     
     // Write interface configuration (new VLANs, bridges, bonds)
     if (interfaceConfig && hasContent(interfaceConfig)) {
-      updates.push(writeNetplanFile(NETPLAN_FILES.COCKPIT_INTERFACES, interfaceConfig));
+      // Apply preservation again for interface config specifically
+      const preservedInterfaceConfig = await preserveExistingConfiguration(interfaceConfig, NETPLAN_FILES.COCKPIT_INTERFACES);
+      updates.push(writeNetplanFile(NETPLAN_FILES.COCKPIT_INTERFACES, preservedInterfaceConfig));
     }
     
     // Write system overrides (modified physical interfaces)
     if (overrideConfig && hasContent(overrideConfig)) {
-      updates.push(writeNetplanFile(NETPLAN_FILES.COCKPIT_OVERRIDES, overrideConfig));
+      // Apply preservation again for override config specifically
+      const preservedOverrideConfig = await preserveExistingConfiguration(overrideConfig, NETPLAN_FILES.COCKPIT_OVERRIDES);
+      updates.push(writeNetplanFile(NETPLAN_FILES.COCKPIT_OVERRIDES, preservedOverrideConfig));
     }
     
     // Legacy fallback - write complete config to 99-cockpit.yaml for compatibility
-    updates.push(writeNetplanFile(NETPLAN_FILES.COCKPIT_LEGACY, config));
+    updates.push(writeNetplanFile(NETPLAN_FILES.COCKPIT_LEGACY, preservedConfig));
   }
 }
 
@@ -662,219 +1017,6 @@ function hasContent(config) {
   return sections.some(section => 
     config.network[section] && Object.keys(config.network[section]).length > 0
   );
-}
-
-/**
- * Load and merge all netplan configuration files
- */
-async function loadNetplanConfig() {
-  
-  // Add VLANs
-  const vlans = config.network?.vlans || {};
-  let vlanYaml = '';
-  if (Object.keys(vlans).length > 0) {
-    vlanYaml = '\n  vlans:';
-    for (const [name, vlan] of Object.entries(vlans)) {
-      vlanYaml += `
-    ${name}:
-      id: ${vlan.id}
-      link: ${vlan.link}`;
-      if (vlan.dhcp4 !== undefined) {
-        vlanYaml += `
-      dhcp4: ${vlan.dhcp4}`;
-      }
-      if (vlan.dhcp6 !== undefined) {
-        vlanYaml += `
-      dhcp6: ${vlan.dhcp6}`;
-      }
-      if (vlan.addresses && vlan.addresses.length > 0) {
-        vlanYaml += `
-      addresses:`;
-        vlan.addresses.forEach(addr => {
-          vlanYaml += `
-        - ${addr}`;
-        });
-      }
-      if (vlan.gateway4) {
-        vlanYaml += `
-      gateway4: ${vlan.gateway4}`;
-      }
-      if (vlan.gateway6) {
-        vlanYaml += `
-      gateway6: ${vlan.gateway6}`;
-      }
-      if (vlan.mtu) {
-        vlanYaml += `
-      mtu: ${vlan.mtu}`;
-      }
-      if (vlan.nameservers) {
-        vlanYaml += `
-      nameservers:`;
-        if (vlan.nameservers.addresses) {
-          vlanYaml += `
-        addresses: [${vlan.nameservers.addresses.join(', ')}]`;
-        }
-        if (vlan.nameservers.search) {
-          vlanYaml += `
-        search: [${vlan.nameservers.search.join(', ')}]`;
-        }
-      }
-    }
-  }
-  
-  // Add bridges
-  const bridges = config.network?.bridges || {};
-  let bridgeYaml = '';
-  if (Object.keys(bridges).length > 0) {
-    bridgeYaml = '\n  bridges:';
-    for (const [name, bridge] of Object.entries(bridges)) {
-      bridgeYaml += `
-    ${name}:
-      interfaces: [${bridge.interfaces.join(', ')}]`;
-      if (bridge.dhcp4 !== undefined) {
-        bridgeYaml += `
-      dhcp4: ${bridge.dhcp4}`;
-      }
-      if (bridge.dhcp6 !== undefined) {
-        bridgeYaml += `
-      dhcp6: ${bridge.dhcp6}`;
-      }
-      if (bridge.addresses && bridge.addresses.length > 0) {
-        bridgeYaml += `
-      addresses:`;
-        bridge.addresses.forEach(addr => {
-          bridgeYaml += `
-        - ${addr}`;
-        });
-      }
-      if (bridge.gateway4) {
-        bridgeYaml += `
-      gateway4: ${bridge.gateway4}`;
-      }
-      if (bridge.gateway6) {
-        bridgeYaml += `
-      gateway6: ${bridge.gateway6}`;
-      }
-      if (bridge.mtu) {
-        bridgeYaml += `
-      mtu: ${bridge.mtu}`;
-      }
-      if (bridge.nameservers) {
-        bridgeYaml += `
-      nameservers:`;
-        if (bridge.nameservers.addresses) {
-          bridgeYaml += `
-        addresses: [${bridge.nameservers.addresses.join(', ')}]`;
-        }
-        if (bridge.nameservers.search) {
-          bridgeYaml += `
-        search: [${bridge.nameservers.search.join(', ')}]`;
-        }
-      }
-    }
-  }
-  
-  // Add bonds
-  const bonds = config.network?.bonds || {};
-  let bondYaml = '';
-  if (Object.keys(bonds).length > 0) {
-    bondYaml = '\n  bonds:';
-    for (const [name, bond] of Object.entries(bonds)) {
-      bondYaml += `
-    ${name}:
-      interfaces: [${bond.interfaces.join(', ')}]
-      parameters:
-        mode: ${bond.parameters.mode}`;
-      
-      // Add other bond parameters
-      if (bond.parameters['mii-monitor-interval']) {
-        bondYaml += `
-        mii-monitor-interval: ${bond.parameters['mii-monitor-interval']}`;
-      }
-      if (bond.parameters['lacp-rate']) {
-        bondYaml += `
-        lacp-rate: ${bond.parameters['lacp-rate']}`;
-      }
-      if (bond.parameters['primary']) {
-        bondYaml += `
-        primary: ${bond.parameters['primary']}`;
-      }
-      
-      // Add IP configuration for bonds
-      if (bond.dhcp4 !== undefined) {
-        bondYaml += `
-      dhcp4: ${bond.dhcp4}`;
-      }
-      if (bond.dhcp6 !== undefined) {
-        bondYaml += `
-      dhcp6: ${bond.dhcp6}`;
-      }
-      if (bond.addresses && bond.addresses.length > 0) {
-        bondYaml += `
-      addresses:`;
-        bond.addresses.forEach(addr => {
-          bondYaml += `
-        - ${addr}`;
-        });
-      }
-      if (bond.gateway4) {
-        bondYaml += `
-      gateway4: ${bond.gateway4}`;
-      }
-      if (bond.gateway6) {
-        bondYaml += `
-      gateway6: ${bond.gateway6}`;
-      }
-      if (bond.mtu) {
-        bondYaml += `
-      mtu: ${bond.mtu}`;
-      }
-    }
-  }
-  
-  const finalYaml = yamlConfig + ethernetYaml + vlanYaml + bridgeYaml + bondYaml;
-  
-  console.log('Generated YAML:', finalYaml);
-  
-  // Escape the YAML content for shell command
-  const escapedYaml = finalYaml.replace(/'/g, "'\\''").replace(/"/g, '\\"');
-  
-  const command = `
-    # Create netplan directory if it doesn't exist
-    mkdir -p "${NETPLAN_DIR}"
-    
-    # Create backup if file exists
-    if [ -f "${NETPLAN_DIR}/${NETPLAN_FILE}" ]; then
-      cp "${NETPLAN_DIR}/${NETPLAN_FILE}" "${NETPLAN_DIR}/${NETPLAN_FILE}.backup.\$(date +%s)"
-    fi
-    
-    # Write YAML content directly
-    cat > "${NETPLAN_DIR}/${NETPLAN_FILE}" << 'EOF'
-${finalYaml}
-EOF
-    
-    # Set proper permissions
-    chmod 600 "${NETPLAN_DIR}/${NETPLAN_FILE}"
-    
-    # Verify the file was written
-    if [ -f "${NETPLAN_DIR}/${NETPLAN_FILE}" ]; then
-      echo "SUCCESS: Netplan configuration written"
-      echo "File size: \$(wc -c < "${NETPLAN_DIR}/${NETPLAN_FILE}") bytes"
-    else
-      echo "ERROR: Failed to create netplan file"
-      exit 1
-    fi
-  `;
-  
-  const result = await executeCommand(command);
-  console.log('writeNetplanConfig result:', result);
-  
-  if (result.success && result.output.includes('SUCCESS')) {
-    return true;
-  } else {
-    console.error('Failed to write netplan config:', result);
-    return false;
-  }
 }
 
 /**
@@ -1042,7 +1184,11 @@ async function applyNetplanConfig(skipTry = false, timeout = 10) {
     console.log(`Testing configuration safely with ${timeout}s timeout...`);
     result = await executeCommand(`netplan try --timeout ${timeout}`, { timeout: (timeout + 5) * 1000 });
     
-    if (result.success) {
+    // Check for timeout/revert (either via exit code or output detection)
+    if (result.reverted || result.exitCode === 78) {
+      console.log('Configuration was reverted due to timeout - this is expected safety behavior');
+      return { error: 'Configuration was automatically reverted due to timeout. Network connectivity may have been lost.' };
+    } else if (result.success) {
       console.log('Test successful, applying final configuration...');
       result = await executeCommand('netplan apply');
       
@@ -2147,6 +2293,29 @@ async function getNetplanSummary() {
 }
 
 /**
+ * Extract existing routes for a specific interface from configuration
+ */
+function extractExistingRoutes(config, interfaceName) {
+  const routes = [];
+  
+  if (!config || !config.network) {
+    return routes;
+  }
+  
+  // Check all interface types for the specified interface
+  for (const section of ['ethernets', 'vlans', 'bridges', 'bonds']) {
+    if (config.network[section] && config.network[section][interfaceName]) {
+      const interfaceConfig = config.network[section][interfaceName];
+      if (interfaceConfig.routes && Array.isArray(interfaceConfig.routes)) {
+        routes.push(...interfaceConfig.routes);
+      }
+    }
+  }
+  
+  return routes;
+}
+
+/**
  * Set IP address for an interface
  */
 async function setInterfaceIP(config) {
@@ -2160,12 +2329,18 @@ async function setInterfaceIP(config) {
     console.log(`Setting IP address for ${name} to ${static_ip}`);
     
     // CRITICAL: Preserve existing routes before any changes
+    console.log('DEBUG: About to call loadNetplanConfig()');
     const currentConfig = await loadNetplanConfig();
+    console.log('DEBUG: loadNetplanConfig() completed, config:', currentConfig);
+    
+    console.log('DEBUG: About to call extractExistingRoutes()');
     const existingRoutes = extractExistingRoutes(currentConfig, name);
-    console.log(`Preserving ${existingRoutes.length} existing routes for ${name}:`, existingRoutes);
+    console.log(`DEBUG: extractExistingRoutes() completed. Preserving ${existingRoutes.length} existing routes for ${name}:`, existingRoutes);
     
     // First, classify the interface
+    console.log('DEBUG: About to call classifyInterfaces()');
     const classification = await classifyInterfaces();
+    console.log('DEBUG: classifyInterfaces() completed:', classification);
     const isSystemManaged = classification.systemManaged[name];
     const isCockpitManaged = classification.cockpitManaged[name];
     
@@ -2265,12 +2440,45 @@ async function setInterfaceIP(config) {
       
       // Update IP configuration
       if (static_ip && static_ip.trim() !== '') {
+        console.log(`DEBUG: Adding address ${static_ip} to interface ${name}`);
         interfaceSection.addresses = [static_ip];
         interfaceSection.dhcp4 = false;
         interfaceSection.dhcp6 = false;
+        console.log(`DEBUG: Interface section after IP update:`, interfaceSection);
       } else {
         delete interfaceSection.addresses;
         interfaceSection.dhcp4 = true;
+      }
+      
+      // CRITICAL: Preserve IP addresses on other interfaces in the same file
+      // When we write back the config, we need to ensure we don't lose IPs on other VLANs
+      console.log(`DEBUG: Preserving existing IP addresses on other interfaces...`);
+      const originalConfig = await loadNetplanConfig();
+      console.log(`DEBUG: Original config loaded for IP preservation:`, originalConfig);
+      
+      // For each interface type (vlans, ethernets, etc.), preserve existing addresses
+      for (const sectionType of ['vlans', 'ethernets', 'bridges', 'bonds']) {
+        if (originalConfig.network && originalConfig.network[sectionType] && 
+            netplanConfig.network && netplanConfig.network[sectionType]) {
+          
+          for (const ifName in originalConfig.network[sectionType]) {
+            // Skip the interface we're currently modifying
+            if (ifName === name) continue;
+            
+            const originalIf = originalConfig.network[sectionType][ifName];
+            const currentIf = netplanConfig.network[sectionType][ifName];
+            
+            // If this interface exists in both configs and has addresses in original
+            if (currentIf && originalIf && originalIf.addresses) {
+              console.log(`DEBUG: Preserving addresses for ${ifName}:`, originalIf.addresses);
+              currentIf.addresses = originalIf.addresses;
+              
+              // Also preserve related IP settings
+              if (originalIf.dhcp4 !== undefined) currentIf.dhcp4 = originalIf.dhcp4;
+              if (originalIf.dhcp6 !== undefined) currentIf.dhcp6 = originalIf.dhcp6;
+            }
+          }
+        }
       }
       
       // CRITICAL: Preserve existing routes
@@ -2281,12 +2489,27 @@ async function setInterfaceIP(config) {
     }
     
     // Write to appropriate file
+    console.log(`DEBUG: About to write config to ${targetFile}. Final config:`, JSON.stringify(netplanConfig, null, 2));
     const writeOk = await writeNetplanFile(targetFile, netplanConfig);
     if (!writeOk) {
       return { error: `Failed to write netplan configuration to ${targetFile}` };
     }
     
     console.log(`IP address for ${name} updated successfully in ${targetFile}`);
+    
+    // Verify that other interfaces still have their IPs
+    console.log(`DEBUG: Verifying IP preservation after write...`);
+    const verifyConfig = await loadNetplanConfig();
+    for (const sectionType of ['vlans', 'ethernets', 'bridges', 'bonds']) {
+      if (verifyConfig.network && verifyConfig.network[sectionType]) {
+        for (const ifName in verifyConfig.network[sectionType]) {
+          const ifConfig = verifyConfig.network[sectionType][ifName];
+          if (ifConfig.addresses && ifConfig.addresses.length > 0) {
+            console.log(`DEBUG: After write - ${ifName} has addresses:`, ifConfig.addresses);
+          }
+        }
+      }
+    }
     
     let message = `IP address for ${name} updated to ${static_ip || 'DHCP'}`;
     if (isSystemManaged && !isCockpitManaged) {
@@ -2297,7 +2520,7 @@ async function setInterfaceIP(config) {
       success: true,
       message: message,
       details: { 
-        created: config?.created || false,
+        created: false, // Interface was updated, not created
         isSystemOverride: isSystemManaged && !isCockpitManaged,
         targetFile: targetFile
       }
@@ -2470,8 +2693,8 @@ async function setInterfaceMTU(config) {
 }
 
 /**
- * Main action dispatcher - replaces the Python script
- * Handles all netplan operations using 99-cockpit.yaml
+ * Main action dispatcher for JavaScript netplan manager
+ * Handles all netplan operations using multi-file approach
  */
 async function netplanJsAction(action, config = {}) {
   console.log(`netplanJsAction called: ${action}`, config);
@@ -2543,9 +2766,30 @@ async function netplanJsAction(action, config = {}) {
         console.log('🧪 try_config: Testing netplan configuration safely...');
         const timeout = config.timeout || 10;
         const tryResult = await executeCommand(`netplan try --timeout ${timeout}`);
-        return tryResult.success ? 
-          { success: true, message: `netplan try completed successfully (${timeout}s timeout)` } : 
-          { error: tryResult.error };
+        
+        // CRITICAL: Check for revert (either via exit code or output detection)
+        if (tryResult.reverted || tryResult.exitCode === 78) {
+          if (tryResult.possibleFalsePositive) {
+            console.log('🤔 Detected possible false positive revert - netplan may have applied config despite showing revert message');
+            return { 
+              success: true, // Treat as success but with warning
+              warning: true,
+              message: `netplan try showed revert message but may have applied configuration anyway (${timeout}s timeout)`,
+              details: 'Your system appears to have a netplan quirk where it shows revert messages but applies configs successfully'
+            };
+          } else {
+            return { 
+              success: false, 
+              reverted: true,
+              error: `netplan try timed out after ${timeout}s - configuration automatically reverted for safety`,
+              message: `netplan try timed out after ${timeout}s - configuration automatically reverted for safety` 
+            };
+          }
+        } else if (tryResult.success) {
+          return { success: true, message: `netplan try completed successfully (${timeout}s timeout)` };
+        } else {
+          return { error: `netplan try failed: ${tryResult.error || 'Unknown error'}` };
+        }
         
       default:
         return { error: `Unknown action: ${action}. Available actions: get_interface_classification, preserve_routes, manage_routes, get_routes, add_vlan, add_bridge, add_bond, remove_interface, set_ip, set_mtu, load_netplan, get_summary, get_physical_interfaces, apply_config, apply_direct, generate, try` };

@@ -163,8 +163,8 @@ function setupConstructEventHandlers() {
 
         const config = {
           name: vlanName || `${parent}.${vlanId}`,    // VLAN interface name
-          id: vlanIdNum,                               // VLAN ID (expected by Python script)
-          link: parent,                                // Parent interface (expected by Python script)
+          id: vlanIdNum,                               // VLAN ID
+          link: parent,                                // Parent interface
           mtu: vlanMtu ? parseInt(vlanMtu) : undefined,
           static_ip: staticIp || undefined,
           gateway: gateway || undefined

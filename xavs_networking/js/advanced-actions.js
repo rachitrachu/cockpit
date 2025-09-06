@@ -59,7 +59,7 @@ async function editPhysicalInterface(iface) {
     <div class="modal-content">
       <div class="modal-header">
         <h3><i class="fas fa-ethernet"></i> Edit Physical Interface: ${iface.dev}</h3>
-        <button class="close-btn" onclick="this.closest('dialog').close()">&times;</button>
+        <button class="close-btn" data-action="close-modal">&times;</button>
       </div>
       <div class="modal-body">
         <p class="interface-info">
@@ -98,7 +98,7 @@ async function editPhysicalInterface(iface) {
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="this.closest('dialog').close()">Cancel</button>
+        <button class="btn btn-secondary" data-action="close-modal">Cancel</button>
         <button class="btn btn-primary" id="save-physical-interface">
           <i class="fas fa-save"></i> Apply Changes
         </button>
@@ -107,6 +107,11 @@ async function editPhysicalInterface(iface) {
   `;
 
   document.body.appendChild(modal);
+
+  // Handle close button
+  modal.querySelector('[data-action="close-modal"]').addEventListener('click', () => {
+    modal.close();
+  });
 
   // Handle save button
   const saveBtn = modal.querySelector('#save-physical-interface');
@@ -801,7 +806,7 @@ async function deleteConstructedInterface(iface) {
       console.log(`🔧 Removing ${deleteType} interface ${iface.dev} from netplan`);
       console.log(`📝 Original interface name: ${iface.dev}`);
       console.log(`🏷️ Normalized name for netplan: ${normalizedName}`);
-      console.log(`📤 Sending to netplan_manager: action='delete', config={type: '${deleteType}', name: '${normalizedName}'}`);
+      console.log(`📤 Sending to JavaScript netplan manager: action='delete', config={type: '${deleteType}', name: '${normalizedName}'}`);
       
       const result = await netplanAction('delete', { 
         type: deleteType, 
