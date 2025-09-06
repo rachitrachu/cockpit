@@ -1416,7 +1416,6 @@ async function displayInterfaces(interfaces) {
         </div>
       `;
       row.style.background = 'linear-gradient(90deg, rgba(255,165,0,0.08) 0%, rgba(255,255,255,0) 100%)';
-      row.style.borderLeft = '3px solid #ffa500';
       row.title = 'System-managed interface (defined in system configuration files)';
     } else if (deviceInfo.isVlan) {
       deviceCell.innerHTML = `
@@ -1717,7 +1716,6 @@ async function displayInterfaces(interfaces) {
     
     // Add visual indication for system-managed interfaces
     if (isSystemManaged) {
-      actionsContainer.style.borderLeft = '3px solid #ffa500';
       actionsContainer.title = 'System-managed interface (defined in system configuration)';
       
       // Add system badge

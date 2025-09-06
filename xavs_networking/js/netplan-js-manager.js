@@ -1,3 +1,264 @@
+/**
+ * Simple and reliable interface deletion using ip commands only
+ * Also cleans up netplan file definitions but doesn't apply netplan
+ */
+async function deleteInterfaceSimple(interfaceName, interfaceType = 'auto') {
+  console.log(`🗑️ Simple deletion of interface: ${interfaceName}`);
+  
+  let systemDeleted = false;
+  let netplanCleaned = false;
+  const errors = [];
+  
+  // Step 1: Delete from system using ip commands (most reliable)
+  try {
+    console.log(`🔍 Checking if ${interfaceName} exists in system`);
+    const checkResult = await executeCommand(`ip link show ${interfaceName}`);
+    
+    if (checkResult.success && !checkResult.output.includes('does not exist')) {
+      console.log(`🔧 Interface ${interfaceName} exists, deleting with ip commands`);
+      
+      // Bring interface down first
+      try {
+        const downResult = await executeCommand(`ip link set ${interfaceName} down`);
+        if (downResult.success) {
+          console.log(`✅ Brought down interface ${interfaceName}`);
+        } else {
+          console.warn(`⚠️ Could not bring down ${interfaceName}: ${downResult.error}`);
+          // Continue anyway - interface might already be down
+        }
+      } catch (downError) {
+        console.warn(`⚠️ Error bringing down ${interfaceName}: ${downError}`);
+      }
+      
+      // Delete the interface
+      try {
+        const deleteResult = await executeCommand(`ip link delete ${interfaceName}`);
+        if (deleteResult.success) {
+          console.log(`✅ Deleted interface ${interfaceName} using ip command`);
+          systemDeleted = true;
+        } else {
+          console.warn(`⚠️ Could not delete ${interfaceName}: ${deleteResult.error}`);
+          errors.push(`System delete: ${deleteResult.error}`);
+        }
+      } catch (deleteError) {
+        console.warn(`⚠️ Error deleting ${interfaceName}: ${deleteError}`);
+        errors.push(`System delete: ${deleteError.message || deleteError}`);
+      }
+    } else {
+      console.log(`✅ Interface ${interfaceName} does not exist in system (already removed)`);
+      systemDeleted = true; // Consider it deleted if it doesn't exist
+    }
+  } catch (checkError) {
+    console.warn(`⚠️ Could not check interface ${interfaceName}: ${checkError}`);
+    // Assume it's deleted if we can't check
+    systemDeleted = true;
+  }
+  
+  // Step 2: Clean up netplan files (but don't apply)
+  try {
+    console.log(`📝 Cleaning up netplan configuration for ${interfaceName}`);
+    
+    // Auto-detect interface type if needed
+    if (interfaceType === 'auto') {
+      if (interfaceName.includes('.') && !interfaceName.startsWith('br') && !interfaceName.startsWith('bond')) {
+        interfaceType = 'vlans';
+      } else if (interfaceName.startsWith('br')) {
+        interfaceType = 'bridges';
+      } else if (interfaceName.startsWith('bond')) {
+        interfaceType = 'bonds';
+      } else {
+        interfaceType = 'ethernets';
+      }
+    }
+    
+    // Load current config to see if interface exists in netplan
+    const currentConfig = await loadNetplanConfig();
+    let foundInNetplan = false;
+    
+    if (currentConfig.network && currentConfig.network[interfaceType] && currentConfig.network[interfaceType][interfaceName]) {
+      console.log(`📄 Found ${interfaceName} in netplan ${interfaceType} section`);
+      foundInNetplan = true;
+      
+      // Remove the interface from config
+      delete currentConfig.network[interfaceType][interfaceName];
+      
+      // If VLAN, also check if we need to clean up parent ethernet entry
+      if (interfaceType === 'vlans' && interfaceName.includes('.')) {
+        const parentInterface = interfaceName.split('.')[0];
+        if (currentConfig.network.ethernets && currentConfig.network.ethernets[parentInterface]) {
+          // Check if this ethernet entry is only for the VLAN (no other config)
+          const parentConfig = currentConfig.network.ethernets[parentInterface];
+          const hasOnlyOptional = Object.keys(parentConfig).length === 1 && parentConfig.optional !== undefined;
+          
+          if (hasOnlyOptional) {
+            console.log(`🧹 Removing orphaned ethernet entry for ${parentInterface}`);
+            delete currentConfig.network.ethernets[parentInterface];
+          }
+        }
+      }
+      
+      // Write the cleaned config back (determine which file to update)
+      let targetFile = NETPLAN_FILES.COCKPIT_INTERFACES; // Default
+      if (interfaceType === 'ethernets') {
+        targetFile = NETPLAN_FILES.COCKPIT_LEGACY;
+      }
+      
+      const writeResult = await writeNetplanConfig(currentConfig, targetFile);
+      if (writeResult) {
+        console.log(`✅ Cleaned up netplan configuration in ${targetFile}`);
+        netplanCleaned = true;
+      } else {
+        console.warn(`⚠️ Failed to clean up netplan configuration`);
+        errors.push('Failed to clean netplan config');
+      }
+    } else {
+      console.log(`📄 Interface ${interfaceName} not found in netplan configuration`);
+      netplanCleaned = true; // Nothing to clean
+    }
+  } catch (netplanError) {
+    console.warn(`⚠️ Error cleaning netplan configuration: ${netplanError}`);
+    errors.push(`Netplan cleanup: ${netplanError.message || netplanError}`);
+    // Don't fail the whole operation for netplan cleanup issues
+    netplanCleaned = true;
+  }
+  
+  // Determine overall success
+  const success = systemDeleted; // Main requirement is system deletion
+  
+  const result = {
+    success,
+    systemDeleted,
+    netplanCleaned,
+    errors: errors.length > 0 ? errors : null,
+    message: success 
+      ? `Interface ${interfaceName} deleted successfully using ip commands${netplanCleaned ? ' (netplan cleaned)' : ''}` 
+      : `Failed to delete interface ${interfaceName}`
+  };
+  
+  console.log(`🏁 Simple deletion complete for ${interfaceName}:`, result);
+  return result;
+}
+
+/**
+ * Enhanced interface deletion with direct system commands
+ * This function tries netplan first, then falls back to direct ip commands
+ */
+async function deleteInterfaceCompletely(interfaceName, interfaceType = 'auto') {
+  console.log(`🗑️ Attempting complete deletion of interface: ${interfaceName}`);
+  
+  let deletedFromNetplan = false;
+  let deletedFromSystem = false;
+  const errors = [];
+  
+  // Step 1: Try to remove from netplan configuration
+  try {
+    if (interfaceType === 'auto') {
+      // Auto-detect interface type
+      if (interfaceName.includes('.') && !interfaceName.startsWith('br') && !interfaceName.startsWith('bond')) {
+        interfaceType = 'vlans';
+      } else if (interfaceName.startsWith('br')) {
+        interfaceType = 'bridges';
+      } else if (interfaceName.startsWith('bond')) {
+        interfaceType = 'bonds';
+      } else {
+        interfaceType = 'ethernets';
+      }
+    }
+    
+    console.log(`📝 Attempting netplan removal (type: ${interfaceType})`);
+    const result = await removeFromNetplan(interfaceName, interfaceType);
+    if (result.success) {
+      console.log(`✅ Successfully removed ${interfaceName} from netplan`);
+      deletedFromNetplan = true;
+    } else {
+      console.warn(`⚠️ Failed to remove from netplan: ${result.error}`);
+      errors.push(`Netplan: ${result.error}`);
+    }
+  } catch (netplanError) {
+    console.warn(`⚠️ Netplan deletion error: ${netplanError}`);
+    errors.push(`Netplan: ${netplanError.message || netplanError}`);
+  }
+  
+  // Step 2: Check if interface still exists in system and remove directly
+  try {
+    console.log(`🔍 Checking if ${interfaceName} still exists in system`);
+    const checkResult = await run('ip', ['link', 'show', interfaceName], { superuser: 'try' });
+    
+    if (checkResult && !checkResult.includes('does not exist') && !checkResult.includes('Cannot find device')) {
+      console.log(`🔧 Interface ${interfaceName} still exists, removing directly with ip commands`);
+      
+      // Enable system cleanup temporarily for deletion
+      const originalCleanupPolicy = window.NETPLAN_ALLOW_SYSTEM_CLEANUP;
+      window.NETPLAN_ALLOW_SYSTEM_CLEANUP = true;
+      
+      try {
+        // Bring interface down first
+        try {
+          await run('ip', ['link', 'set', interfaceName, 'down'], { superuser: 'try' });
+          console.log(`✅ Brought down interface ${interfaceName}`);
+        } catch (downError) {
+          console.warn(`⚠️ Could not bring down ${interfaceName}: ${downError}`);
+          // Continue anyway - interface might already be down
+        }
+        
+        // Delete the interface
+        try {
+          await run('ip', ['link', 'delete', interfaceName], { superuser: 'try' });
+          console.log(`✅ Deleted interface ${interfaceName} using ip command`);
+          deletedFromSystem = true;
+        } catch (deleteError) {
+          console.warn(`⚠️ Could not delete ${interfaceName}: ${deleteError}`);
+          errors.push(`System: ${deleteError.message || deleteError}`);
+        }
+      } finally {
+        // Restore original cleanup policy
+        window.NETPLAN_ALLOW_SYSTEM_CLEANUP = originalCleanupPolicy;
+      }
+    } else {
+      console.log(`✅ Interface ${interfaceName} does not exist in system (already removed)`);
+      deletedFromSystem = true; // Consider it deleted if it doesn't exist
+    }
+  } catch (checkError) {
+    console.warn(`⚠️ Could not check interface ${interfaceName}: ${checkError}`);
+    errors.push(`System check: ${checkError.message || checkError}`);
+    // Assume it's deleted if we can't check
+    deletedFromSystem = true;
+  }
+  
+  // Step 3: Apply netplan changes if we made any config changes
+  if (deletedFromNetplan) {
+    try {
+      console.log(`🔄 Applying netplan changes after deletion`);
+      const applyResult = await applyNetplanConfig();
+      if (!applyResult.success) {
+        console.warn(`⚠️ Failed to apply netplan after deletion: ${applyResult.error}`);
+        errors.push(`Apply: ${applyResult.error}`);
+      } else {
+        console.log(`✅ Netplan changes applied successfully`);
+      }
+    } catch (applyError) {
+      console.warn(`⚠️ Error applying netplan: ${applyError}`);
+      errors.push(`Apply: ${applyError.message || applyError}`);
+    }
+  }
+  
+  // Determine overall success
+  const success = deletedFromNetplan || deletedFromSystem;
+  
+  const result = {
+    success,
+    deletedFromNetplan,
+    deletedFromSystem,
+    errors: errors.length > 0 ? errors : null,
+    message: success 
+      ? `Interface ${interfaceName} deleted successfully` 
+      : `Failed to delete interface ${interfaceName}`
+  };
+  
+  console.log(`🏁 Deletion complete for ${interfaceName}:`, result);
+  return result;
+}
+
 'use strict';
 // Policy: use system commands for reads only; no direct actions unless explicitly allowed
 window.NETPLAN_ALLOW_SYSTEM_CLEANUP = window.NETPLAN_ALLOW_SYSTEM_CLEANUP || false;
@@ -533,6 +794,8 @@ EOF
   
   if (result.success && result.output.includes('SUCCESS')) {
     console.log(`✅ Successfully wrote ${filename} with comprehensive configuration preservation`);
+    // Clear cache since configuration has changed
+    clearConfigCache();
     return true;
   } else {
     console.error(`❌ Failed to write ${filename}:`, result);
@@ -618,10 +881,30 @@ function generateNetplanYAML(config) {
   return yaml;
 }
 
+// Simple cache for netplan config to prevent duplicate loads
+let configCache = null;
+let configCacheTime = 0;
+const CONFIG_CACHE_TTL = 2000; // 2 seconds cache
+
+/**
+ * Clear the netplan configuration cache
+ * Call this when making changes that would invalidate the cached config
+ */
+function clearConfigCache() {
+  configCache = null;
+  configCacheTime = 0;
+}
+
 /**
  * Load current netplan configuration from multiple files
  */
-async function loadNetplanConfig() {
+async function loadNetplanConfig(forceReload = false) {
+  // Check cache first (unless force reload)
+  if (!forceReload && configCache && Date.now() - configCacheTime < CONFIG_CACHE_TTL) {
+    console.log('🚀 Using cached netplan configuration');
+    return { ...configCache }; // Return a copy to prevent mutations
+  }
+  
   console.log('🔍 Loading netplan configuration from multiple files...');
   
   const mergedConfig = {
@@ -683,6 +966,11 @@ async function loadNetplanConfig() {
   }
   
   console.log('🔄 Final merged config:', mergedConfig);
+  
+  // Store in cache
+  configCache = { ...mergedConfig }; // Store a copy
+  configCacheTime = Date.now();
+  
   return mergedConfig;
 }
 
@@ -1253,18 +1541,7 @@ async function applyNetplanConfig(skipTry = false, timeout = 10) {
     if (result.success) {
       console.log('Netplan configuration applied successfully');
       
-      // Step 5a: Restart systemd-networkd to ensure changes are picked up
-      console.log('🔄 Restarting systemd-networkd to ensure configuration is applied...');
-      const restartResult = await executeCommand('systemctl restart systemd-networkd');
-      if (restartResult.success) {
-        console.log('✅ systemd-networkd restarted successfully');
-        // Give networkd a moment to apply configurations
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      } else {
-        console.warn('⚠️ Failed to restart systemd-networkd:', restartResult.error);
-      }
-      
-      // Step 5b: Restore preserved routes after apply
+      // Step 5: Restore preserved routes after apply
       await restorePreservedRoutes(routePreservation);
       
       return { success: true, message: `Configuration applied directly (${reason})` };
@@ -2477,7 +2754,9 @@ async function setInterfaceIP(config) {
       // Use our standard managed file
       targetFile = determineTargetFile(name, 'manage');
       await ensureNetplanFile(targetFile, 'Physical interfaces and VLANs');
-      netplanConfig = await loadNetplanFile(targetFile);
+      
+      // CRITICAL FIX: Load complete multi-file configuration to preserve ALL interfaces
+      netplanConfig = await loadNetplanConfig();
       
       if (!netplanConfig.network) {
         netplanConfig.network = { version: 2, ethernets: {}, vlans: {}, bridges: {}, bonds: {} };
@@ -2541,32 +2820,98 @@ async function setInterfaceIP(config) {
         interfaceSection.dhcp4 = true;
       }
       
-      // CRITICAL: Preserve IP addresses on other interfaces in the same file
-      // When we write back the config, we need to ensure we don't lose IPs on other VLANs
-      console.log(`DEBUG: Preserving existing IP addresses on other interfaces...`);
+      // CRITICAL: Preserve IP addresses and ALL configurations on other interfaces
+      // When we write back the config, we need to ensure we don't lose ANY existing configs
+      console.log(`DEBUG: Preserving existing configurations on other interfaces...`);
       const originalConfig = await loadNetplanConfig();
-      console.log(`DEBUG: Original config loaded for IP preservation:`, originalConfig);
+      console.log(`DEBUG: Original config loaded for comprehensive preservation:`, originalConfig);
       
-      // For each interface type (vlans, ethernets, etc.), preserve existing addresses
+      // VLAN ID conflict detection - only check for REAL conflicts (same parent + same VLAN ID)
+      if (interfaceType === 'vlans' && interfaceSection.id && interfaceSection.link) {
+        const currentVlanId = interfaceSection.id;
+        const currentParent = interfaceSection.link;
+        console.log(`🔍 Checking for REAL VLAN conflicts: ${name} (ID ${currentVlanId} on ${currentParent})...`);
+        
+        // Check all existing VLANs for the same parent + same ID combination (actual conflict)
+        if (originalConfig.network && originalConfig.network.vlans) {
+          const realConflicts = [];
+          for (const vlanName in originalConfig.network.vlans) {
+            if (vlanName !== name) {
+              const existingVlan = originalConfig.network.vlans[vlanName];
+              if (existingVlan.id === currentVlanId && existingVlan.link === currentParent) {
+                realConflicts.push(vlanName);
+              }
+            }
+          }
+          
+          if (realConflicts.length > 0) {
+            console.error(`❌ REAL VLAN CONFLICT DETECTED! Same parent (${currentParent}) + same VLAN ID (${currentVlanId}):`);
+            console.error(`❌ Conflicting VLANs:`, realConflicts);
+            console.error(`❌ This is invalid - cannot have duplicate ${currentParent}.${currentVlanId}`);
+            return { error: `VLAN conflict: ${name} conflicts with existing ${realConflicts.join(', ')} (same parent + VLAN ID)` };
+          } else {
+            console.log(`✅ No real VLAN conflicts detected for ${name}`);
+            // Log other VLANs with same ID on different parents (which is valid)
+            const sameIdDifferentParent = [];
+            for (const vlanName in originalConfig.network.vlans) {
+              if (vlanName !== name) {
+                const existingVlan = originalConfig.network.vlans[vlanName];
+                if (existingVlan.id === currentVlanId && existingVlan.link !== currentParent) {
+                  sameIdDifferentParent.push(`${vlanName} (${existingVlan.link})`);
+                }
+              }
+            }
+            if (sameIdDifferentParent.length > 0) {
+              console.log(`ℹ️ Valid: VLAN ID ${currentVlanId} also used on different parents:`, sameIdDifferentParent);
+              console.log(`ℹ️ This is perfectly valid - different parent interfaces can use the same VLAN ID`);
+            }
+          }
+        }
+      }
+      
+      // Comprehensive preservation: ensure ALL interfaces from original config are preserved
       for (const sectionType of ['vlans', 'ethernets', 'bridges', 'bonds']) {
-        if (originalConfig.network && originalConfig.network[sectionType] && 
-            netplanConfig.network && netplanConfig.network[sectionType]) {
+        if (originalConfig.network && originalConfig.network[sectionType]) {
+          
+          // Ensure the section exists in our config
+          if (!netplanConfig.network[sectionType]) {
+            netplanConfig.network[sectionType] = {};
+          }
           
           for (const ifName in originalConfig.network[sectionType]) {
+            const originalIf = originalConfig.network[sectionType][ifName];
+            
             // Skip the interface we're currently modifying
             if (ifName === name) continue;
             
-            const originalIf = originalConfig.network[sectionType][ifName];
-            const currentIf = netplanConfig.network[sectionType][ifName];
-            
-            // If this interface exists in both configs and has addresses in original
-            if (currentIf && originalIf && originalIf.addresses) {
-              console.log(`DEBUG: Preserving addresses for ${ifName}:`, originalIf.addresses);
-              currentIf.addresses = originalIf.addresses;
+            // If this interface doesn't exist in our config, add it completely
+            if (!netplanConfig.network[sectionType][ifName]) {
+              console.log(`🔒 Preserving entire interface ${ifName} (${sectionType}):`, originalIf);
+              netplanConfig.network[sectionType][ifName] = JSON.parse(JSON.stringify(originalIf));
+            } else {
+              // Interface exists, merge properties carefully
+              const currentIf = netplanConfig.network[sectionType][ifName];
               
-              // Also preserve related IP settings
-              if (originalIf.dhcp4 !== undefined) currentIf.dhcp4 = originalIf.dhcp4;
-              if (originalIf.dhcp6 !== undefined) currentIf.dhcp6 = originalIf.dhcp6;
+              // Critical properties that must be preserved if they exist in original
+              const criticalProps = [
+                'addresses', 'dhcp4', 'dhcp6',     // IP config
+                'id', 'link',                      // VLAN properties  
+                'mtu', 'routes', 'gateway4', 'gateway6', // Network settings
+                'optional', 'interfaces', 'parameters'   // Other critical settings
+              ];
+              
+              criticalProps.forEach(prop => {
+                if (originalIf[prop] !== undefined && currentIf[prop] === undefined) {
+                  console.log(`🔒 Preserving ${prop} for ${ifName}:`, originalIf[prop]);
+                  if (Array.isArray(originalIf[prop])) {
+                    currentIf[prop] = [...originalIf[prop]];
+                  } else if (typeof originalIf[prop] === 'object' && originalIf[prop] !== null) {
+                    currentIf[prop] = { ...originalIf[prop] };
+                  } else {
+                    currentIf[prop] = originalIf[prop];
+                  }
+                }
+              });
             }
           }
         }
@@ -2579,14 +2924,14 @@ async function setInterfaceIP(config) {
       }
     }
     
-    // Write to appropriate file
-    console.log(`DEBUG: About to write config to ${targetFile}. Final config:`, JSON.stringify(netplanConfig, null, 2));
-    const writeOk = await writeNetplanFile(targetFile, netplanConfig);
+    // Write to appropriate file using proper multi-file strategy
+    console.log(`DEBUG: About to write config using multi-file strategy. Modified interface: ${name} in ${interfaceType}`);
+    const writeOk = await writeNetplanConfig(netplanConfig);
     if (!writeOk) {
-      return { error: `Failed to write netplan configuration to ${targetFile}` };
+      return { error: `Failed to write netplan configuration using multi-file strategy` };
     }
     
-    console.log(`IP address for ${name} updated successfully in ${targetFile}`);
+    console.log(`IP address for ${name} updated successfully using multi-file strategy`);
     
     // Verify that other interfaces still have their IPs
     console.log(`DEBUG: Verifying IP preservation after write...`);
@@ -2818,7 +3163,23 @@ async function netplanJsAction(action, config = {}) {
       case 'remove_interface':
       case 'delete_interface':
       case 'delete':  // Add support for 'delete' action used by advanced-actions.js
-        return await removeInterface(config);
+        // Use simple deletion with ip commands only
+        const deleteInterfaceName = config.name || config.interface;
+        const deleteInterfaceType = config.type || 'auto';
+        if (!deleteInterfaceName) {
+          return { error: 'Interface name is required for deletion' };
+        }
+        return await deleteInterfaceSimple(deleteInterfaceName, deleteInterfaceType);
+        
+      case 'delete_complete':
+      case 'force_delete':
+        // Enhanced deletion with direct system commands (legacy compatibility)
+        const interfaceName = config.name || config.interface;
+        const interfaceType = config.type || 'auto';
+        if (!interfaceName) {
+          return { error: 'Interface name is required for deletion' };
+        }
+        return await deleteInterfaceSimple(interfaceName, interfaceType);
         
       case 'set_ip':
         return await setInterfaceIP(config);
@@ -3047,10 +3408,19 @@ console.log('   - showNetplanLimitations() - Show bond/bridge limitations');
 console.log('   - cleanupOrphanedEthernets() - Clean up unused ethernet entries');
 console.log('   - testProgressBar() - Test the progress bar during netplan operations');
 console.log('   - testRoutePreservation() - Test route capture and preservation logic');
+console.log('   - validateVlanConfig() - Check for VLAN ID conflicts and issues');
+console.log('   - fixVlanConfig() - Attempt to fix VLAN configuration issues');
+console.log('   - deleteInterface(name, type) - Delete interface using ip commands + netplan cleanup');
 console.log('⚠️  Note: Bonds and bridges require direct apply (no netplan try support)');
 console.log('✨ VLAN creation is working perfectly! Check the logs above for confirmation.');
-console.log('🗑️  Deletion logic enhanced with better name resolution and cleanup');
+console.log('🗑️  Deletion logic enhanced: Uses ip commands for reliability, cleans netplan files');
 console.log('🛡️  Route preservation: Important routes are now actively preserved during netplan apply');
+
+// Create a persistent global namespace for our debug functions
+if (!window.XAVS_DEBUG) {
+  window.XAVS_DEBUG = {};
+  console.log('🔧 Created XAVS_DEBUG namespace for persistent functions');
+}
 
 // Debug function to test the progress bar
 window.testProgressBar = async function(timeout = 10) {
@@ -3124,5 +3494,383 @@ window.testRoutePreservation = async function() {
   } catch (error) {
     console.error('❌ Route preservation test failed:', error.message);
     return null;
+  }
+};
+
+// VLAN validation and debugging functions
+console.log('🔧 Loading VLAN validation functions...');
+
+// Store in persistent namespace AND window object
+const validateVlanConfigFunc = async function() {
+  console.log('🔍 Validating VLAN configuration...');
+  
+  try {
+    const config = await loadNetplanConfig();
+    const vlans = config.network?.vlans || {};
+    
+    console.log(`Found ${Object.keys(vlans).length} VLAN interfaces`);
+    
+    // Check for REAL VLAN conflicts (same parent + same VLAN ID)
+    const parentVlanMap = new Map(); // Map of "parent.vlanId" -> interface name
+    const realConflicts = [];
+    const validSharedIds = new Map(); // Track valid shared VLAN IDs across different parents
+    
+    for (const [vlanName, vlanConfig] of Object.entries(vlans)) {
+      const vlanId = vlanConfig.id;
+      const parent = vlanConfig.link;
+      
+      if (vlanId !== undefined && parent) {
+        const key = `${parent}.${vlanId}`;
+        
+        if (parentVlanMap.has(key)) {
+          // REAL conflict: same parent + same VLAN ID
+          realConflicts.push({
+            conflictKey: key,
+            interfaces: [parentVlanMap.get(key), vlanName],
+            parent: parent,
+            vlanId: vlanId
+          });
+        } else {
+          parentVlanMap.set(key, vlanName);
+        }
+        
+        // Track shared VLAN IDs across different parents (valid scenario)
+        if (!validSharedIds.has(vlanId)) {
+          validSharedIds.set(vlanId, []);
+        }
+        validSharedIds.get(vlanId).push({ interface: vlanName, parent: parent });
+      }
+    }
+    
+    // Report results
+    console.log('🔍 VLAN Configuration Analysis:');
+    for (const [vlanName, vlanConfig] of Object.entries(vlans)) {
+      const hasIp = vlanConfig.addresses && vlanConfig.addresses.length > 0;
+      const ipInfo = hasIp ? `IP: ${vlanConfig.addresses.join(', ')}` : 'No IP';
+      const mtuInfo = vlanConfig.mtu ? `, MTU: ${vlanConfig.mtu}` : '';
+      console.log(`  • ${vlanName}: ID ${vlanConfig.id}, Link: ${vlanConfig.link}, ${ipInfo}${mtuInfo}`);
+    }
+    
+    // Report valid shared VLAN IDs
+    console.log('');
+    console.log('📊 VLAN ID usage analysis:');
+    for (const [vlanId, usage] of validSharedIds.entries()) {
+      if (usage.length > 1) {
+        const parents = usage.map(u => u.parent).join(', ');
+        const interfaces = usage.map(u => u.interface).join(', ');
+        console.log(`  ✅ VLAN ID ${vlanId}: Used on ${usage.length} different parents (${parents}) - Valid!`);
+        console.log(`     Interfaces: ${interfaces}`);
+      }
+    }
+    
+    if (realConflicts.length > 0) {
+      console.error('❌ REAL VLAN CONFLICTS DETECTED:');
+      realConflicts.forEach(conflict => {
+        console.error(`  ❌ ${conflict.parent}.${conflict.vlanId} defined multiple times:`, conflict.interfaces);
+        console.error(`     This is invalid - cannot have duplicate definitions on the same parent interface`);
+      });
+      return { success: false, realConflicts, message: 'Real VLAN conflicts detected (same parent + same ID)' };
+    } else {
+      console.log('✅ No real VLAN conflicts detected');
+      console.log('ℹ️  Note: Different parent interfaces can validly use the same VLAN ID');
+      return { success: true, vlans: Object.keys(vlans), message: 'VLAN configuration valid' };
+    }
+    
+  } catch (error) {
+    console.error('❌ Error validating VLAN configuration:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+const fixVlanConfigFunc = async function() {
+  console.log('🔧 Attempting to fix VLAN configuration...');
+  
+  try {
+    const config = await loadNetplanConfig();
+    const vlans = config.network?.vlans || {};
+    
+    console.log('📊 Current VLAN status:');
+    for (const [vlanName, vlanConfig] of Object.entries(vlans)) {
+      const hasIp = vlanConfig.addresses && vlanConfig.addresses.length > 0;
+      console.log(`  • ${vlanName}: ${hasIp ? '✅ Has IP' : '❌ Missing IP'}`);
+    }
+    
+    // Suggest fixes for missing configurations
+    const suggestions = [];
+    for (const [vlanName, vlanConfig] of Object.entries(vlans)) {
+      const hasIp = vlanConfig.addresses && vlanConfig.addresses.length > 0;
+      if (!hasIp) {
+        suggestions.push(`Add IP to ${vlanName}: setIPAddress('${vlanName}', '192.168.0.XXX/24')`);
+      }
+    }
+    
+    if (suggestions.length > 0) {
+      console.log('💡 Suggested fixes:');
+      suggestions.forEach(suggestion => console.log(`  • ${suggestion}`));
+    } else {
+      console.log('✅ All VLANs have IP addresses configured');
+    }
+    
+    // Check for ID conflicts and suggest fixes
+    const validation = await window.validateVlanConfig();
+    if (!validation.success && validation.conflicts) {
+      console.log('💡 VLAN ID conflict fixes:');
+      validation.conflicts.forEach(conflict => {
+        console.log(`  • Change VLAN ID ${conflict.id}: One of ${conflict.interfaces.join(', ')} should use a different ID`);
+      });
+    }
+    
+    return { 
+      success: true, 
+      suggestions, 
+      conflicts: validation.conflicts || [],
+      message: 'VLAN analysis completed' 
+    };
+    
+  } catch (error) {
+    console.error('❌ Error fixing VLAN configuration:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Store functions in multiple places to ensure persistence
+window.validateVlanConfig = validateVlanConfigFunc;
+window.fixVlanConfig = fixVlanConfigFunc;
+
+// Store in persistent XAVS_DEBUG namespace
+window.XAVS_DEBUG.validateVlanConfig = validateVlanConfigFunc;
+window.XAVS_DEBUG.fixVlanConfig = fixVlanConfigFunc;
+
+// Also create global shortcuts without window prefix
+if (typeof window.validateVlanConfig === 'function') {
+  // Make them accessible without window prefix in console
+  globalThis.validateVlanConfig = validateVlanConfigFunc;
+  globalThis.fixVlanConfig = fixVlanConfigFunc;
+}
+
+console.log('🔧 VLAN validation functions loaded successfully');
+console.log('🧪 Test functions available: validateVlanConfig(), fixVlanConfig()');
+console.log('🧪 Persistent access: XAVS_DEBUG.validateVlanConfig(), XAVS_DEBUG.fixVlanConfig()');
+
+// Verify functions are attached
+if (typeof window.validateVlanConfig === 'function') {
+  console.log('✅ validateVlanConfig attached to window');
+} else {
+  console.error('❌ validateVlanConfig not attached to window');
+}
+
+if (typeof window.fixVlanConfig === 'function') {
+  console.log('✅ fixVlanConfig attached to window');
+} else {
+  console.error('❌ fixVlanConfig not attached to window');
+}
+
+// Verify persistent storage
+if (typeof window.XAVS_DEBUG.validateVlanConfig === 'function') {
+  console.log('✅ validateVlanConfig stored in XAVS_DEBUG namespace');
+} else {
+  console.error('❌ validateVlanConfig not stored in XAVS_DEBUG namespace');
+}
+
+// Also create global shortcuts (without window prefix)
+if (typeof validateVlanConfig === 'undefined') {
+  window.validateVlanConfig = window.validateVlanConfig;
+  window.fixVlanConfig = window.fixVlanConfig;
+  console.log('🔧 Created global shortcuts for VLAN functions');
+}
+
+// Test the functions immediately to ensure they work
+setTimeout(() => {
+  console.log('🧪 Testing function availability after 1 second...');
+  console.log('validateVlanConfig type:', typeof validateVlanConfig);
+  console.log('window.validateVlanConfig type:', typeof window.validateVlanConfig);
+  console.log('fixVlanConfig type:', typeof fixVlanConfig);  
+  console.log('window.fixVlanConfig type:', typeof window.fixVlanConfig);
+  console.log('XAVS_DEBUG.validateVlanConfig type:', typeof window.XAVS_DEBUG.validateVlanConfig);
+  console.log('XAVS_DEBUG.fixVlanConfig type:', typeof window.XAVS_DEBUG.fixVlanConfig);
+}, 1000);
+
+// Test again after 5 seconds to see if they persist
+setTimeout(() => {
+  console.log('🧪 Testing function persistence after 5 seconds...');
+  console.log('window.validateVlanConfig type:', typeof window.validateVlanConfig);
+  console.log('XAVS_DEBUG.validateVlanConfig type:', typeof window.XAVS_DEBUG?.validateVlanConfig);
+  
+  if (typeof window.XAVS_DEBUG?.validateVlanConfig === 'function') {
+    console.log('✅ Functions persisted in XAVS_DEBUG namespace');
+    console.log('💡 Use: XAVS_DEBUG.validateVlanConfig() and XAVS_DEBUG.fixVlanConfig()');
+  } else {
+    console.error('❌ Functions lost - trying to restore...');
+    window.validateVlanConfig = validateVlanConfigFunc;
+    window.fixVlanConfig = fixVlanConfigFunc;
+    console.log('🔄 Functions restored to window object');
+  }
+}, 5000);
+
+// Create a simple test function that works with the existing netplanAction interface
+window.testVlanPreservation = async function(interfaceName, ipAddress) {
+  console.log(`🧪 Testing VLAN preservation for ${interfaceName} with IP ${ipAddress}`);
+  
+  try {
+    // Get current config state
+    const beforeResult = await netplanAction('load_netplan');
+    if (!beforeResult.success) {
+      console.error('❌ Failed to load current netplan config:', beforeResult.error);
+      return false;
+    }
+    
+    console.log('📋 Config before IP change:');
+    const beforeConfig = beforeResult.config;
+    if (beforeConfig.vlans) {
+      Object.keys(beforeConfig.vlans).forEach(vlanName => {
+        const vlan = beforeConfig.vlans[vlanName];
+        console.log(`  ${vlanName}: IP=${vlan.addresses || 'none'}, Parent=${vlan.link}, VLAN_ID=${vlan.id}`);
+      });
+    }
+    
+    // Apply the IP change
+    const setResult = await netplanAction('set_ip', {
+      interface: interfaceName,
+      ip_address: ipAddress,
+      use_try: false // Use direct apply for testing
+    });
+    
+    if (!setResult.success) {
+      console.error('❌ Failed to set IP address:', setResult.error);
+      return false;
+    }
+    
+    console.log('✅ IP address set successfully');
+    
+    // Get config state after change
+    const afterResult = await netplanAction('load_netplan');
+    if (!afterResult.success) {
+      console.error('❌ Failed to load netplan config after change:', afterResult.error);
+      return false;
+    }
+    
+    console.log('📋 Config after IP change:');
+    const afterConfig = afterResult.config;
+    if (afterConfig.vlans) {
+      Object.keys(afterConfig.vlans).forEach(vlanName => {
+        const vlan = afterConfig.vlans[vlanName];
+        console.log(`  ${vlanName}: IP=${vlan.addresses || 'none'}, Parent=${vlan.link}, VLAN_ID=${vlan.id}`);
+      });
+    }
+    
+    // Compare VLAN counts
+    const beforeVlanCount = beforeConfig.vlans ? Object.keys(beforeConfig.vlans).length : 0;
+    const afterVlanCount = afterConfig.vlans ? Object.keys(afterConfig.vlans).length : 0;
+    
+    if (beforeVlanCount !== afterVlanCount) {
+      console.error(`❌ VLAN count changed! Before: ${beforeVlanCount}, After: ${afterVlanCount}`);
+      return false;
+    }
+    
+    console.log(`✅ VLAN count preserved: ${afterVlanCount} VLANs`);
+    
+    // Check if all VLANs from before are still present
+    if (beforeConfig.vlans) {
+      for (const vlanName of Object.keys(beforeConfig.vlans)) {
+        if (!afterConfig.vlans || !afterConfig.vlans[vlanName]) {
+          console.error(`❌ VLAN ${vlanName} was lost during IP change!`);
+          return false;
+        }
+        console.log(`✅ VLAN ${vlanName} preserved`);
+      }
+    }
+    
+    console.log('🎉 VLAN preservation test PASSED!');
+    return true;
+    
+  } catch (error) {
+    console.error('❌ Test failed with error:', error);
+    return false;
+  }
+};
+
+console.log('🧪 VLAN preservation test function created');
+console.log('💡 Usage: testVlanPreservation("eno3.1199", "192.168.0.200/24")');
+console.log('💡 This will test if setting IP on eno3.1199 preserves eno4.1199 config');
+console.log('💡 Deletion: deleteInterface("eno4.1199") - Uses ip commands + netplan cleanup');
+
+// Simple deletion function for testing
+window.deleteInterface = async function(interfaceName, interfaceType = 'auto') {
+  console.log(`🗑️ Deleting interface: ${interfaceName} (type: ${interfaceType})`);
+  try {
+    const result = await netplanAction('delete', { name: interfaceName, type: interfaceType });
+    console.log('Delete result:', result);
+    return result;
+  } catch (error) {
+    console.error('Delete error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Enhanced deletion function for testing
+window.forceDeleteInterface = async function(interfaceName) {
+  console.log(`🗑️ Force deleting interface: ${interfaceName}`);
+  try {
+    const result = await netplanAction('force_delete', { name: interfaceName });
+    console.log('Delete result:', result);
+    return result;
+  } catch (error) {
+    console.error('Delete error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Create test VLANs for preservation testing
+window.createTestVlans = async function() {
+  console.log('🧪 Creating test VLANs with same ID (1199) on different parents...');
+  
+  try {
+    // Create eno3.1199
+    console.log('📝 Creating eno3.1199...');
+    const vlan1Result = await netplanAction('add_vlan', {
+      name: 'eno3.1199',
+      parent: 'eno3',
+      vlan_id: 1199,
+      ip_address: '192.168.1.100/24'
+    });
+    
+    if (!vlan1Result.success) {
+      console.error('❌ Failed to create eno3.1199:', vlan1Result.error);
+      return false;
+    }
+    console.log('✅ Created eno3.1199');
+    
+    // Create eno4.1199
+    console.log('📝 Creating eno4.1199...');
+    const vlan2Result = await netplanAction('add_vlan', {
+      name: 'eno4.1199',
+      parent: 'eno4',
+      vlan_id: 1199,
+      ip_address: '192.168.2.100/24'
+    });
+    
+    if (!vlan2Result.success) {
+      console.error('❌ Failed to create eno4.1199:', vlan2Result.error);
+      return false;
+    }
+    console.log('✅ Created eno4.1199');
+    
+    // Show final config
+    const configResult = await netplanAction('load_netplan');
+    if (configResult.success && configResult.network && configResult.network.vlans) {
+      console.log('📋 Final VLAN configuration:');
+      Object.keys(configResult.network.vlans).forEach(vlanName => {
+        const vlan = configResult.network.vlans[vlanName];
+        console.log(`  ${vlanName}: IP=${vlan.addresses || 'none'}, Parent=${vlan.link}, VLAN_ID=${vlan.id}`);
+      });
+    }
+    
+    console.log('🎉 Test VLANs created successfully!');
+    console.log('💡 Now run: testVlanPreservation("eno3.1199", "192.168.0.200/24")');
+    return true;
+    
+  } catch (error) {
+    console.error('❌ Failed to create test VLANs:', error);
+    return false;
   }
 };

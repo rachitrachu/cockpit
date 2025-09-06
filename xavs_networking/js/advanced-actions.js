@@ -831,6 +831,9 @@ async function deleteConstructedInterface(iface) {
         console.log('✅ Successfully removed from netplan configuration and applied changes');
         operationSuccess = true;
       }
+      
+      // Store result in window object for broader access
+      window._deleteResult = result;
     } catch (netplanError) {
       console.error('❌ Netplan deletion failed:', netplanError);
       errorMessages.push(`Netplan operation failed: ${netplanError}`);
@@ -883,6 +886,7 @@ async function deleteConstructedInterface(iface) {
 
     // Show result to user
     if (operationSuccess) {
+      const result = window._deleteResult;
       const message = result && result.error && result.error.includes('not found') 
         ? `✔ ${interfaceType} ${iface.dev} removed (was ghost interface)`
         : `✔ ${interfaceType} ${iface.dev} deleted successfully!`;
@@ -901,11 +905,13 @@ async function deleteConstructedInterface(iface) {
     
     // Always reload interfaces to reflect the actual current state
     console.log('Reloading interfaces to reflect current state');
-    // Clear cache since interface was deleted
+    // Clear all caches since interface was deleted
     if (typeof clearPhysicalInterfacesCache === 'function') {
       clearPhysicalInterfacesCache();
     }
-    await loadInterfaces();
+    // Clear interface classification cache
+    window.cachedInterfaceClassification = null;
+    await loadInterfaces(true); // Force refresh to ensure deleted interface is removed from display
 
   } catch (error) {
     console.error('Failed to delete interface:', error);
