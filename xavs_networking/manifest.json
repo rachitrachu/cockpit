@@ -10,9 +10,9 @@
         }
     },
     "content-security-policy": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' ws: wss:; font-src 'self' https://cdnjs.cloudflare.com/; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com/",
-    "menu": {
+    "tools": {
         "index": {
-            "label": "Network Management",
+            "label": "XAVS Network",
             "order": 30
         }
     }

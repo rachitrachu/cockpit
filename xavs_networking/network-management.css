@@ -109,6 +109,18 @@
     font-weight: 600;
 }
 
+.ip-address-item {
+    padding: 2px 6px;
+    margin: 2px 0;
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    color: var(--text);
+    display: inline-block;
+}
+
 .interface-actions {
     display: flex;
     gap: 8px;
@@ -1410,4 +1422,222 @@ input:checked + .toggle-slider:before {
     padding: 12px 16px;
     border-radius: 4px;
     margin-bottom: 16px;
+}
+
+/* Status dot warning style */
+.status-dot.warning {
+    background-color: #ffc107;
+    box-shadow: 0 0 0 2px rgba(255, 193, 7, 0.3);
+}
+
+/* IP address display improvements */
+.ip-address-item {
+    margin: 2px 0;
+    padding: 2px 6px;
+    background: rgba(var(--brand-rgb), 0.1);
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 13px;
+}
+
+/* IP address input row styling */
+.ip-input-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.ip-input-row .form-control {
+    flex: 1;
+}
+
+.ip-input-row .btn {
+    flex-shrink: 0;
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Logs Section Styles */
+.logs-container {
+    background: var(--surface);
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    border: 1px solid var(--border);
+    margin: 20px 0;
+}
+
+.logs-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-variant);
+    border-radius: 8px 8px 0 0;
+}
+
+.logs-header h3 {
+    margin: 0;
+    color: var(--text);
+    font-size: 16px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.logs-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.logs-content {
+    padding: 0;
+    background: var(--surface-dark);
+    border-radius: 0 0 8px 8px;
+}
+
+.log-terminal {
+    background: var(--surface-dark);
+    color: var(--terminal-text);
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 13px;
+    line-height: 1.4;
+    margin: 0;
+    padding: 16px;
+    min-height: 400px;
+    max-height: 600px;
+    overflow-y: auto;
+    border-radius: 0 0 8px 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.log-terminal::-webkit-scrollbar {
+    width: 8px;
+}
+
+.log-terminal::-webkit-scrollbar-track {
+    background: var(--surface-darker);
+}
+
+.log-terminal::-webkit-scrollbar-thumb {
+    background: var(--muted);
+    border-radius: 4px;
+}
+
+.log-terminal::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* Status Bar Styles */
+.status-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 40px;
+    background: var(--surface-variant);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    font-size: 14px;
+    z-index: 100;
+}
+
+.status-bar #status-text {
+    color: var(--text);
+    font-weight: 500;
+}
+
+.status-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.status-link {
+    color: var(--brand);
+    text-decoration: none;
+    font-size: 13px;
+    transition: color 0.2s ease;
+}
+
+.status-link:hover {
+    color: var(--brand-light);
+    text-decoration: underline;
+}
+
+/* Button Loading States */
+.btn.loading {
+    position: relative;
+    color: transparent !important;
+    pointer-events: none;
+}
+
+.btn.loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 16px;
+    height: 16px;
+    border: 2px solid transparent;
+    border-top: 2px solid currentColor;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    color: white;
+}
+
+.btn.loading.btn-outline-brand::after,
+.btn.loading.btn-outline-secondary::after,
+.btn.loading.btn-outline-danger::after,
+.btn.loading.btn-outline-muted::after {
+    color: var(--brand);
+}
+
+@keyframes spin {
+    0% { transform: translate(-50%, -50%) rotate(0deg); }
+    100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* Progress indicator for cards */
+.card.loading {
+    position: relative;
+    overflow: hidden;
+}
+
+.card.loading::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--brand), transparent);
+    animation: loading-bar 1.5s infinite;
+    z-index: 1;
+}
+
+@keyframes loading-bar {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+
+/* Adjust main content to account for status bar */
+.app {
+    padding-bottom: 50px;
+}
+
+/* Color variables for terminal */
+:root {
+    --terminal-text: #e6e6e6;
+    --surface-dark: #1a1a1a;
+    --surface-darker: #0d0d0d;
 }
