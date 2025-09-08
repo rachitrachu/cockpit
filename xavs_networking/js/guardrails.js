@@ -1,26 +1,26 @@
 // Enhanced guardrails supporting baseline overlays
-export function canOverlay(nic) { 
+function canOverlay(nic) { 
   return nic.isBaselineOwned; 
 }
 
-export function canFullEdit(nic) { 
+function canFullEdit(nic) { 
   return !nic.isBaselineOwned; 
 }
 
-export function canVlan(nic) { 
+function canVlan(nic) { 
   return true; // safe on any parent NIC
 }
 
-export function canBridge(nic) { 
+function canBridge(nic) { 
   return nic.isSpare; // only spare NICs to avoid baseline conflicts
 }
 
-export function canBond(nics) { 
+function canBond(nics) { 
   return nics.every(n => n.isSpare); // only spare NICs
 }
 
 // Overlay-safe fields for baseline NICs
-export const OVERLAY_FIELDS = {
+const OVERLAY_FIELDS = {
   mtu: "number", 
   optional: "boolean", 
   "accept-ra": "boolean",
@@ -46,11 +46,11 @@ export const OVERLAY_FIELDS = {
   }] // additive only
 };
 
-export function canDelete(iface) {
+function canDelete(iface) {
   return !iface.isBaselineOwned;
 }
 
-export function checkDependencies(iface, inventory) {
+function checkDependencies(iface, inventory) {
   const dependencies = [];
   
   // Check for VLANs using this interface as parent
@@ -77,7 +77,18 @@ export function checkDependencies(iface, inventory) {
   return dependencies;
 }
 
-export function isManagementInterface(iface, criticalPath) {
+function isManagementInterface(iface, criticalPath) {
   // Check if this interface provides the management/default route path
   return iface.name === criticalPath;
 }
+
+// Export to global scope
+window.canOverlay = canOverlay;
+window.canFullEdit = canFullEdit;
+window.canVlan = canVlan;
+window.canBridge = canBridge;
+window.canBond = canBond;
+window.OVERLAY_FIELDS = OVERLAY_FIELDS;
+window.canDelete = canDelete;
+window.checkDependencies = checkDependencies;
+window.isManagementInterface = isManagementInterface;

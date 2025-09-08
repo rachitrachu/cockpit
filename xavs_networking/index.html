@@ -349,18 +349,23 @@
     </footer>
   </div>
   </div>
-  <!-- Load JavaScript files in correct dependency order -->
+  <!-- Load JavaScript modules -->
+  <!-- External dependencies -->
+  <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+  
+  <!-- Core XAVS modules as regular scripts (converted from ES6 modules) -->
   <script src="js/ui-utils.js"></script>
-  <script src="js/utils.js"></script>
-  <script src="js/netplan-js-manager.js"></script>
-  <script src="js/multi-file-ui.js"></script>
+  <script src="js/validators.js"></script>
   <script src="js/run.js"></script>
-  <script src="js/command-utils.js"></script>
-  <script src="js/search-filter.js"></script>
-  <script src="js/advanced-actions.js"></script>
-  <script src="js/interfaces.js"></script>
-  <script src="js/constructs.js"></script>
-  <script src="js/events.js"></script>
+  <script src="js/yaml-parser.js"></script>
+  <script src="js/modal-renderer.js"></script>
+  <script src="js/discover.js"></script>
+  <script src="js/writer.js"></script>
+  <script src="js/apply.js"></script>
+  <script src="js/guardrails.js"></script>
+  <script src="js/config.js"></script>
+  
+  <!-- Main application entry point -->
   <script src="main.js"></script>
   </div> <!-- .app -->
 </body>

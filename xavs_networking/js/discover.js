@@ -1,7 +1,9 @@
-import { run } from "./run.js";
-import { parseYamlFiles, getInterfaceOwnership } from "./yaml-parser.js";
+/**
+ * XAVS Networking Discovery Module
+ * Discovers network interfaces and their configuration
+ */
 
-export async function discover() {
+async function discover() {
   const [links, addrs, routes] = await Promise.all([
     run("ip -json link"), run("ip -json addr"), run("ip -json route")
   ]);
@@ -23,7 +25,7 @@ export async function discover() {
   };
 }
 
-export function categorizeNics(discoveryData) {
+function categorizeNics(discoveryData) {
   const { runtime, yaml } = discoveryData;
   const nics = runtime.links;
   
@@ -93,7 +95,11 @@ function checkBondBridgeMembership(ifname, yaml) {
   return false;
 }
 
-export function detectCriticalPath(routes) {
+function detectCriticalPath(routes) {
   const defaultRoute = routes.find(r => r.dst === "default" || r.dst === "0.0.0.0/0");
   return defaultRoute?.dev || null;
 }
+
+// Export to global scope
+window.discover = discover;
+window.detectCriticalPath = detectCriticalPath;

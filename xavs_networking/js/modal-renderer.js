@@ -486,9 +486,5 @@ const XAVSModalRenderer = {
   
 };
 
-// Export for both Node.js and browser
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = XAVSModalRenderer;
-} else if (typeof window !== 'undefined') {
-  window.XAVSModalRenderer = XAVSModalRenderer;
-}
+// Export for browser environments
+window.XAVSModalRenderer = XAVSModalRenderer;

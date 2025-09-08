@@ -342,9 +342,5 @@ const XAVSValidators = {
   
 };
 
-// Export for Node.js or browser environments
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = XAVSValidators;
-} else if (typeof window !== 'undefined') {
-  window.XAVSValidators = XAVSValidators;
-}
+// Export for browser environments
+window.XAVSValidators = XAVSValidators;

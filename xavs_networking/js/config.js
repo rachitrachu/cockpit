@@ -1,5 +1,5 @@
 // Configuration for XAVS Networking Module
-export const CONFIG = {
+const CONFIG = {
   // Apply settings
   defaultTryTimeout: 120, // seconds
   minTryTimeout: 60,
@@ -28,7 +28,7 @@ export const CONFIG = {
 };
 
 // Form schemas for different interface types
-export const FORM_SCHEMAS = {
+const FORM_SCHEMAS = {
   ethernet_overlay: {
     title: "Ethernet Overlay (Baseline NIC)",
     description: "Safe overlay settings for baseline-managed interface",
@@ -220,3 +220,7 @@ export const FORM_SCHEMAS = {
     }
   }
 };
+
+// Export to global scope
+window.CONFIG = CONFIG;
+window.FORM_SCHEMAS = FORM_SCHEMAS;

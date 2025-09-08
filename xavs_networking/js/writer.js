@@ -1,16 +1,9 @@
-// Using dynamic import for js-yaml since we can't use npm in Cockpit
-let yaml;
+/**
+ * XAVS Networking YAML Writer Module
+ * Handles writing YAML configurations safely
+ */
 
-async function loadYaml() {
-  if (!yaml) {
-    yaml = await import("https://cdn.skypack.dev/js-yaml@4.1.0");
-  }
-  return yaml;
-}
-
-export async function emitXavsYaml(model) {
-  const yamlLib = await loadYaml();
-  
+async function emitXavsYaml(model) {
   // model = { ethernets, vlans, bonds, bridges, overlays }
   const doc = {
     network: { 
@@ -51,6 +44,9 @@ export async function emitXavsYaml(model) {
   }
   
   // Add header comment
-  const yamlStr = yamlLib.dump(doc, { lineWidth: 120, noRefs: true });
+  const yamlStr = jsyaml.dump(doc, { lineWidth: 120, noRefs: true });
   return `# Managed by XAVS Networking (Cockpit). Do not edit manually.\n${yamlStr}`;
 }
+
+// Export to global scope
+window.emitXavsYaml = emitXavsYaml;

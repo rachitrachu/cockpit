@@ -1,6 +1,6 @@
-import { run } from "./run.js";
+/* global run */
 
-export async function applyPersistently(yamlStr, tryTimeoutSec = 120) {
+async function applyPersistently(yamlStr, tryTimeoutSec = 120) {
   // 1. Write new file atomically
   await run(`cat > /etc/netplan/90-xavs.yaml.new << 'EOF'
 # Managed by XAVS Networking (Cockpit). Do not edit manually.
@@ -22,7 +22,7 @@ EOF`);
   // await run("netplan apply");
 }
 
-export async function validateOnly(yamlStr) {
+async function validateOnly(yamlStr) {
   // Write to temp file and validate without applying
   const tempFile = `/tmp/netplan-validate-${Date.now()}.yaml`;
   await run(`cat > ${tempFile} << 'EOF'
@@ -38,3 +38,7 @@ EOF`);
     await run(`rm -f ${tempFile}`).catch(() => {}); // cleanup
   }
 }
+
+// Export to global scope
+window.applyPersistently = applyPersistently;
+window.validateOnly = validateOnly;
