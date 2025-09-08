@@ -30,10 +30,7 @@ Features:
 
         <!-- Navigation Tabs -->
         <ul class="nav-tabs">
-            <li><a href="#overview" class="nav-link active" data-tab="overview">
-                <i class="fas fa-tachometer-alt"></i>Overview
-            </a></li>
-            <li><a href="#interfaces" class="nav-link" data-tab="interfaces">
+            <li><a href="#interfaces" class="nav-link active" data-tab="interfaces">
                 <i class="fas fa-ethernet"></i>Interfaces
             </a></li>
             <li><a href="#vlans" class="nav-link" data-tab="vlans">
@@ -51,12 +48,6 @@ Features:
             <li><a href="#dns" class="nav-link" data-tab="dns">
                 <i class="fas fa-server"></i>DNS
             </a></li>
-            <li><a href="#monitoring" class="nav-link" data-tab="monitoring">
-                <i class="fas fa-chart-line"></i>Monitoring
-            </a></li>
-            <li><a href="#config" class="nav-link" data-tab="config">
-                <i class="fas fa-cog"></i>Configuration
-            </a></li>
             <li><a href="#logs" class="nav-link" data-tab="logs">
                 <i class="fas fa-terminal"></i>Logs
             </a></li>
@@ -64,133 +55,8 @@ Features:
 
         <!-- Tab Content -->
         <div class="tab-content">
-            <!-- Overview Tab -->
-            <div id="overview" class="tab-pane show">
-                <div class="overview-grid">
-                    <!-- System Status Card -->
-                    <div class="status-card">
-                        <div class="status-card-header">
-                            <i class="status-icon fas fa-server"></i>
-                            <h3>System Status</h3>
-                        </div>
-                        <div class="status-card-body">
-                            <div class="status-detail">
-                                <div class="status-info">
-                                    <span class="status-label">systemd-networkd</span>
-                                    <span class="status-value" id="networkd-status">
-                                        <span class="status-dot" id="networkd-dot"></span>
-                                        Checking...
-                                    </span>
-                                </div>
-                            </div>
-                            <div class="status-detail">
-                                <div class="status-info">
-                                    <span class="status-label">systemd-resolved</span>
-                                    <span class="status-value" id="resolved-status">
-                                        <span class="status-dot" id="resolved-dot"></span>
-                                        Checking...
-                                    </span>
-                                </div>
-                            </div>
-                            <div class="status-detail">
-                                <div class="status-info">
-                                    <span class="status-label">Active Renderer</span>
-                                    <span class="status-value" id="renderer-status">networkd</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Interface Summary Card -->
-                    <div class="status-card">
-                        <div class="status-card-header">
-                            <i class="status-icon fas fa-ethernet"></i>
-                            <h3>Network Interfaces</h3>
-                        </div>
-                        <div class="status-card-body">
-                            <div class="status-detail">
-                                <div class="status-info">
-                                    <span class="status-label">Total Interfaces</span>
-                                    <span class="status-value" id="total-interfaces">0</span>
-                                </div>
-                            </div>
-                            <div class="status-detail">
-                                <div class="status-info">
-                                    <span class="status-label">Active Interfaces</span>
-                                    <span class="status-value" id="active-interfaces">0</span>
-                                </div>
-                            </div>
-                            <div class="status-detail">
-                                <div class="status-info">
-                                    <span class="status-label">DHCP Interfaces</span>
-                                    <span class="status-value" id="dhcp-interfaces">0</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Configuration Status Card -->
-                    <div class="status-card">
-                        <div class="status-card-header">
-                            <i class="status-icon fas fa-file-code"></i>
-                            <h3>Configuration Status</h3>
-                        </div>
-                        <div class="status-card-body">
-                            <div class="status-detail">
-                                <div class="status-info">
-                                    <span class="status-label">Last Modified</span>
-                                    <span class="status-value" id="last-modified">Unknown</span>
-                                </div>
-                            </div>
-                            <div class="status-detail">
-                                <div class="status-info">
-                                    <span class="status-label">Backup Available</span>
-                                    <span class="status-value" id="backup-status">Yes</span>
-                                </div>
-                            </div>
-                            <div class="status-detail">
-                                <div class="status-info">
-                                    <span class="status-label">Syntax Status</span>
-                                    <span class="status-value" id="syntax-status">
-                                        <span class="status-dot ok"></span>
-                                        Valid
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Quick Actions -->
-                <div class="quick-actions">
-                    <h3>Quick Actions</h3>
-                    <div class="actions">
-                        <button class="btn btn-brand" onclick="refreshSystemStatus()">
-                            <i class="fas fa-sync-alt"></i> Refresh Status
-                        </button>
-                        <button class="btn btn-outline-brand" onclick="validateConfiguration()">
-                            <i class="fas fa-check-circle"></i> Validate Config
-                        </button>
-                        <button class="btn btn-outline-brand" onclick="backupConfiguration()">
-                            <i class="fas fa-save"></i> Create Backup
-                        </button>
-                        <button class="btn btn-outline-secondary" onclick="viewLogs()">
-                            <i class="fas fa-file-alt"></i> View Logs
-                        </button>
-                    </div>
-                </div>
-
-                <!-- System Logs -->
-                <div class="log-section">
-                    <h3>Recent System Events</h3>
-                    <div class="alert" id="system-logs">
-                        Loading system logs...
-                    </div>
-                </div>
-            </div>
-
             <!-- Network Interfaces Tab -->
-            <div id="interfaces" class="tab-pane">
+            <div id="interfaces" class="tab-pane show">
                 <div class="tab-header">
                     <h2>Network Interface Management</h2>
                     <div class="actions">
@@ -200,9 +66,7 @@ Features:
                         <button class="btn btn-outline-brand" onclick="refreshInterfaces()">
                             <i class="fas fa-sync-alt"></i> Refresh
                         </button>
-                        <button class="btn btn-outline-secondary" onclick="debugNetplanConfiguration('interfaces')">
-                            <i class="fas fa-bug"></i> Debug
-                        </button>
+                        <!-- Debug button removed for production -->
                     </div>
                 </div>
 
@@ -236,18 +100,10 @@ Features:
                         <button class="btn btn-outline-secondary" onclick="cleanupNetplanConflicts()">
                             <i class="fas fa-broom"></i> Cleanup Conflicts
                         </button>
-                        <button class="btn btn-outline-danger" onclick="emergencyCleanupCorruptedVlans()" title="Emergency cleanup for corrupted VLAN configurations with null links">
-                            <i class="fas fa-ambulance"></i> Emergency Cleanup
-                        </button>
-                        <button class="btn btn-outline-warning" onclick="debugNetplanConfiguration()" title="Run netplan --debug try and show detailed output in console">
-                            <i class="fas fa-bug"></i> Debug
-                        </button>
-                        <button class="btn btn-outline-info" onclick="diagnosticVlanConfiguration()" title="Run comprehensive VLAN diagnostic and show detailed report in console">
-                            <i class="fas fa-stethoscope"></i> Diagnostic
-                        </button>
                         <button class="btn btn-outline-brand" onclick="refreshVlans()">
                             <i class="fas fa-sync-alt"></i> Refresh
                         </button>
+                        <!-- Debug and emergency buttons removed for production -->
                     </div>
                 </div>
 
@@ -286,9 +142,7 @@ Features:
                         <button class="btn btn-outline-brand" onclick="refreshBonds()">
                             <i class="fas fa-sync-alt"></i> Refresh
                         </button>
-                        <button class="btn btn-outline-secondary" onclick="debugNetplanConfiguration('bonds')">
-                            <i class="fas fa-bug"></i> Debug
-                        </button>
+                        <!-- Debug button removed for production -->
                     </div>
                 </div>
 
@@ -308,9 +162,7 @@ Features:
                         <button class="btn btn-outline-brand" onclick="refreshRoutes()">
                             <i class="fas fa-sync-alt"></i> Refresh
                         </button>
-                        <button class="btn btn-outline-secondary" onclick="debugNetplanConfiguration('routes')">
-                            <i class="fas fa-bug"></i> Debug
-                        </button>
+                        <!-- Debug button removed for production -->
                     </div>
                 </div>
 
@@ -330,55 +182,12 @@ Features:
                         <button class="btn btn-outline-brand" onclick="refreshDns()">
                             <i class="fas fa-sync-alt"></i> Refresh
                         </button>
-                        <button class="btn btn-outline-secondary" onclick="debugNetplanConfiguration('dns')">
-                            <i class="fas fa-bug"></i> Debug
-                        </button>
+                        <!-- Debug button removed for production -->
                     </div>
                 </div>
 
                 <div class="dns-config" id="dns-config">
                     <!-- DNS configuration will be populated here -->
-                </div>
-            </div>
-
-            <!-- Monitoring Tab -->
-            <div id="monitoring" class="tab-pane">
-                <div class="tab-header">
-                    <h2>Network Monitoring</h2>
-                    <div class="actions">
-                        <button class="btn btn-outline-brand" onclick="refreshMonitoring()">
-                            <i class="fas fa-sync-alt"></i> Refresh
-                        </button>
-                        <button class="btn btn-outline-secondary" onclick="exportLogs()">
-                            <i class="fas fa-download"></i> Export Logs
-                        </button>
-                    </div>
-                </div>
-
-                <div class="monitoring-dashboard" id="monitoring-dashboard">
-                    <!-- Monitoring dashboard will be populated here -->
-                </div>
-            </div>
-
-            <!-- Configuration Tab -->
-            <div id="config" class="tab-pane">
-                <div class="tab-header">
-                    <h2>Configuration Management</h2>
-                    <div class="actions">
-                        <button class="btn btn-brand" onclick="applyConfiguration()">
-                            <i class="fas fa-play"></i> Apply Configuration
-                        </button>
-                        <button class="btn btn-outline-brand" onclick="validateAllConfigs()">
-                            <i class="fas fa-check-circle"></i> Validate All
-                        </button>
-                        <button class="btn btn-outline-secondary" onclick="rollbackConfiguration()">
-                            <i class="fas fa-undo"></i> Rollback
-                        </button>
-                    </div>
-                </div>
-
-                <div class="config-management" id="config-management">
-                    <!-- Configuration management will be populated here -->
                 </div>
             </div>
 
@@ -416,6 +225,5 @@ Features:
     <script src="vlan-manager.js"></script>
     <script src="bridge-manager.js"></script>
     <script src="bond-manager.js"></script>
-    <script src="monitoring-config.js"></script>
 </body>
 </html>

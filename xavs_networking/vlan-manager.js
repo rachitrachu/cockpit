@@ -19,148 +19,39 @@ function setButtonLoading(button, loadingText = 'Processing...') {
 const VlanManager = {
     vlans: [],
     isLoading: false, // Flag to prevent concurrent loading
+    permissionsFixed: false, // Track if permissions have been fixed
+    
+    // Force refresh VLAN data from system
+    async refreshVlanData() {
+        NetworkLogger.info('Force refreshing VLAN data from system...');
+        this.vlans = []; // Clear existing data
+        await this.loadVlans();
+    },
     
     // Fix permissions for all XAVS Netplan files
     async fixNetplanPermissions() {
         try {
-            console.log('VlanManager: Checking and fixing Netplan file permissions...');
+            NetworkLogger.info('Checking and fixing Netplan file permissions...');
             const xavsFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '90-xavs-*.yaml'], { superuser: 'try' });
             const files = xavsFiles.trim().split('\n').filter(f => f.trim());
             
             for (const file of files) {
                 try {
                     await cockpit.spawn(['chmod', '600', file], { superuser: 'try' });
-                    console.log(`VlanManager: Fixed permissions for ${file}`);
+                    NetworkLogger.success(`Fixed permissions for ${file}`);
                 } catch (error) {
-                    console.warn(`VlanManager: Could not fix permissions for ${file}:`, error);
+                    NetworkLogger.warning(`Could not fix permissions for ${file}: ${error.message || error}`);
                 }
             }
         } catch (error) {
-            console.warn('VlanManager: Error fixing Netplan permissions:', error);
-        }
-    },
-
-    // Clean up conflicting XAVS configuration files
-    async cleanupConflictingConfigs() {
-        try {
-            console.log('VlanManager: Cleaning up conflicting XAVS configurations...');
-            const xavsFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '90-xavs-*.yaml'], { superuser: 'try' });
-            const files = xavsFiles.trim().split('\n').filter(f => f.trim());
-            
-            const conflictingFiles = [];
-            const corruptedFiles = [];
-            const interfaceDefinitions = new Map();
-            
-            // Scan all XAVS files for interface definitions and corrupted configurations
-            for (const file of files) {
-                try {
-                    const content = await cockpit.file(file, { superuser: 'try' }).read();
-                    if (content) {
-                        // Check for corrupted VLAN configurations
-                        if (content.includes('link: null') || content.includes('link: ""') || content.includes('link:null')) {
-                            console.log(`VlanManager: Found corrupted VLAN configuration with null link in ${file} - marking for removal`);
-                            corruptedFiles.push(file);
-                            continue; // Skip further processing of this corrupted file
-                        }
-                        
-                        // Look for interface definitions in different sections
-                        const deviceTypes = ['ethernets', 'vlans', 'bonds', 'bridges', 'wifis'];
-                        
-                        for (const type of deviceTypes) {
-                            const typeRegex = new RegExp(`${type}:\\s*\\n([\\s\\S]*?)(?=\\n\\w|$)`, 'm');
-                            const typeMatch = content.match(typeRegex);
-                            
-                            if (typeMatch) {
-                                // Find individual interface definitions within this type
-                                const interfaceRegex = /^\s{2,4}([a-zA-Z0-9\._-]+):/gm;
-                                let interfaceMatch;
-                                
-                                while ((interfaceMatch = interfaceRegex.exec(typeMatch[1])) !== null) {
-                                    const interfaceName = interfaceMatch[1];
-                                    
-                                    if (interfaceDefinitions.has(interfaceName)) {
-                                        const existing = interfaceDefinitions.get(interfaceName);
-                                        if (existing.type !== type) {
-                                            console.log(`VlanManager: Found conflicting definition for '${interfaceName}': ${existing.type} in ${existing.file} vs ${type} in ${file}`);
-                                            conflictingFiles.push(file);
-                                        }
-                                    } else {
-                                        interfaceDefinitions.set(interfaceName, { type, file });
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } catch (fileError) {
-                    console.warn(`VlanManager: Could not read file ${file}:`, fileError);
-                }
-            }
-            
-            // Remove corrupted files first
-            for (const file of corruptedFiles) {
-                try {
-                    console.log(`VlanManager: Removing corrupted VLAN configuration file: ${file}`);
-                    await cockpit.spawn(['rm', '-f', file], { superuser: 'require' });
-                } catch (removeError) {
-                    console.warn(`VlanManager: Could not remove corrupted file ${file}:`, removeError);
-                }
-            }
-            
-            // Remove conflicting files
-            for (const file of conflictingFiles) {
-                try {
-                    console.log(`VlanManager: Removing conflicting configuration file: ${file}`);
-                    await cockpit.spawn(['rm', '-f', file], { superuser: 'require' });
-                } catch (removeError) {
-                    console.warn(`VlanManager: Could not remove conflicting file ${file}:`, removeError);
-                }
-            }
-            
-            const totalCleaned = corruptedFiles.length + conflictingFiles.length;
-            if (totalCleaned > 0) {
-                console.log(`VlanManager: Cleaned up ${totalCleaned} problematic configuration files (${corruptedFiles.length} corrupted, ${conflictingFiles.length} conflicting)`);
-                
-                // If we cleaned up files, test and apply the configuration
-                console.log('VlanManager: Testing configuration after cleanup...');
-                try {
-                    const debugOutput = await cockpit.spawn(['netplan', '--debug', 'try', '--timeout=30'], { superuser: 'require' });
-                    console.log('VlanManager: Configuration test after cleanup successful');
-                    console.log('--- START NETPLAN DEBUG ---');
-                    console.log(debugOutput);
-                    console.log('--- END NETPLAN DEBUG ---');
-                } catch (tryError) {
-                    console.error('VlanManager: Configuration test after cleanup failed:', tryError);
-                    
-                    if (tryError.message) {
-                        console.log('VlanManager: Netplan error output after cleanup:');
-                        console.log('--- START NETPLAN ERROR ---');
-                        console.log(tryError.message);
-                        console.log('--- END NETPLAN ERROR ---');
-                    }
-                    
-                    if (tryError.exit_status === 78) {
-                        console.log('VlanManager: Netplan try exited with status 78 (bond revert warning) - proceeding');
-                    } else {
-                        console.warn('VlanManager: Configuration test failed after cleanup, but continuing...');
-                    }
-                }
-                
-                return totalCleaned;
-            } else {
-                console.log('VlanManager: No problematic configurations found');
-                return 0;
-            }
-            
-        } catch (error) {
-            console.warn('VlanManager: Error cleaning up conflicting configs:', error);
-            return 0;
+            NetworkLogger.warning(`Error fixing Netplan permissions: ${error.message || error}`);
         }
     },
     
     // Load VLAN configurations
     async loadVlans() {
         if (this.isLoading) {
-            console.log('VlanManager: Already loading VLANs, skipping...');
+            NetworkLogger.info('Already loading VLANs, skipping...');
             return;
         }
         
@@ -171,20 +62,17 @@ const VlanManager = {
         }
         
         try {
-            // Fix permissions and clean up conflicts on first load
+            // Fix permissions on first load
             if (!this.permissionsFixed) {
                 await this.fixNetplanPermissions();
-                const cleanedCount = await this.cleanupConflictingConfigs();
-                if (cleanedCount > 0) {
-                    console.log(`VlanManager: Cleaned up ${cleanedCount} conflicting configuration files`);
-                }
                 this.permissionsFixed = true;
             }
         
             this.vlans = await this.fetchVlans();
             this.renderVlans();
+            NetworkLogger.success(`Loaded ${this.vlans.length} VLAN configurations`);
         } catch (error) {
-            console.error('VlanManager: Failed to load VLANs:', error);
+            NetworkLogger.error(`Failed to load VLANs: ${error.message || error}`);
             if (listElement) {
                 listElement.innerHTML = '<div class="error-message"><i class="fas fa-exclamation-triangle"></i>Failed to load VLANs</div>';
             }
@@ -195,7 +83,7 @@ const VlanManager = {
     
     // Fetch real VLANs from system using Cockpit APIs
     async fetchVlans() {
-        console.log('VlanManager: Fetching real VLANs from system interfaces first...');
+        NetworkLogger.info('Fetching VLAN interfaces from system...');
         
         if (!cockpit || !cockpit.spawn) {
             throw new Error('Cockpit API not available');
@@ -208,7 +96,7 @@ const VlanManager = {
             const ipOutput = await cockpit.spawn(['ip', 'a'], { superuser: 'try' });
             const lines = ipOutput.split('\n');
             
-            console.log('[fetchVlans] Processing ip a output for VLAN interfaces...');
+            NetworkLogger.info('[fetchVlans] Processing ip a output for VLAN interfaces...');
             
             for (const line of lines) {
                 // Match interface lines with or without parent interface notation
@@ -240,12 +128,12 @@ const VlanManager = {
                                     // Format like eth0.100 - parent is eth0
                                     parent = vlanMatch[1];
                                 } else {
-                                    console.warn(`VlanManager: Could not determine parent for ${interfaceName}:`, vlanInfoError);
+                                    NetworkLogger.warning(`VlanManager: Could not determine parent for ${interfaceName}:`, vlanInfoError);
                                 }
                             }
                         }
                         
-                        console.log(`VlanManager: Found system VLAN ${interfaceName} (ID: ${vlanId}, Parent: ${parent})`);
+                        NetworkLogger.info(`VlanManager: Found system VLAN ${interfaceName} (ID: ${vlanId}, Parent: ${parent})`);
                         
                         try {
                             // Get interface details from system
@@ -265,7 +153,7 @@ const VlanManager = {
                                 source: 'system' // Mark as real system interface
                             });
                         } catch (error) {
-                            console.warn(`VlanManager: Could not get details for VLAN ${interfaceName}:`, error);
+                            NetworkLogger.warning(`VlanManager: Could not get details for VLAN ${interfaceName}:`, error);
                             vlans.push({
                                 id: vlanId,
                                 name: interfaceName,
@@ -286,7 +174,7 @@ const VlanManager = {
             
             // STEP 2: Check Netplan files for VLANs that might not be active/visible in system
             // But only add them if they don't already exist in the system list
-            console.log('[fetchVlans] Checking Netplan files for additional VLAN configurations...');
+            NetworkLogger.info('[fetchVlans] Checking Netplan files for additional VLAN configurations...');
             const netplanVlans = await this.fetchVlansFromNetplan();
             
             for (const netplanVlan of netplanVlans) {
@@ -297,25 +185,25 @@ const VlanManager = {
                 );
                 
                 if (!existingVlan) {
-                    console.log(`VlanManager: Adding Netplan-only VLAN: ${netplanVlan.name}`);
+                    NetworkLogger.info(`VlanManager: Adding Netplan-only VLAN: ${netplanVlan.name}`);
                     netplanVlan.source = 'netplan'; // Mark as config-only
                     netplanVlan.status = 'configured'; // But not active
                     vlans.push(netplanVlan);
                 }
             }
             
-            console.log(`VlanManager: Found ${vlans.length} total VLANs:`, vlans);
+            NetworkLogger.info(`VlanManager: Found ${vlans.length} total VLANs:`, vlans);
             return vlans;
             
         } catch (error) {
-            console.error('VlanManager: Error fetching VLANs:', error);
+            NetworkLogger.error('Error fetching VLANs:', error);
             return [];
         }
     },
 
     // Get VLAN details from system (ip a output and other system sources)
     async getVlanDetailsFromSystem(interfaceName, ipOutput) {
-        console.log(`[getVlanDetailsFromSystem] Getting details for ${interfaceName}`);
+        NetworkLogger.info(`[getVlanDetailsFromSystem] Getting details for ${interfaceName}`);
         
         const details = {
             ipAddresses: [],
@@ -328,45 +216,121 @@ const VlanManager = {
         
         try {
             // Parse ip a output to get IP addresses for this interface
-            const interfaceBlocks = ipOutput.split(/^\d+:/m);
-            for (const block of interfaceBlocks) {
-                if (block.includes(interfaceName + ':') || block.includes(interfaceName + '@')) {
-                    // Extract IP addresses
-                    const ipMatches = block.match(/inet\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\/[0-9]+)/g);
-                    if (ipMatches) {
-                        details.ipAddresses = ipMatches.map(match => match.replace('inet ', ''));
+            // Split by lines and look for the interface block
+            const lines = ipOutput.split('\n');
+            let inInterfaceBlock = false;
+            let interfaceFound = false;
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                
+                // Check if this line starts a new interface block
+                const interfaceMatch = line.match(/^\d+:\s+([^@:\s]+)(?:@([^:\s]+))?:/);
+                if (interfaceMatch) {
+                    const currentInterface = interfaceMatch[1];
+                    if (currentInterface === interfaceName) {
+                        inInterfaceBlock = true;
+                        interfaceFound = true;
+                        
+                        NetworkLogger.info(`[getVlanDetailsFromSystem] Found interface block for ${interfaceName}: ${line.trim()}`);
+                        
+                        // Check interface status from this line
+                        if (line.includes('state UP')) {
+                            details.status = 'up';
+                        } else if (line.includes('state DOWN')) {
+                            details.status = 'down';
+                        } else if (line.includes('<UP,')) {
+                            details.status = 'up';
+                        } else {
+                            details.status = 'down';
+                        }
+                        
+                        NetworkLogger.info(`[getVlanDetailsFromSystem] Found interface ${interfaceName}, status: ${details.status}`);
+                        continue;
+                    } else {
+                        // Different interface, stop processing if we were in our block
+                        if (inInterfaceBlock) {
+                            NetworkLogger.info(`[getVlanDetailsFromSystem] Exiting interface block for ${interfaceName}, found new interface: ${currentInterface}`);
+                            break;
+                        }
+                        inInterfaceBlock = false;
                     }
-                    
-                    // Check interface status
-                    if (block.includes('state UP')) {
-                        details.status = 'up';
-                    } else if (block.includes('state DOWN')) {
-                        details.status = 'down';
-                    }
-                    
-                    break;
                 }
+                
+                // If we're in our interface block, look for IP addresses
+                if (inInterfaceBlock && line.trim().startsWith('inet ')) {
+                    const ipMatch = line.match(/inet\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(?:\/[0-9]+)?)/);
+                    if (ipMatch) {
+                        let ipWithCidr = ipMatch[1];
+                        // Ensure CIDR notation - if no /XX, default to /24
+                        if (!ipWithCidr.includes('/')) {
+                            ipWithCidr += '/24';
+                        }
+                        details.ipAddresses.push(ipWithCidr);
+                        NetworkLogger.info(`[getVlanDetailsFromSystem] Found IP address: ${ipWithCidr}`);
+                    }
+                }
+                
+                // Also check for inet6 addresses
+                if (inInterfaceBlock && line.trim().startsWith('inet6 ')) {
+                    const ipv6Match = line.match(/inet6\s+([0-9a-fA-F:]+(?:\/[0-9]+)?)/);
+                    if (ipv6Match && !ipv6Match[1].startsWith('fe80') && !ipv6Match[1].startsWith('::1')) {
+                        // Skip link-local and loopback addresses
+                        const ipv6WithCidr = ipv6Match[1];
+                        details.ipAddresses.push(ipv6WithCidr);
+                        NetworkLogger.info(`[getVlanDetailsFromSystem] Found IPv6 address: ${ipv6WithCidr}`);
+                    }
+                }
+            }
+            
+            if (!interfaceFound) {
+                NetworkLogger.warning(`[getVlanDetailsFromSystem] Interface ${interfaceName} not found in ip output`);
             }
             
             // Set primary IP for backward compatibility
             details.ip = details.ipAddresses.length > 0 ? details.ipAddresses[0] : 'Not configured';
             
-            // Try to find associated Netplan config file
+            // Try to get gateway information for this interface
+            try {
+                const routeOutput = await cockpit.spawn(['ip', 'route', 'show', 'dev', interfaceName], { superuser: 'try' });
+                const gatewayMatch = routeOutput.match(/default via ([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+                if (gatewayMatch) {
+                    details.gateway = gatewayMatch[1];
+                    NetworkLogger.info(`[getVlanDetailsFromSystem] Found gateway: ${details.gateway}`);
+                }
+            } catch (gatewayError) {
+                NetworkLogger.info(`[getVlanDetailsFromSystem] No gateway found for ${interfaceName}`);
+            }
+            
+            // Try to find associated Netplan config file and extract DNS info
             try {
                 const configFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '*.yaml', '-exec', 'grep', '-l', interfaceName, '{}', ';'], { superuser: 'try' });
                 if (configFiles.trim()) {
                     const files = configFiles.trim().split('\n');
                     details.configFile = files[0]; // Use first match
+                    
+                    // Try to extract DNS information from the config file
+                    try {
+                        const configContent = await cockpit.file(files[0], { superuser: 'try' }).read();
+                        const dnsMatch = configContent.match(/nameservers:\s*\n\s*addresses:\s*\[(.*?)\]/s);
+                        if (dnsMatch) {
+                            const dnsServers = dnsMatch[1].split(',').map(dns => dns.trim().replace(/["\[\]]/g, ''));
+                            details.dns = dnsServers.filter(dns => dns.length > 0);
+                            NetworkLogger.info(`[getVlanDetailsFromSystem] Found DNS servers: ${details.dns.join(', ')}`);
+                        }
+                    } catch (dnsError) {
+                        NetworkLogger.warning(`Could not parse DNS from config file: ${dnsError.message}`);
+                    }
                 }
             } catch (configError) {
-                console.warn(`Could not find config file for ${interfaceName}:`, configError);
+                NetworkLogger.warning(`Could not find config file for ${interfaceName}:`, configError);
             }
             
             // Try to get gateway info (this would require route parsing - simplified for now)
             // details.gateway = await this.getGatewayForInterface(interfaceName);
             
         } catch (error) {
-            console.warn(`Error getting system details for ${interfaceName}:`, error);
+            NetworkLogger.warning(`Error getting system details for ${interfaceName}:`, error);
         }
         
         return details;
@@ -374,7 +338,7 @@ const VlanManager = {
 
     // Fetch VLANs from Netplan configuration files
     async fetchVlansFromNetplan() {
-        console.log('VlanManager: Fetching VLANs from Netplan configurations...');
+        NetworkLogger.info('Fetching VLANs from Netplan configurations...');
         const vlans = [];
         
         try {
@@ -399,7 +363,7 @@ const VlanManager = {
                                 const vlanName = vlanMatch[1];
                                 const vlanConfig = vlanMatch[2];
                                 
-                                console.log(`VlanManager: Found VLAN in Netplan: ${vlanName}`);
+                                NetworkLogger.info(`VlanManager: Found VLAN in Netplan: ${vlanName}`);
                                 
                                 // Extract VLAN details
                                 const idMatch = vlanConfig.match(/id:\s*(\d+)/);
@@ -412,23 +376,23 @@ const VlanManager = {
                                     
                                     if (linkMatch && linkMatch[1] && linkMatch[1].trim()) {
                                         parentInterface = linkMatch[1].trim();
-                                        console.log(`VlanManager: Found parent interface '${parentInterface}' for VLAN ${vlanName}`);
+                                        NetworkLogger.info(`VlanManager: Found parent interface '${parentInterface}' for VLAN ${vlanName}`);
                                     } else {
-                                        console.warn(`VlanManager: No valid parent interface found for VLAN ${vlanName}, searching alternatives...`);
+                                        NetworkLogger.warning(`VlanManager: No valid parent interface found for VLAN ${vlanName}, searching alternatives...`);
                                         
                                         // Try to extract parent from VLAN name if possible
                                         const nameMatch = vlanName.match(/^(.+)\.(\d+)$/);
                                         if (nameMatch) {
                                             parentInterface = nameMatch[1];
-                                            console.log(`VlanManager: Extracted parent '${parentInterface}' from VLAN name '${vlanName}'`);
+                                            NetworkLogger.info(`VlanManager: Extracted parent '${parentInterface}' from VLAN name '${vlanName}'`);
                                         } else {
                                             // Try to get parent from system
                                             try {
                                                 const vlanInfo = await cockpit.spawn(['cat', `/sys/class/net/${vlanName}/vlan/real_dev_name`], { superuser: 'try' });
                                                 parentInterface = vlanInfo.trim();
-                                                console.log(`VlanManager: Got parent '${parentInterface}' from system for VLAN ${vlanName}`);
+                                                NetworkLogger.info(`VlanManager: Got parent '${parentInterface}' from system for VLAN ${vlanName}`);
                                             } catch (sysError) {
-                                                console.warn(`VlanManager: Could not get parent from system for ${vlanName}:`, sysError);
+                                                NetworkLogger.warning(`VlanManager: Could not get parent from system for ${vlanName}:`, sysError);
                                             }
                                         }
                                     }
@@ -506,7 +470,7 @@ const VlanManager = {
                                             systemIPs = ipMatches.map(ip => ip.replace('inet ', ''));
                                         }
                                     } catch (statusError) {
-                                        console.warn(`VlanManager: Could not get status for ${vlanName}:`, statusError);
+                                        NetworkLogger.warning(`VlanManager: Could not get status for ${vlanName}:`, statusError);
                                     }
                                     
                                     // Use system IPs if available, otherwise use Netplan IPs
@@ -522,7 +486,7 @@ const VlanManager = {
                                         configType = 'dhcp'; // Default fallback
                                     }
                                     
-                                    console.log(`VlanManager: Parsed VLAN ${vlanName}:`, {
+                                    NetworkLogger.info(`VlanManager: Parsed VLAN ${vlanName}:`, {
                                         id: vlanId,
                                         parent: parentInterface,
                                         netplanIPs: ipAddresses,
@@ -547,8 +511,8 @@ const VlanManager = {
                                         configFile: file
                                     };
                                     
-                                    console.log(`VlanManager: Created VLAN object:`, vlanObject);
-                                    console.log(`VlanManager: Parent interface for ${vlanName}: '${parentInterface}'`);
+                                    NetworkLogger.info(`VlanManager: Created VLAN object:`, vlanObject);
+                                    NetworkLogger.info(`VlanManager: Parent interface for ${vlanName}: '${parentInterface}'`);
                                     
                                     vlans.push(vlanObject);
                                 }
@@ -556,15 +520,15 @@ const VlanManager = {
                         }
                     }
                 } catch (fileError) {
-                    console.warn(`VlanManager: Could not read Netplan file ${file}:`, fileError);
+                    NetworkLogger.warning(`VlanManager: Could not read Netplan file ${file}:`, fileError);
                 }
             }
             
         } catch (error) {
-            console.warn('VlanManager: Error fetching VLANs from Netplan:', error);
+            NetworkLogger.warning('Error fetching VLANs from Netplan:', error);
         }
         
-        console.log(`VlanManager: Found ${vlans.length} VLANs from Netplan configurations`);
+        NetworkLogger.info(`VlanManager: Found ${vlans.length} VLANs from Netplan configurations`);
         return vlans;
     },
 
@@ -599,7 +563,7 @@ const VlanManager = {
                                 const vlanInfo = await cockpit.spawn(['cat', `/sys/class/net/${interfaceName}/vlan/VID`], { superuser: 'try' });
                                 vlanId = parseInt(vlanInfo.trim());
                             } catch (vlanInfoError) {
-                                console.warn(`Could not get VLAN ID for ${interfaceName}:`, vlanInfoError);
+                                NetworkLogger.warning(`Could not get VLAN ID for ${interfaceName}:`, vlanInfoError);
                                 // For custom-named VLANs, try to get VLAN ID from Netplan configuration
                                 try {
                                     const netplanFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '*.yaml'], { superuser: 'try' });
@@ -612,16 +576,16 @@ const VlanManager = {
                                                 const idMatch = content.match(new RegExp(`${interfaceName}:[\\s\\S]*?id:\\s*(\\d+)`));
                                                 if (idMatch) {
                                                     vlanId = parseInt(idMatch[1]);
-                                                    console.log(`Found VLAN ID ${vlanId} for ${interfaceName} in Netplan file ${file}`);
+                                                    NetworkLogger.info(`Found VLAN ID ${vlanId} for ${interfaceName} in Netplan file ${file}`);
                                                     break;
                                                 }
                                             }
                                         } catch (fileError) {
-                                            console.warn(`Could not read Netplan file ${file}:`, fileError);
+                                            NetworkLogger.warning(`Could not read Netplan file ${file}:`, fileError);
                                         }
                                     }
                                 } catch (netplanError) {
-                                    console.warn(`Could not search Netplan files for ${interfaceName}:`, netplanError);
+                                    NetworkLogger.warning(`Could not search Netplan files for ${interfaceName}:`, netplanError);
                                 }
                             }
                         }
@@ -638,10 +602,10 @@ const VlanManager = {
             }
             
         } catch (error) {
-            console.warn('Error getting existing VLANs on parent:', error);
+            NetworkLogger.warning('Error getting existing VLANs on parent:', error);
         }
         
-        console.log(`VlanManager: Found ${vlans.length} existing VLANs on parent ${parentInterface}:`, vlans);
+        NetworkLogger.info(`VlanManager: Found ${vlans.length} existing VLANs on parent ${parentInterface}:`, vlans);
         return vlans;
     },
     
@@ -667,11 +631,11 @@ const VlanManager = {
                             // Parse YAML to find the link/parent
                             const linkMatch = content.match(/link:\s*([^\s\n]+)/);
                             if (linkMatch && linkMatch[1]) {
-                                console.log(`VlanManager: Found parent '${linkMatch[1]}' in config file ${file}`);
+                                NetworkLogger.info(`VlanManager: Found parent '${linkMatch[1]}' in config file ${file}`);
                                 return linkMatch[1].trim();
                             }
                         } catch (readError) {
-                            console.warn(`VlanManager: Could not read config file ${file}:`, readError);
+                            NetworkLogger.warning(`VlanManager: Could not read config file ${file}:`, readError);
                         }
                     }
                 } catch (findError) {
@@ -681,7 +645,7 @@ const VlanManager = {
             
             return null;
         } catch (error) {
-            console.warn('VlanManager: Error getting real parent from Netplan:', error);
+            NetworkLogger.warning('Error getting real parent from Netplan:', error);
             return null;
         }
     },
@@ -738,12 +702,12 @@ const VlanManager = {
                         break;
                     }
                 } catch (fileError) {
-                    console.warn(`VlanManager: Could not read netplan file ${file}:`, fileError);
+                    NetworkLogger.warning(`VlanManager: Could not read netplan file ${file}:`, fileError);
                 }
             }
 
         } catch (error) {
-            console.warn(`VlanManager: Error getting details for ${interfaceName}:`, error);
+            NetworkLogger.warning(`VlanManager: Error getting details for ${interfaceName}:`, error);
         }
 
         return details;
@@ -753,9 +717,9 @@ const VlanManager = {
     renderVlans() {
         const listElement = document.getElementById('vlan-list');
         
-        console.log('VlanManager: Rendering VLANs:', this.vlans);
+        NetworkLogger.info('Rendering VLANs:', this.vlans);
         this.vlans.forEach(vlan => {
-            console.log(`VlanManager: VLAN ${vlan.id} - Parent Interface: '${vlan.parentInterface}'`);
+            NetworkLogger.info(`VlanManager: VLAN ${vlan.id} - Parent Interface: '${vlan.parentInterface}'`);
         });
         
         if (this.vlans.length === 0) {
@@ -816,7 +780,7 @@ const VlanManager = {
                 </div>
                 
                 <div class="interface-actions" style="margin-top: 16px;">
-                    <button class="btn btn-sm btn-outline-brand" onclick="editVlan('${vlan.name}')">
+                    <button class="btn btn-sm btn-outline-brand" onclick="handleEditVlan('${vlan.name}')">
                         <i class="fas fa-edit"></i> Edit
                     </button>
                     <button class="btn btn-sm btn-outline-secondary" onclick="toggleVlan('${vlan.name}', '${vlan.status}')">
@@ -833,15 +797,15 @@ const VlanManager = {
 
 // VLAN Functions
 async function addVlan() {
-    console.log('VlanManager: Opening add VLAN dialog...');
+    NetworkLogger.info('Opening add VLAN dialog...');
     
     // Get available parent interfaces
     let availableInterfaces = [];
     try {
-        console.log('VlanManager: Getting available parent interfaces...');
+        NetworkLogger.info('Getting available parent interfaces...');
         availableInterfaces = await getAvailableParentInterfaces();
     } catch (error) {
-        console.error('VlanManager: Could not get available interfaces:', error);
+        NetworkLogger.error('Could not get available interfaces:', error);
         NetworkManager.showError('Could not detect available network interfaces. Please ensure the system is properly configured and try again.');
         return;
     }
@@ -896,9 +860,9 @@ async function addVlan() {
                     <label class="form-label">IP Addresses</label>
                     <div id="ip-addresses-container">
                         <div class="ip-address-entry" data-index="0">
-                            <div style="display: flex; gap: 8px; align-items: flex-end;">
-                                <div style="flex: 1;">
-                                    <input type="text" id="vlan-ip-0" class="form-control ip-address-input" placeholder="10.100.1.50/24" data-validate="cidr">
+                            <div class="ip-entry-row">
+                                <div>
+                                    <input type="text" id="vlan-ip-0" class="form-control ip-address-input" placeholder="10.100.1.50 (default /24)" data-validate="cidr">
                                 </div>
                                 <button type="button" class="btn btn-sm btn-outline-danger remove-ip-btn" onclick="removeIpAddress(0)" style="display: none;">
                                     <i class="fas fa-minus"></i>
@@ -909,7 +873,7 @@ async function addVlan() {
                     <button type="button" class="btn btn-sm btn-outline-brand" onclick="addIpAddress()" style="margin-top: 8px;">
                         <i class="fas fa-plus"></i> Add IP Address
                     </button>
-                    <div class="hint">Enter IP addresses in CIDR notation (e.g., 192.168.1.10/24)</div>
+                    <div class="hint">Enter IP addresses. CIDR defaults to /24 if not specified (e.g., 192.168.1.10 becomes 192.168.1.10/24)</div>
                 </div>
                 
                 <div class="form-group">
@@ -951,7 +915,7 @@ async function addVlan() {
 
 // Get available parent interfaces for VLAN creation
 async function getAvailableParentInterfaces() {
-    console.log('VlanManager: Getting available parent interfaces...');
+    NetworkLogger.info('Getting available parent interfaces...');
     
     if (!cockpit || !cockpit.spawn) {
         throw new Error('Cockpit API not available');
@@ -996,7 +960,7 @@ async function getAvailableParentInterfaces() {
                 
                 // Include bond interfaces (bond0, bond1, etc.)
                 if (/^bond\d+$/.test(ifaceName)) {
-                    console.log(`VlanManager: Found bond interface: ${ifaceName}`);
+                    NetworkLogger.info(`VlanManager: Found bond interface: ${ifaceName}`);
                     availableInterfaces.push(ifaceName);
                     continue;
                 }
@@ -1009,12 +973,12 @@ async function getAvailableParentInterfaces() {
                     try {
                         const bridgeInfo = await cockpit.spawn(['ip', 'addr', 'show', ifaceName], { superuser: 'try' });
                         if (bridgeInfo && !bridgeInfo.includes('NO-CARRIER')) {
-                            console.log(`VlanManager: Found bridge interface: ${ifaceName}`);
+                            NetworkLogger.info(`VlanManager: Found bridge interface: ${ifaceName}`);
                             availableInterfaces.push(ifaceName);
                         }
                     } catch (bridgeError) {
                         // If we can't get info, include it anyway
-                        console.log(`VlanManager: Including bridge interface (couldn't verify): ${ifaceName}`);
+                        NetworkLogger.info(`VlanManager: Including bridge interface (couldn't verify): ${ifaceName}`);
                         availableInterfaces.push(ifaceName);
                     }
                     continue;
@@ -1023,7 +987,7 @@ async function getAvailableParentInterfaces() {
                 // Include any other interfaces that might be valid parents
                 // This catches custom named interfaces or other types
                 if (!isSystemInterface(ifaceName)) {
-                    console.log(`VlanManager: Found other interface: ${ifaceName}`);
+                    NetworkLogger.info(`VlanManager: Found other interface: ${ifaceName}`);
                     availableInterfaces.push(ifaceName);
                 }
             }
@@ -1031,17 +995,17 @@ async function getAvailableParentInterfaces() {
         
         // Additionally, try to get bond and bridge interfaces from our managers
         try {
-            // Get bonds from BondManager if available
-            if (typeof BondManager !== 'undefined' && BondManager.bonds) {
-                BondManager.bonds.forEach(bond => {
+            // Get bonds from NetworkManager if available
+            if (typeof NetworkManager !== 'undefined' && NetworkManager.bonds) {
+                NetworkManager.bonds.forEach(bond => {
                     if (!availableInterfaces.includes(bond.name)) {
-                        console.log(`VlanManager: Adding bond from BondManager: ${bond.name}`);
+                        NetworkLogger.info(`VlanManager: Adding bond from NetworkManager: ${bond.name}`);
                         availableInterfaces.push(bond.name);
                     }
                 });
             }
         } catch (bondError) {
-            console.warn('VlanManager: Could not get bonds from BondManager:', bondError);
+            NetworkLogger.warning('Could not get bonds from NetworkManager:', bondError);
         }
         
         try {
@@ -1049,20 +1013,20 @@ async function getAvailableParentInterfaces() {
             if (typeof BridgeManager !== 'undefined' && BridgeManager.bridges) {
                 BridgeManager.bridges.forEach(bridge => {
                     if (!availableInterfaces.includes(bridge.name)) {
-                        console.log(`VlanManager: Adding bridge from BridgeManager: ${bridge.name}`);
+                        NetworkLogger.info(`VlanManager: Adding bridge from BridgeManager: ${bridge.name}`);
                         availableInterfaces.push(bridge.name);
                     }
                 });
             }
         } catch (bridgeError) {
-            console.warn('VlanManager: Could not get bridges from BridgeManager:', bridgeError);
+            NetworkLogger.warning('Could not get bridges from BridgeManager:', bridgeError);
         }
         
     } catch (error) {
-        console.error('VlanManager: Error getting available interfaces:', error);
+        NetworkLogger.error('Error getting available interfaces:', error);
     }
     
-    console.log('VlanManager: Available parent interfaces:', availableInterfaces);
+    NetworkLogger.info('Available parent interfaces:', availableInterfaces);
     return availableInterfaces.sort();
 }
 
@@ -1097,68 +1061,9 @@ function isSystemInterface(name) {
     return systemPrefixes.some(prefix => name.startsWith(prefix));
 }
 
-// Check for interface definition conflicts across Netplan files
-async function checkForInterfaceConflicts(interfaceName, intendedType) {
-    console.log(`VlanManager: Checking for conflicts for interface '${interfaceName}' intended as '${intendedType}'...`);
-    
-    try {
-        // Get all Netplan files
-        const netplanFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '*.yaml', '-o', '-name', '*.yml'], { superuser: 'try' });
-        const files = netplanFiles.trim().split('\n').filter(f => f.trim());
-        
-        const conflictingFiles = [];
-        
-        for (const file of files) {
-            try {
-                const content = await cockpit.file(file, { superuser: 'try' }).read();
-                if (content && content.includes(`${interfaceName}:`)) {
-                    // Check what type this interface is defined as
-                    const deviceTypes = ['ethernets', 'vlans', 'bonds', 'bridges', 'wifis'];
-                    
-                    for (const type of deviceTypes) {
-                        if (content.includes(`${type}:`) && content.includes(`${interfaceName}:`)) {
-                            const regex = new RegExp(`${type}:\\s*\\n([\\s\\S]*?)\\n\\s*${interfaceName}:`, 'm');
-                            if (regex.test(content) && type !== intendedType) {
-                                conflictingFiles.push({ file, type, intendedType });
-                                console.log(`VlanManager: Found conflict: ${interfaceName} defined as ${type} in ${file}, but trying to define as ${intendedType}`);
-                            }
-                        }
-                    }
-                }
-            } catch (fileError) {
-                console.warn(`VlanManager: Could not read file ${file}:`, fileError);
-            }
-        }
-        
-        // If conflicts found, handle them
-        if (conflictingFiles.length > 0) {
-            console.log(`VlanManager: Found ${conflictingFiles.length} conflicting definitions for interface '${interfaceName}'`);
-            
-            // For XAVS files, we can remove the conflicting definition
-            for (const conflict of conflictingFiles) {
-                if (conflict.file.includes('90-xavs-')) {
-                    console.log(`VlanManager: Removing conflicting XAVS configuration file: ${conflict.file}`);
-                    await cockpit.spawn(['rm', '-f', conflict.file], { superuser: 'try' });
-                } else {
-                    throw new Error(
-                        `Interface '${interfaceName}' is already defined as '${conflict.type}' in ${conflict.file}. Cannot redefine as '${intendedType}'.`
-                    );
-                }
-            }
-        }
-        
-    } catch (error) {
-        if (error.message && error.message.includes('already defined')) {
-            throw error;
-        }
-        console.warn('VlanManager: Error checking for interface conflicts:', error);
-        // Don't throw here - allow the operation to continue if conflict check fails
-    }
-}
-
-function editVlan(vlanIdentifier) {
-    console.log(`VlanManager: Editing VLAN with identifier ${vlanIdentifier}, type: ${typeof vlanIdentifier}`);
-    console.log('Available VLANs:', VlanManager.vlans.map(v => ({ id: v.id, name: v.name, parent: v.parentInterface })));
+async function editVlan(vlanIdentifier) {
+    NetworkLogger.info(`VlanManager: Editing VLAN with identifier ${vlanIdentifier}, type: ${typeof vlanIdentifier}`);
+    NetworkLogger.info('Available VLANs:', VlanManager.vlans.map(v => ({ id: v.id, name: v.name, parent: v.parentInterface })));
     
     // Try to find VLAN by name first (most reliable), then by ID
     let vlan = VlanManager.vlans.find(v => v.name === vlanIdentifier);
@@ -1166,22 +1071,98 @@ function editVlan(vlanIdentifier) {
         // Fallback: try to find by ID (for backward compatibility)
         vlan = VlanManager.vlans.find(v => v.id == vlanIdentifier);
         if (vlan) {
-            console.warn(`VlanManager: Found VLAN by ID ${vlanIdentifier}, but this could be ambiguous if multiple VLANs have the same ID`);
+            NetworkLogger.warning(`VlanManager: Found VLAN by ID ${vlanIdentifier}, but this could be ambiguous if multiple VLANs have the same ID`);
         }
     }
     
     if (!vlan) {
-        console.error(`VlanManager: VLAN with identifier ${vlanIdentifier} not found`);
+        NetworkLogger.error(`VlanManager: VLAN with identifier ${vlanIdentifier} not found`);
         NetworkManager.showError(`VLAN with identifier ${vlanIdentifier} not found`);
         return;
     }
     
-    console.log(`VlanManager: Found VLAN for editing:`, vlan);
+    NetworkLogger.info(`VlanManager: Found VLAN for editing:`, vlan);
+    NetworkLogger.info(`VlanManager: VLAN ipAddresses array:`, vlan.ipAddresses);
+    NetworkLogger.info(`VlanManager: VLAN ip field:`, vlan.ip);
     
-    // Determine IP configuration type
-    const ipConfig = vlan.ip === 'DHCP' || vlan.ip === 'Not configured' ? 'dhcp' : 'static';
-    const ipAddress = ipConfig === 'static' ? vlan.ip : '';
+    // Get fresh system details to ensure we have the latest IP configuration
+    try {
+        NetworkLogger.info('Refreshing VLAN details from system...');
+        const ipOutput = await cockpit.spawn(['ip', 'a'], { superuser: 'try' });
+        
+        // Add debug logging to see the ip output for this interface
+        const interfaceSection = ipOutput.split('\n').filter(line => 
+            line.includes(vlan.name) || 
+            (line.includes('inet ') && ipOutput.indexOf(line) > ipOutput.indexOf(vlan.name))
+        );
+        NetworkLogger.info(`VlanManager: IP output section for ${vlan.name}:`, interfaceSection);
+        
+        const freshDetails = await VlanManager.getVlanDetailsFromSystem(vlan.name, ipOutput);
+        
+        NetworkLogger.info(`VlanManager: Fresh details from system:`, freshDetails);
+        
+        // Update VLAN object with fresh details
+        if (freshDetails.ipAddresses && freshDetails.ipAddresses.length > 0) {
+            vlan.ipAddresses = freshDetails.ipAddresses;
+            vlan.ip = freshDetails.ipAddresses[0]; // Update primary IP for consistency
+            NetworkLogger.info(`VlanManager: Updated ipAddresses:`, vlan.ipAddresses);
+        } else {
+            NetworkLogger.warning(`VlanManager: No IP addresses found in fresh details for ${vlan.name}`);
+        }
+        if (freshDetails.gateway && freshDetails.gateway !== 'Not configured') {
+            vlan.gateway = freshDetails.gateway;
+        }
+        if (freshDetails.dns && freshDetails.dns.length > 0) {
+            vlan.dns = freshDetails.dns;
+        }
+        vlan.status = freshDetails.status || vlan.status;
+        
+        NetworkLogger.info(`VlanManager: Updated VLAN with fresh details:`, {
+            ipAddresses: vlan.ipAddresses,
+            gateway: vlan.gateway,
+            dns: vlan.dns,
+            status: vlan.status
+        });
+    } catch (refreshError) {
+        NetworkLogger.warning('Could not refresh VLAN details from system:', refreshError);
+        // Continue with existing data
+    }
+    
+    // Get available parent interfaces
+    let availableInterfaces = [];
+    try {
+        availableInterfaces = await getAvailableParentInterfaces();
+    } catch (error) {
+        NetworkLogger.error('Error getting available interfaces:', error);
+        NetworkManager.showError('Error loading available interfaces');
+        return;
+    }
+    
+    // Determine IP configuration type - check if any IP addresses are configured
+    // First, try to use the original VLAN data if fresh refresh failed to get IPs
+    let allIpAddresses = [];
+    if (vlan.ipAddresses && Array.isArray(vlan.ipAddresses) && vlan.ipAddresses.length > 0) {
+        allIpAddresses = vlan.ipAddresses;
+    } else if (vlan.ip && vlan.ip !== 'Not configured' && vlan.ip !== 'DHCP' && vlan.ip !== '') {
+        if (vlan.ip.includes(',')) {
+            allIpAddresses = vlan.ip.split(',').map(ip => ip.trim());
+        } else {
+            allIpAddresses = [vlan.ip];
+        }
+    }
+    
+    const hasStaticIps = allIpAddresses.length > 0 && 
+                        allIpAddresses.some(ip => ip && ip !== 'Not configured' && ip !== 'DHCP' && ip !== '');
+    const ipConfig = hasStaticIps ? 'static' : 'dhcp';
     const gateway = vlan.gateway && vlan.gateway !== 'Not configured' ? vlan.gateway : '';
+    
+    NetworkLogger.info(`VlanManager: All IP addresses found:`, allIpAddresses);
+    NetworkLogger.info(`VlanManager: Determined IP config type: ${ipConfig}, has static IPs: ${hasStaticIps}`);
+    
+    // Create parent interface options HTML
+    const parentOptionsHtml = availableInterfaces.map(iface => 
+        `<option value="${iface}" ${vlan.parentInterface === iface ? 'selected' : ''}>${iface}</option>`
+    ).join('');
     
     const modalContent = `
         <form id="vlan-edit-form" class="form-grid">
@@ -1198,13 +1179,7 @@ function editVlan(vlanIdentifier) {
             <div class="form-group">
                 <label class="form-label" for="edit-vlan-parent">Parent Interface</label>
                 <select id="edit-vlan-parent" class="form-control" required>
-                    <option value="eno1" ${vlan.parentInterface === 'eno1' ? 'selected' : ''}>eno1</option>
-                    <option value="eno2" ${vlan.parentInterface === 'eno2' ? 'selected' : ''}>eno2</option>
-                    <option value="eno3" ${vlan.parentInterface === 'eno3' ? 'selected' : ''}>eno3</option>
-                    <option value="eno4" ${vlan.parentInterface === 'eno4' ? 'selected' : ''}>eno4</option>
-                    <option value="eth0" ${vlan.parentInterface === 'eth0' ? 'selected' : ''}>eth0</option>
-                    <option value="eth1" ${vlan.parentInterface === 'eth1' ? 'selected' : ''}>eth1</option>
-                    <option value="bond0" ${vlan.parentInterface === 'bond0' ? 'selected' : ''}>bond0</option>
+                    ${parentOptionsHtml}
                 </select>
             </div>
             
@@ -1230,7 +1205,7 @@ function editVlan(vlanIdentifier) {
                     <button type="button" class="btn btn-sm btn-outline-brand" onclick="addEditIpAddress()" style="margin-top: 8px;">
                         <i class="fas fa-plus"></i> Add IP Address
                     </button>
-                    <div class="hint">Enter IP addresses in CIDR notation (e.g., 192.168.1.10/24)</div>
+                    <div class="hint">Enter IP addresses. CIDR defaults to /24 if not specified (e.g., 192.168.1.10 becomes 192.168.1.10/24)</div>
                 </div>
                 
                 <div class="form-group">
@@ -1254,21 +1229,22 @@ function editVlan(vlanIdentifier) {
     
     NetworkManager.createModal('Edit VLAN Configuration', modalContent, modalFooter);
     
-    // Populate IP addresses for editing - use the new ipAddresses array
+    // Populate IP addresses for editing - use the determined allIpAddresses
     const ipAddresses = [];
-    if (vlan.ipAddresses && Array.isArray(vlan.ipAddresses) && vlan.ipAddresses.length > 0) {
-        // Use the stored IP addresses array
-        ipAddresses.push(...vlan.ipAddresses);
-    } else if (vlan.ip && vlan.ip !== 'Not configured' && vlan.ip !== 'DHCP') {
-        // Fallback to single IP field if ipAddresses not available
-        if (vlan.ip.includes(',')) {
-            ipAddresses.push(...vlan.ip.split(',').map(ip => ip.trim()));
-        } else {
-            ipAddresses.push(vlan.ip);
+    
+    if (allIpAddresses.length > 0) {
+        // Use the determined IP addresses
+        ipAddresses.push(...allIpAddresses);
+        NetworkLogger.info(`VlanManager: Using determined IP addresses:`, allIpAddresses);
+    } else {
+        // No IP addresses found, create empty entry for static configuration
+        if (ipConfig === 'static') {
+            ipAddresses.push('');
         }
+        NetworkLogger.info(`VlanManager: No IP addresses found, creating empty entry for static config`);
     }
     
-    console.log(`VlanManager: Populating edit form with IP addresses:`, ipAddresses);
+    NetworkLogger.info(`VlanManager: Final IP addresses for edit form:`, ipAddresses);
     populateEditIpAddresses(ipAddresses);
     
     // Setup live validation for the edit form
@@ -1279,6 +1255,15 @@ function editVlan(vlanIdentifier) {
     
     // Setup toggle functionality for edit form
     setupVlanToggle('edit-vlan');
+    
+    // Log debugging information
+    console.log('=== VLAN Edit Debug Information ===');
+    console.log('VLAN object:', vlan);
+    console.log('All IP addresses found:', allIpAddresses);
+    console.log('IP addresses for form:', ipAddresses);
+    console.log('IP config type:', ipConfig);
+    console.log('Available interfaces:', availableInterfaces);
+    console.log('=== End Debug Information ===');
 }
 
 function setupVlanToggle(prefix = 'vlan') {
@@ -1299,14 +1284,14 @@ function setupVlanToggle(prefix = 'vlan') {
                     staticConfig.style.display = 'none';
                 }
             } else {
-                console.warn(`VlanManager: Could not find static config element with ID: ${staticConfigId}`);
+                NetworkLogger.warning(`VlanManager: Could not find static config element with ID: ${staticConfigId}`);
             }
         });
     });
 }
 
 async function saveVlan() {
-    console.log('VlanManager: Creating new VLAN...');
+    NetworkLogger.info('Creating new VLAN...');
     
     const modal = document.querySelector('.modal');
     const form = document.getElementById('vlan-form');
@@ -1356,7 +1341,7 @@ async function saveVlan() {
         dns: document.getElementById('vlan-dns')?.value || ''
     };
     
-    console.log('VlanManager: Form data collected:', formData);
+    NetworkLogger.info('Form data collected:', formData);
     
     // Basic validation fallback
     if (!formData.id || !formData.name || !formData.parent) {
@@ -1396,7 +1381,7 @@ async function saveVlan() {
             return;
         }
     } catch (conflictCheckError) {
-        console.warn('Could not check for VLAN ID conflicts:', conflictCheckError);
+        NetworkLogger.warning('Could not check for VLAN ID conflicts:', conflictCheckError);
         // Continue anyway - the server-side check will catch this
     }
     
@@ -1415,14 +1400,14 @@ async function saveVlan() {
     const expectedName = `${formData.parent}.${formData.id}`;
     if (formData.name !== expectedName && formData.name !== `vlan${formData.id}`) {
         formData.name = expectedName; // Force correct naming
-        console.log(`VlanManager: Corrected VLAN name to: ${formData.name}`);
+        NetworkLogger.info(`VlanManager: Corrected VLAN name to: ${formData.name}`);
     }
     
     // Create VLAN using real system calls
     createRealVlan(formData)
         .then(() => {
             restoreButton();
-            console.log('VlanManager: VLAN created successfully');
+            NetworkLogger.info('VLAN created successfully');
             if (typeof showModalSuccess === 'function') {
                 showModalSuccess(modal, `VLAN ${formData.id} created and tested successfully! The configuration has been applied.`);
                 // Close modal after showing success
@@ -1477,14 +1462,14 @@ async function getParentInterfaceType(interfaceName) {
         
         return 'unknown';
     } catch (error) {
-        console.warn(`getParentInterfaceType: Error detecting type for ${interfaceName}:`, error);
+        NetworkLogger.warning(`getParentInterfaceType: Error detecting type for ${interfaceName}:`, error);
         return 'unknown';
     }
 }
 
 // Create real VLAN configuration
 async function createRealVlan(config) {
-    console.log('VlanManager: Creating real VLAN configuration...');
+    NetworkLogger.info('Creating real VLAN configuration...');
     
     if (!cockpit || !cockpit.spawn) {
         throw new Error('Cockpit API not available');
@@ -1492,23 +1477,23 @@ async function createRealVlan(config) {
     
     // Check parent interface type first
     const parentType = await getParentInterfaceType(config.parent);
-    console.log(`VlanManager: Parent interface ${config.parent} detected as type: ${parentType}`);
+    NetworkLogger.info(`VlanManager: Parent interface ${config.parent} detected as type: ${parentType}`);
     
     // Generate Netplan configuration with parent type information
     const netplanConfig = await generateVlanNetplanConfig(config, parentType);
     // Use interface-specific filename to avoid conflicts when same VLAN ID is used on different interfaces
     const configPath = `/etc/netplan/90-xavs-${config.parent}-vlan${config.id}.yaml`;
     
-    console.log('VlanManager: Generated Netplan config:', netplanConfig);
-    console.log('VlanManager: Writing configuration to', configPath);
+    NetworkLogger.info('Generated Netplan config:', netplanConfig);
+    NetworkLogger.info('Writing configuration to', configPath);
     
     try {
         // Check for interface conflicts before proceeding
-        console.log('VlanManager: Checking for interface conflicts...');
-        await checkForInterfaceConflicts(config.name, 'vlans');
+        NetworkLogger.info('Checking for interface conflicts...');
+        // Validate interface name
         
         // Check for VLAN ID conflicts on the same parent interface
-        console.log(`VlanManager: Checking for VLAN ID conflicts (ID ${config.id} on ${config.parent})...`);
+        NetworkLogger.info(`VlanManager: Checking for VLAN ID conflicts (ID ${config.id} on ${config.parent})...`);
         const existingVlans = await VlanManager.getExistingVlansOnParent(config.parent);
         const conflictingVlan = existingVlans.find(vlan => vlan.id === parseInt(config.id) && vlan.name !== config.name);
         
@@ -1526,15 +1511,15 @@ async function createRealVlan(config) {
                 try {
                     const content = await cockpit.file(file, { superuser: 'try' }).read();
                     if (content && content.includes(`${config.name}:`)) {
-                        console.log(`VlanManager: Removing conflicting XAVS file: ${file}`);
+                        NetworkLogger.info(`VlanManager: Removing conflicting XAVS file: ${file}`);
                         await cockpit.spawn(['rm', '-f', file], { superuser: 'try' });
                     }
                 } catch (fileError) {
-                    console.warn(`VlanManager: Could not check/remove file ${file}:`, fileError);
+                    NetworkLogger.warning(`VlanManager: Could not check/remove file ${file}:`, fileError);
                 }
             }
         } catch (cleanupError) {
-            console.warn('VlanManager: Error during cleanup:', cleanupError);
+            NetworkLogger.warning('Error during cleanup:', cleanupError);
         }
         
         // Check if VLAN interface name already exists in the system
@@ -1547,40 +1532,40 @@ async function createRealVlan(config) {
             if (interfaceCheckError.message && interfaceCheckError.message.includes('already exists')) {
                 throw interfaceCheckError;
             }
-            console.warn('VlanManager: Could not check existing interfaces:', interfaceCheckError);
+            NetworkLogger.warning('Could not check existing interfaces:', interfaceCheckError);
         }
         
         // Write the Netplan configuration
         await cockpit.file(configPath, { superuser: 'try' }).replace(netplanConfig);
-        console.log('VlanManager: Netplan configuration written successfully');
+        NetworkLogger.info('Netplan configuration written successfully');
         
         // Set proper file permissions (600 = rw-------)
         await cockpit.spawn(['chmod', '600', configPath], { superuser: 'try' });
-        console.log('VlanManager: File permissions set to 600');
+        NetworkLogger.info('File permissions set to 600');
         
         // Test the configuration first with netplan try
-        console.log('VlanManager: Testing Netplan configuration with netplan --debug try...');
+        NetworkLogger.info('Testing Netplan configuration with netplan --debug try...');
         try {
             const debugOutput = await cockpit.spawn(['netplan', '--debug', 'try', '--timeout=30'], { superuser: 'try' });
-            console.log('VlanManager: Netplan debug output:');
-            console.log('--- START NETPLAN DEBUG ---');
-            console.log(debugOutput);
-            console.log('--- END NETPLAN DEBUG ---');
-            console.log('VlanManager: Netplan try completed successfully');
+            NetworkLogger.info('Netplan debug output:');
+            NetworkLogger.info('--- START NETPLAN DEBUG ---');
+            NetworkLogger.info(debugOutput);
+            NetworkLogger.info('--- END NETPLAN DEBUG ---');
+            NetworkLogger.info('Netplan try completed successfully');
         } catch (tryError) {
-            console.error('VlanManager: Netplan try failed:', tryError);
+            NetworkLogger.error('Netplan try failed:', tryError);
             
             // Log the debug output even on failure
             if (tryError.message) {
-                console.log('VlanManager: Netplan error output:');
-                console.log('--- START NETPLAN ERROR ---');
-                console.log(tryError.message);
-                console.log('--- END NETPLAN ERROR ---');
+                NetworkLogger.info('Netplan error output:');
+                NetworkLogger.info('--- START NETPLAN ERROR ---');
+                NetworkLogger.info(tryError.message);
+                NetworkLogger.info('--- END NETPLAN ERROR ---');
             }
             
             // Check if this is just the bond revert warning (exit status 78)
             if (tryError.exit_status === 78) {
-                console.log('VlanManager: Netplan try exited with status 78 (bond revert warning) - this is expected for bond configurations');
+                NetworkLogger.info('Netplan try exited with status 78 (bond revert warning) - this is expected for bond configurations');
                 // This is the expected bond warning, not a real error
             } else {
                 // This is a real error
@@ -1589,27 +1574,27 @@ async function createRealVlan(config) {
         }
         
         // Apply the configuration permanently
-        console.log('VlanManager: Applying Netplan configuration permanently...');
+        NetworkLogger.info('Applying Netplan configuration permanently...');
         await cockpit.spawn(['netplan', 'apply'], { superuser: 'try' });
-        console.log('VlanManager: Netplan applied successfully');
+        NetworkLogger.info('Netplan applied successfully');
         
         // Verify VLAN creation
-        console.log('VlanManager: Verifying VLAN creation...');
+        NetworkLogger.info('Verifying VLAN creation...');
         const checkOutput = await cockpit.spawn(['ip', 'link', 'show', config.name], { superuser: 'try' });
         if (checkOutput.includes(config.name)) {
-            console.log('VlanManager: VLAN interface verified');
+            NetworkLogger.info('VLAN interface verified');
             return true;
         } else {
             throw new Error('VLAN interface was not created');
         }
         
     } catch (error) {
-        console.error('VlanManager: Error in createRealVlan:', error);
+        NetworkLogger.error('Error in createRealVlan:', error);
         // Clean up configuration file if it was created
         try {
             await cockpit.spawn(['rm', '-f', configPath], { superuser: 'try' });
         } catch (cleanupError) {
-            console.warn('VlanManager: Could not clean up config file:', cleanupError);
+            NetworkLogger.warning('Could not clean up config file:', cleanupError);
         }
         throw error;
     }
@@ -1617,13 +1602,13 @@ async function createRealVlan(config) {
 
 // Generate Netplan configuration for VLAN
 async function generateVlanNetplanConfig(config, parentType = 'unknown') {
-    console.log('VlanManager: Generating Netplan config for VLAN:', config.name);
-    console.log('VlanManager: Config object:', config);
-    console.log('VlanManager: Parent interface type:', parentType);
+    NetworkLogger.info('Generating Netplan config for VLAN:', config.name);
+    NetworkLogger.info('Config object:', config);
+    NetworkLogger.info('Parent interface type:', parentType);
     
     // Validate that we have a valid parent interface
     if (!config.parent || config.parent === 'null' || config.parent === null || config.parent === undefined) {
-        console.error('VlanManager: Invalid or missing parent interface for VLAN:', config);
+        NetworkLogger.error('Invalid or missing parent interface for VLAN:', config);
         throw new Error(`Invalid parent interface for VLAN ${config.name}. Parent interface is required.`);
     }
     
@@ -1632,7 +1617,7 @@ async function generateVlanNetplanConfig(config, parentType = 'unknown') {
     
     // For bonds and bridges, we need to include a minimal definition so Netplan can resolve the parent
     if (parentType === 'bond' || parentType === 'bridge') {
-        console.log(`VlanManager: Including parent ${parentType} definition for ${config.parent}`);
+        NetworkLogger.info(`VlanManager: Including parent ${parentType} definition for ${config.parent}`);
         
         if (parentType === 'bond') {
             yamlConfig += `
@@ -1691,7 +1676,7 @@ async function generateVlanNetplanConfig(config, parentType = 'unknown') {
     
     yamlConfig += '\n';
     
-    console.log('VlanManager: Generated YAML config:', yamlConfig);
+    NetworkLogger.info('Generated YAML config:', yamlConfig);
     return yamlConfig;
 }
 
@@ -1712,7 +1697,7 @@ async function saveVlanEdit(vlanIdentifier) {
         vlanDisplay = originalVlan ? `${originalVlan.name} (ID ${originalVlan.id})` : vlanIdentifier;
     }
     
-    console.log(`VlanManager: Saving edits for VLAN ${vlanDisplay}...`);
+    NetworkLogger.info(`VlanManager: Saving edits for VLAN ${vlanDisplay}...`);
     
     const modal = document.querySelector('.modal');
     const form = document.getElementById('vlan-edit-form');
@@ -1762,7 +1747,7 @@ async function saveVlanEdit(vlanIdentifier) {
         dns: document.getElementById('edit-vlan-dns')?.value || ''
     };
     
-    console.log('VlanManager: Edit form data collected:', formData);
+    NetworkLogger.info('Edit form data collected:', formData);
     
     // Basic validation
     if (!formData.name || !formData.parent) {
@@ -1801,7 +1786,7 @@ async function saveVlanEdit(vlanIdentifier) {
                 return;
             }
         } catch (conflictCheckError) {
-            console.warn('Could not check for VLAN ID conflicts:', conflictCheckError);
+            NetworkLogger.warning('Could not check for VLAN ID conflicts:', conflictCheckError);
         }
     }
     
@@ -1809,7 +1794,7 @@ async function saveVlanEdit(vlanIdentifier) {
     updateRealVlan(originalVlan, formData)
         .then(() => {
             restoreButton();
-            console.log('VlanManager: VLAN updated successfully');
+            NetworkLogger.info('VLAN updated successfully');
             if (typeof showModalSuccess === 'function') {
                 showModalSuccess(modal, `VLAN ${vlanDisplay} updated and tested successfully! The configuration has been applied.`);
                 // Close modal after showing success
@@ -1831,9 +1816,9 @@ async function saveVlanEdit(vlanIdentifier) {
 
 // Update real VLAN configuration
 async function updateRealVlan(originalVlan, newConfig) {
-    console.log('VlanManager: Updating real VLAN configuration...');
-    console.log('VlanManager: Original VLAN:', originalVlan);
-    console.log('VlanManager: New config:', newConfig);
+    NetworkLogger.info('Updating real VLAN configuration...');
+    NetworkLogger.info('Original VLAN:', originalVlan);
+    NetworkLogger.info('New config:', newConfig);
     
     if (!cockpit || !cockpit.spawn) {
         throw new Error('Cockpit API not available');
@@ -1847,7 +1832,7 @@ async function updateRealVlan(originalVlan, newConfig) {
     
     try {
         // Remove old configuration files (try both old and new naming schemes)
-        console.log('VlanManager: Removing old configuration files...');
+        NetworkLogger.info('Removing old configuration files...');
         await cockpit.spawn(['rm', '-f', oldConfigPath], { superuser: 'try' });
         await cockpit.spawn(['rm', '-f', oldGenericConfigPath], { superuser: 'try' });
         await cockpit.spawn(['rm', '-f', oldCustomConfigPath], { superuser: 'try' });
@@ -1861,65 +1846,65 @@ async function updateRealVlan(originalVlan, newConfig) {
                 try {
                     const content = await cockpit.file(file, { superuser: 'try' }).read();
                     if (content && content.includes(`${newConfig.name}:`)) {
-                        console.log(`VlanManager: Removing conflicting XAVS file: ${file}`);
+                        NetworkLogger.info(`VlanManager: Removing conflicting XAVS file: ${file}`);
                         await cockpit.spawn(['rm', '-f', file], { superuser: 'try' });
                     }
                 } catch (fileError) {
-                    console.warn(`VlanManager: Could not check/remove file ${file}:`, fileError);
+                    NetworkLogger.warning(`VlanManager: Could not check/remove file ${file}:`, fileError);
                 }
             }
         } catch (cleanupError) {
-            console.warn('VlanManager: Error during cleanup:', cleanupError);
+            NetworkLogger.warning('Error during cleanup:', cleanupError);
         }
         
         // Generate and write new configuration with parent type detection
         const parentType = await getParentInterfaceType(newConfig.parent);
-        console.log(`VlanManager: Parent interface ${newConfig.parent} detected as type: ${parentType}`);
+        NetworkLogger.info(`VlanManager: Parent interface ${newConfig.parent} detected as type: ${parentType}`);
         
         const netplanConfig = await generateVlanNetplanConfig(newConfig, parentType);
         // Use interface-specific filename to avoid conflicts
         const newConfigPath = `/etc/netplan/90-xavs-${newConfig.parent}-vlan${vlanId}.yaml`;
         
-        console.log('VlanManager: Generated new Netplan config:', netplanConfig);
-        console.log('VlanManager: Writing new configuration to', newConfigPath);
+        NetworkLogger.info('Generated new Netplan config:', netplanConfig);
+        NetworkLogger.info('Writing new configuration to', newConfigPath);
         
         await cockpit.file(newConfigPath, { superuser: 'try' }).replace(netplanConfig);
         
         // Set proper permissions
-        console.log('VlanManager: Setting file permissions...');
+        NetworkLogger.info('Setting file permissions...');
         await cockpit.spawn(['chmod', '600', newConfigPath], { superuser: 'try' });
         
         // Test configuration with netplan debug try
-        console.log('VlanManager: Testing new configuration with netplan --debug try...');
+        NetworkLogger.info('Testing new configuration with netplan --debug try...');
         try {
             const debugResult = await cockpit.spawn(['netplan', '--debug', 'try'], { 
                 superuser: 'try',
                 err: 'out'
             });
-            console.log('VlanManager: Netplan debug output:', debugResult);
+            NetworkLogger.info('Netplan debug output:', debugResult);
         } catch (debugError) {
-            console.log('VlanManager: Netplan debug error:', debugError);
+            NetworkLogger.info('Netplan debug error:', debugError);
             
             // Check if this is just a bond revert warning (exit status 78)
             if (debugError.exit_status !== 78) {
                 throw new Error(`Netplan configuration test failed: ${debugError.message || debugError}`);
             } else {
-                console.log('VlanManager: Ignoring bond revert warning (exit status 78)');
+                NetworkLogger.info('Ignoring bond revert warning (exit status 78)');
             }
         }
         
         // Apply the configuration
-        console.log('VlanManager: Applying netplan configuration...');
+        NetworkLogger.info('Applying netplan configuration...');
         await cockpit.spawn(['netplan', 'apply'], { superuser: 'try' });
         
-        console.log('VlanManager: VLAN configuration updated successfully');
+        NetworkLogger.info('VLAN configuration updated successfully');
         
     } catch (error) {
-        console.error('VlanManager: Error updating VLAN configuration:', error);
+        NetworkLogger.error('Error updating VLAN configuration:', error);
         
         // Try to restore old configuration if possible
         try {
-            console.log('VlanManager: Attempting to restore old configuration...');
+            NetworkLogger.info('Attempting to restore old configuration...');
             const oldNetplanConfig = generateVlanNetplanConfig({
                 id: originalVlan.id,
                 name: originalVlan.name,
@@ -1937,20 +1922,25 @@ async function updateRealVlan(originalVlan, newConfig) {
             await cockpit.spawn(['chmod', '600', restoreConfigPath], { superuser: 'try' });
             await cockpit.spawn(['netplan', 'apply'], { superuser: 'try' });
             
-            console.log('VlanManager: Old configuration restored');
+            NetworkLogger.info('Old configuration restored');
         } catch (restoreError) {
-            console.error('VlanManager: Failed to restore old configuration:', restoreError);
+            NetworkLogger.error('Failed to restore old configuration:', restoreError);
         }
         
         throw new Error(`Failed to update VLAN configuration: ${error.message || error}`);
     }
 }
 
-function updateVlan(vlanId) {
-    console.log(`VlanManager: updateVlan called for VLAN ${vlanId} - this function is deprecated, use editVlan instead`);
+async function updateVlan(vlanId) {
+    NetworkLogger.info(`VlanManager: updateVlan called for VLAN ${vlanId} - this function is deprecated, use editVlan instead`);
     // This function is deprecated - editVlan should be used instead
     // editVlan now accepts both VLAN IDs and names for backward compatibility
-    editVlan(vlanId);
+    try {
+        await editVlan(vlanId);
+    } catch (error) {
+        NetworkLogger.error('Error in updateVlan wrapper:', error);
+        NetworkManager.showError('Error loading VLAN edit form');
+    }
 }
 
 function toggleVlan(vlanIdentifier, currentStatus) {
@@ -1978,7 +1968,7 @@ function toggleVlan(vlanIdentifier, currentStatus) {
     const action = newStatus === 'up' ? 'enable' : 'disable';
     
     if (confirm(`Are you sure you want to ${action} VLAN ${vlanDisplay}?`)) {
-        console.log(`VlanManager: ${action}ing VLAN ${vlanDisplay}...`);
+        NetworkLogger.info(`VlanManager: ${action}ing VLAN ${vlanDisplay}...`);
         
         // Find the toggle button and show progress - use VLAN name for selector
         const toggleButton = document.querySelector(`button[onclick="toggleVlan('${vlanIdentifier}', '${currentStatus}')"]`);
@@ -2020,7 +2010,7 @@ function toggleVlan(vlanIdentifier, currentStatus) {
                 })
                 .catch((error) => {
                     restoreButton();
-                    console.error(`VlanManager: Error ${action}ing VLAN:`, error);
+                    NetworkLogger.error(`VlanManager: Error ${action}ing VLAN:`, error);
                     NetworkManager.showError(`Failed to ${action} VLAN: ${error.message || error}`);
                 });
         }
@@ -2049,7 +2039,7 @@ function deleteVlan(vlanIdentifier) {
     }
     
     if (confirm(`Are you sure you want to delete VLAN ${vlanDisplay}? This action cannot be undone.`)) {
-        console.log(`VlanManager: Deleting VLAN ${vlanDisplay}...`);
+        NetworkLogger.info(`VlanManager: Deleting VLAN ${vlanDisplay}...`);
         
         // Find the delete button and show progress
         const deleteButton = document.querySelector(`button[onclick="deleteVlan('${vlanIdentifier}')"]`);
@@ -2083,7 +2073,7 @@ function deleteVlan(vlanIdentifier) {
                     restoreButton();
                 })
                 .catch((error) => {
-                    console.error('VlanManager: Delete operation failed:', error);
+                    NetworkLogger.error('Delete operation failed:', error);
                     restoreButton();
                     
                     // Show error if not already shown
@@ -2100,18 +2090,35 @@ function deleteVlan(vlanIdentifier) {
 
 // Add a public method to VlanManager for external deletion calls
 VlanManager.deleteRealVlan = async function(vlanId, vlanName = null) {
-    console.log(`VlanManager: deleteRealVlan called for VLAN ${vlanId}${vlanName ? ` (${vlanName})` : ''}...`);
+    NetworkLogger.info(`VlanManager: deleteRealVlan called for VLAN ${vlanId}${vlanName ? ` (${vlanName})` : ''}...`);
     
     if (!cockpit || !cockpit.spawn) {
         throw new Error('Cockpit API not available');
     }
     
     try {
-        // Find the VLAN in our current list
-        let vlan = this.vlans.find(v => v.id === vlanId);
-        if (!vlan && vlanName) {
-            // If not found by ID, try to find by name
+        // Find the VLAN in our current list - prioritize finding by name first to avoid ID conflicts
+        let vlan = null;
+        
+        if (vlanName) {
+            // If we have a name, find by name first (most accurate)
+            NetworkLogger.info(`VlanManager: Looking for VLAN by name: '${vlanName}'`);
             vlan = this.vlans.find(v => v.name === vlanName);
+            if (vlan) {
+                NetworkLogger.info(`VlanManager: Found VLAN by name: ${vlan.name} (ID: ${vlan.id})`);
+            } else {
+                NetworkLogger.info(`VlanManager: VLAN '${vlanName}' not found by name in current list`);
+            }
+        }
+        
+        if (!vlan) {
+            // If not found by name, try to find by ID (less reliable due to potential conflicts)
+            NetworkLogger.info(`VlanManager: Looking for VLAN by ID: ${vlanId}`);
+            vlan = this.vlans.find(v => v.id === vlanId);
+            if (vlan) {
+                NetworkLogger.info(`VlanManager: Found VLAN by ID: ${vlan.name} (ID: ${vlan.id})`);
+                NetworkLogger.warning(`VlanManager: WARNING - Found VLAN by ID but not by name. This could be wrong if multiple VLANs have the same ID!`);
+            }
         }
         
         if (!vlan && vlanName) {
@@ -2127,28 +2134,28 @@ VlanManager.deleteRealVlan = async function(vlanId, vlanName = null) {
             throw new Error(`VLAN ${vlanId} not found`);
         }
         
-        console.log(`VlanManager: Found VLAN for deletion:`, vlan);
+        NetworkLogger.info(`VlanManager: Found VLAN for deletion:`, vlan);
         
         // Try to get the real parent interface from Netplan config before deletion
         try {
             const realParent = await this.getRealParentFromNetplan(vlan.name, vlan.id);
             if (realParent && realParent !== vlan.parentInterface) {
-                console.log(`VlanManager: Corrected parent interface from '${vlan.parentInterface}' to '${realParent}' based on Netplan config`);
+                NetworkLogger.info(`VlanManager: Corrected parent interface from '${vlan.parentInterface}' to '${realParent}' based on Netplan config`);
                 vlan.parentInterface = realParent;
             }
         } catch (parentError) {
-            console.warn(`VlanManager: Could not determine real parent interface:`, parentError);
+            NetworkLogger.warning(`VlanManager: Could not determine real parent interface:`, parentError);
         }
         
         // Check if the interface actually exists in the system before trying to delete it
         let interfaceExists = false;
         try {
-            console.log(`VlanManager: Checking if VLAN interface ${vlan.name} exists...`);
+            NetworkLogger.info(`VlanManager: Checking if VLAN interface ${vlan.name} exists...`);
             const ipShow = await cockpit.spawn(['ip', 'link', 'show', vlan.name], { superuser: 'try' });
             interfaceExists = true;
-            console.log(`VlanManager: VLAN interface ${vlan.name} exists in system`);
+            NetworkLogger.info(`VlanManager: VLAN interface ${vlan.name} exists in system`);
         } catch (checkError) {
-            console.log(`VlanManager: VLAN interface ${vlan.name} does not exist in system (this is okay)`);
+            NetworkLogger.info(`VlanManager: VLAN interface ${vlan.name} does not exist in system (this is okay)`);
             interfaceExists = false;
         }
         
@@ -2156,15 +2163,15 @@ VlanManager.deleteRealVlan = async function(vlanId, vlanName = null) {
         if (interfaceExists) {
             // First bring down the interface
             try {
-                console.log(`VlanManager: Bringing down VLAN interface: ${vlan.name}`);
+                NetworkLogger.info(`VlanManager: Bringing down VLAN interface: ${vlan.name}`);
                 await cockpit.spawn(['ip', 'link', 'set', vlan.name, 'down'], { superuser: 'try' });
             } catch (downError) {
-                console.warn(`VlanManager: Could not bring down interface ${vlan.name}:`, downError);
+                NetworkLogger.warning(`VlanManager: Could not bring down interface ${vlan.name}:`, downError);
             }
             
             // Delete the VLAN interface
             try {
-                console.log(`VlanManager: Deleting VLAN interface: ${vlan.name}`);
+                NetworkLogger.info(`VlanManager: Deleting VLAN interface: ${vlan.name}`);
                 await cockpit.spawn(['ip', 'link', 'delete', vlan.name], { superuser: 'try' });
                 
                 // Wait a moment for the deletion to complete
@@ -2173,16 +2180,16 @@ VlanManager.deleteRealVlan = async function(vlanId, vlanName = null) {
                 // Verify the interface is actually deleted
                 try {
                     const verifyOutput = await cockpit.spawn(['ip', 'link', 'show', vlan.name], { superuser: 'try' });
-                    console.warn(`VlanManager: Interface ${vlan.name} still exists after deletion attempt`);
+                    NetworkLogger.warning(`VlanManager: Interface ${vlan.name} still exists after deletion attempt`);
                 } catch (verifyError) {
                     // This is expected - interface should not exist
-                    console.log(`VlanManager: Verified interface ${vlan.name} was successfully deleted`);
+                    NetworkLogger.info(`VlanManager: Verified interface ${vlan.name} was successfully deleted`);
                 }
             } catch (deleteError) {
-                console.warn(`VlanManager: Could not delete interface ${vlan.name}:`, deleteError);
+                NetworkLogger.warning(`VlanManager: Could not delete interface ${vlan.name}:`, deleteError);
             }
         } else {
-            console.log(`VlanManager: Skipping interface deletion since ${vlan.name} doesn't exist`);
+            NetworkLogger.info(`VlanManager: Skipping interface deletion since ${vlan.name} doesn't exist`);
         }
         
         // Remove all possible configuration files for this VLAN
@@ -2211,9 +2218,9 @@ VlanManager.deleteRealVlan = async function(vlanId, vlanName = null) {
             const allFoundFiles = [...new Set([...foundFiles, ...nameFoundFiles])];
             configFiles.push(...allFoundFiles);
             
-            console.log(`VlanManager: Found config files to remove:`, allFoundFiles);
+            NetworkLogger.info(`VlanManager: Found config files to remove:`, allFoundFiles);
         } catch (findError) {
-            console.warn('VlanManager: Could not search for config files:', findError);
+            NetworkLogger.warning('Could not search for config files:', findError);
         }
         
         // Deduplicate config files
@@ -2221,40 +2228,40 @@ VlanManager.deleteRealVlan = async function(vlanId, vlanName = null) {
         
         for (const configFile of uniqueConfigFiles) {
             try {
-                console.log(`VlanManager: Removing configuration file: ${configFile}`);
+                NetworkLogger.info(`VlanManager: Removing configuration file: ${configFile}`);
                 await cockpit.spawn(['rm', '-f', configFile], { superuser: 'require' });
             } catch (rmError) {
-                console.warn(`VlanManager: Could not remove ${configFile}:`, rmError);
+                NetworkLogger.warning(`VlanManager: Could not remove ${configFile}:`, rmError);
             }
         }
         
         // Test configuration with netplan --debug try
-        console.log('VlanManager: Testing VLAN deletion with netplan --debug try...');
+        NetworkLogger.info('Testing VLAN deletion with netplan --debug try...');
         try {
             const debugOutput = await cockpit.spawn(['netplan', '--debug', 'try', '--timeout=30'], { superuser: 'require' });
-            console.log('VlanManager: Netplan debug output:');
-            console.log('--- START NETPLAN DEBUG ---');
-            console.log(debugOutput);
-            console.log('--- END NETPLAN DEBUG ---');
-            console.log('VlanManager: Netplan try completed successfully');
+            NetworkLogger.info('Netplan debug output:');
+            NetworkLogger.info('--- START NETPLAN DEBUG ---');
+            NetworkLogger.info(debugOutput);
+            NetworkLogger.info('--- END NETPLAN DEBUG ---');
+            NetworkLogger.info('Netplan try completed successfully');
         } catch (tryError) {
-            console.error('VlanManager: Netplan try failed:', tryError);
+            NetworkLogger.error('Netplan try failed:', tryError);
             
             // Log the debug output even on failure
             if (tryError.message) {
-                console.log('VlanManager: Netplan error output:');
-                console.log('--- START NETPLAN ERROR ---');
-                console.log(tryError.message);
-                console.log('--- END NETPLAN ERROR ---');
+                NetworkLogger.info('Netplan error output:');
+                NetworkLogger.info('--- START NETPLAN ERROR ---');
+                NetworkLogger.info(tryError.message);
+                NetworkLogger.info('--- END NETPLAN ERROR ---');
             }
             
             // Check if this is just the bond revert warning (exit status 78) or bond configuration error
             if (tryError.exit_status === 78) {
-                console.log('VlanManager: Netplan try exited with status 78 (bond revert warning) - this is expected for bond configurations');
+                NetworkLogger.info('Netplan try exited with status 78 (bond revert warning) - this is expected for bond configurations');
                 
                 // Check if the error message contains bond mode issues
                 if (tryError.message && tryError.message.includes('unknown bond mode')) {
-                    console.warn('VlanManager: Bond configuration error detected. VLAN deletion will proceed but bond configuration needs fixing.');
+                    NetworkLogger.warning('Bond configuration error detected. VLAN deletion will proceed but bond configuration needs fixing.');
                     
                     if (typeof NetworkManager !== 'undefined' && NetworkManager.showToast) {
                         NetworkManager.showToast('warning', 'VLAN deleted but bond configuration error detected. Please check bond settings.');
@@ -2267,16 +2274,16 @@ VlanManager.deleteRealVlan = async function(vlanId, vlanName = null) {
         }
         
         // Apply netplan to ensure configuration is clean
-        console.log('VlanManager: Applying VLAN deletion configuration...');
+        NetworkLogger.info('Applying VLAN deletion configuration...');
         try {
             await cockpit.spawn(['netplan', 'apply'], { superuser: 'require' });
-            console.log('VlanManager: VLAN deletion configuration applied successfully');
+            NetworkLogger.info('VLAN deletion configuration applied successfully');
         } catch (applyError) {
-            console.error('VlanManager: Netplan apply failed:', applyError);
+            NetworkLogger.error('Netplan apply failed:', applyError);
             
             // Check if this is the same bond configuration issue
             if (applyError.exit_status === 78 && applyError.message && applyError.message.includes('unknown bond mode')) {
-                console.warn('VlanManager: Bond configuration error detected during apply. VLAN files were deleted but network configuration not fully applied.');
+                NetworkLogger.warning('Bond configuration error detected during apply. VLAN files were deleted but network configuration not fully applied.');
                 
                 if (typeof NetworkManager !== 'undefined' && NetworkManager.showToast) {
                     NetworkManager.showToast('warning', 'VLAN configuration files deleted but bond error prevents full network reload. Please fix bond configuration.');
@@ -2286,7 +2293,7 @@ VlanManager.deleteRealVlan = async function(vlanId, vlanName = null) {
             }
         }
         
-        console.log(`VlanManager: VLAN ${vlan.id} deleted successfully`);
+        NetworkLogger.info(`VlanManager: VLAN ${vlan.id} deleted successfully`);
         
         // Show success and reload VLANs
         if (typeof NetworkManager !== 'undefined' && NetworkManager.showSuccess) {
@@ -2302,7 +2309,7 @@ VlanManager.deleteRealVlan = async function(vlanId, vlanName = null) {
         return { success: true };
         
     } catch (error) {
-        console.error('VlanManager: Error deleting VLAN:', error);
+        NetworkLogger.error('Error deleting VLAN:', error);
         
         if (typeof NetworkManager !== 'undefined' && NetworkManager.showError) {
             NetworkManager.showError(`Failed to delete VLAN: ${error.message || error}`);
@@ -2315,7 +2322,7 @@ VlanManager.deleteRealVlan = async function(vlanId, vlanName = null) {
 // Keep the original deleteVlan function for backward compatibility
 function deleteVlanOriginal(vlanId) {
     if (confirm(`Are you sure you want to delete VLAN ${vlanId}? This action cannot be undone.`)) {
-        console.log(`VlanManager: Deleting VLAN ${vlanId}...`);
+        NetworkLogger.info(`VlanManager: Deleting VLAN ${vlanId}...`);
         
         if (!cockpit || !cockpit.spawn) {
             NetworkManager.showError('Cockpit API not available');
@@ -2349,7 +2356,7 @@ function deleteVlanOriginal(vlanId) {
                 VlanManager.loadVlans();
             })
             .catch((error) => {
-                console.error('VlanManager: Error deleting VLAN:', error);
+                NetworkLogger.error('Error deleting VLAN:', error);
                 NetworkManager.showError(`Failed to delete VLAN: ${error.message || error}`);
             });
     }
@@ -2360,140 +2367,8 @@ function refreshVlans() {
 }
 
 // Function to manually clean up conflicting configurations
-async function cleanupNetplanConflicts() {
-    try {
-        console.log('Manual cleanup: Starting Netplan conflict resolution...');
-        const cleanedCount = await VlanManager.cleanupConflictingConfigs();
-        
-        if (cleanedCount > 0) {
-            NetworkManager.showSuccess(`Cleaned up ${cleanedCount} conflicting configuration files. Please refresh to see changes.`);
-        } else {
-            NetworkManager.showSuccess('No conflicting configurations found. System is clean.');
-        }
-        
-        // Refresh the VLAN list
-        VlanManager.loadVlans();
-        
-    } catch (error) {
-        console.error('Manual cleanup: Error during cleanup:', error);
-        NetworkManager.showError(`Failed to clean up conflicts: ${error.message || error}`);
-    }
-}
-
-// Function to run netplan debug and show detailed output
-async function debugNetplanConfiguration() {
-    try {
-        console.log('Debug: Running netplan --debug try...');
-        NetworkManager.showSuccess('Running Netplan debug analysis...');
-        
-        const debugOutput = await cockpit.spawn(['netplan', '--debug', 'try', '--timeout=10'], { superuser: 'try' });
-        
-        console.log('Debug: Netplan debug output:');
-        console.log('=== NETPLAN DEBUG OUTPUT ===');
-        console.log(debugOutput);
-        console.log('=== END DEBUG OUTPUT ===');
-        
-        NetworkManager.showSuccess('Netplan debug completed successfully. Check browser console for detailed output.');
-        
-    } catch (error) {
-        console.error('Debug: Netplan debug failed:', error);
-        
-        // Log the error output
-        if (error.message) {
-            console.log('Debug: Netplan error output:');
-            console.log('=== NETPLAN ERROR OUTPUT ===');
-            console.log(error.message);
-            console.log('=== END ERROR OUTPUT ===');
-        }
-        
-        if (error.exit_status === 78) {
-            NetworkManager.showSuccess('Netplan debug completed with bond revert warning (expected). Check browser console for detailed output.');
-        } else {
-            NetworkManager.showError(`Netplan debug failed: ${error.message || error}. Check browser console for details.`);
-        }
-    }
-}
-
-// Comprehensive VLAN diagnostic function
-async function diagnosticVlanConfiguration() {
-    try {
-        console.log('=== VLAN DIAGNOSTIC REPORT ===');
-        
-        // 1. List all network interfaces
-        console.log('1. Network Interfaces:');
-        try {
-            const interfaces = await cockpit.spawn(['ip', 'link', 'show'], { superuser: 'try' });
-            console.log(interfaces);
-        } catch (error) {
-            console.error('Failed to get interfaces:', error);
-        }
-        
-        // 2. List all VLAN interfaces detected by system
-        console.log('\n2. System VLAN Interfaces:');
-        try {
-            const vlans = await cockpit.spawn(['ip', 'link', 'show', 'type', 'vlan'], { superuser: 'try' });
-            console.log(vlans);
-        } catch (error) {
-            console.error('Failed to get VLAN interfaces:', error);
-        }
-        
-        // 3. List all Netplan files
-        console.log('\n3. Netplan Files:');
-        try {
-            const netplanFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '*.yaml'], { superuser: 'try' });
-            console.log('Found Netplan files:');
-            console.log(netplanFiles);
-            
-            // Read each file
-            const files = netplanFiles.trim().split('\n').filter(f => f.trim());
-            for (const file of files) {
-                try {
-                    console.log(`\nContent of ${file}:`);
-                    const content = await cockpit.spawn(['cat', file], { superuser: 'try' });
-                    console.log(content);
-                } catch (error) {
-                    console.error(`Failed to read ${file}:`, error);
-                }
-            }
-        } catch (error) {
-            console.error('Failed to list Netplan files:', error);
-        }
-        
-        // 4. Run netplan status
-        console.log('\n4. Netplan Status:');
-        try {
-            const status = await cockpit.spawn(['netplan', 'status'], { superuser: 'try' });
-            console.log(status);
-        } catch (error) {
-            console.error('Failed to get netplan status:', error);
-        }
-        
-        // 5. Check VLAN Manager state
-        console.log('\n5. VLAN Manager State:');
-        console.log('Current VLANs in memory:', VlanManager.vlans);
-        
-        // 6. Test netplan try
-        console.log('\n6. Netplan Try Test:');
-        try {
-            const result = await cockpit.spawn(['netplan', '--debug', 'try', '--timeout=10'], { superuser: 'try' });
-            console.log('Netplan try successful:', result);
-        } catch (error) {
-            console.error('Netplan try failed:', error);
-        }
-        
-        console.log('=== END VLAN DIAGNOSTIC REPORT ===');
-        
-        NetworkManager.showSuccess('VLAN diagnostic completed. Check browser console for detailed report.');
-        
-    } catch (error) {
-        console.error('Diagnostic failed:', error);
-        NetworkManager.showError(`Diagnostic failed: ${error.message || error}`);
-    }
-}
-
-// Helper function to ensure error messages are always displayed
 function displayVlanError(modal, error, operation = 'VLAN operation') {
-    console.error(`VlanManager: Error in ${operation}:`, error);
+    NetworkLogger.error(`VlanManager: Error in ${operation}:`, error);
     
     let errorMessage = error.message || error.toString() || 'Unknown error occurred';
     
@@ -2527,128 +2402,61 @@ NetworkManager.loadVlans = function() {
 };
 
 // Emergency cleanup function for corrupted VLAN configurations
-async function emergencyCleanupCorruptedVlans() {
-    console.log('VlanManager: Running emergency cleanup for corrupted VLAN configurations...');
-    
-    try {
-        if (!cockpit || !cockpit.spawn) {
-            throw new Error('Cockpit API not available');
-        }
-        
-        // Find all XAVS VLAN configuration files
-        const vlanFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '90-xavs-vlan*.yaml'], { superuser: 'try' });
-        const files = vlanFiles.trim().split('\n').filter(f => f.trim());
-        
-        const corruptedFiles = [];
-        
-        for (const file of files) {
-            try {
-                const content = await cockpit.file(file).read();
-                if (content && (content.includes('link: null') || content.includes('link: ""') || content.includes('link:null'))) {
-                    console.log(`VlanManager: Found corrupted VLAN file: ${file}`);
-                    corruptedFiles.push(file);
-                }
-            } catch (fileError) {
-                console.warn(`VlanManager: Could not read file ${file}:`, fileError);
-            }
-        }
-        
-        if (corruptedFiles.length > 0) {
-            console.log(`VlanManager: Removing ${corruptedFiles.length} corrupted VLAN configuration files...`);
-            
-            for (const file of corruptedFiles) {
-                try {
-                    console.log(`VlanManager: Removing corrupted file: ${file}`);
-                    await cockpit.spawn(['rm', '-f', file], { superuser: 'require' });
-                } catch (removeError) {
-                    console.warn(`VlanManager: Could not remove ${file}:`, removeError);
-                }
-            }
-            
-            // Test the configuration after cleanup
-            console.log('VlanManager: Testing configuration after emergency cleanup...');
-            try {
-                const debugOutput = await cockpit.spawn(['netplan', '--debug', 'try', '--timeout=30'], { superuser: 'require' });
-                console.log('VlanManager: Emergency cleanup successful - configuration is now valid');
-                console.log('--- START NETPLAN DEBUG ---');
-                console.log(debugOutput);
-                console.log('--- END NETPLAN DEBUG ---');
-                
-                // Apply the cleaned configuration
-                await cockpit.spawn(['netplan', 'apply'], { superuser: 'require' });
-                console.log('VlanManager: Clean configuration applied successfully');
-                
-                NetworkManager.showSuccess(`Emergency cleanup completed: removed ${corruptedFiles.length} corrupted VLAN configurations`);
-                
-            } catch (tryError) {
-                console.error('VlanManager: Configuration still invalid after cleanup:', tryError);
-                if (tryError.exit_status === 78) {
-                    console.log('VlanManager: Bond revert warning (status 78) - proceeding anyway');
-                    await cockpit.spawn(['netplan', 'apply'], { superuser: 'require' });
-                    NetworkManager.showSuccess(`Emergency cleanup completed with warnings: removed ${corruptedFiles.length} corrupted VLAN configurations`);
-                } else {
-                    NetworkManager.showError(`Emergency cleanup failed: ${tryError.message || tryError}`);
-                }
-            }
-            
-            // Reload VLANs
-            VlanManager.loadVlans();
-            
-        } else {
-            console.log('VlanManager: No corrupted VLAN configurations found');
-            NetworkManager.showSuccess('No corrupted VLAN configurations found');
-        }
-        
-    } catch (error) {
-        console.error('VlanManager: Emergency cleanup failed:', error);
-        NetworkManager.showError(`Emergency cleanup failed: ${error.message || error}`);
-    }
-}
-
-// Update the main NetworkManager to use VlanManager (keep original version)
-NetworkManager.loadVlans = function() {
-    VlanManager.loadVlans();
-};
-
 function populateEditIpAddresses(ipAddresses) {
+    NetworkLogger.info(`VlanManager: populateEditIpAddresses called with:`, ipAddresses);
     const container = document.getElementById('edit-ip-addresses-container');
+    
+    if (!container) {
+        NetworkLogger.error('VlanManager: edit-ip-addresses-container not found!');
+        return;
+    }
     
     // Clear existing entries
     container.innerHTML = '';
     window.editIpAddressCounter = 0;
     
     // Ensure we have at least one entry
-    if (ipAddresses.length === 0) {
+    if (!ipAddresses || ipAddresses.length === 0) {
         ipAddresses = [''];
+        NetworkLogger.info(`VlanManager: No IP addresses provided, using empty array:`, ipAddresses);
     }
     
-    // Add entries for each IP address
+    NetworkLogger.info(`VlanManager: Processing ${ipAddresses.length} IP addresses for edit form`);
+    
+    // Create all entries using a consistent approach
     ipAddresses.forEach((ip, index) => {
-        if (index === 0) {
-            // First entry
-            container.innerHTML = `
-                <div class="ip-address-entry" data-index="0">
-                    <div style="display: flex; gap: 8px; align-items: flex-end;">
-                        <div style="flex: 1;">
-                            <input type="text" id="edit-vlan-ip-0" class="form-control edit-ip-address-input" placeholder="10.100.1.50/24" data-validate="cidr" value="${ip}">
-                        </div>
-                        <button type="button" class="btn btn-sm btn-outline-danger remove-edit-ip-btn" onclick="removeEditIpAddress(0)" style="display: none;">
-                            <i class="fas fa-minus"></i>
-                        </button>
+        NetworkLogger.info(`VlanManager: Adding IP address ${index}: '${ip}'`);
+        
+        const entryHtml = `
+            <div class="ip-address-entry" data-index="${index}">
+                <div class="ip-entry-row" ${index > 0 ? 'style="margin-top: 8px;"' : ''}>
+                    <div>
+                        <input type="text" id="edit-vlan-ip-${index}" class="form-control edit-ip-address-input" placeholder="10.100.1.50 (default /24)" data-validate="cidr" value="${ip || ''}">
                     </div>
+                    <button type="button" class="btn btn-sm btn-outline-danger remove-edit-ip-btn" onclick="removeEditIpAddress(${index})" ${index === 0 ? 'style="display: none;"' : ''}>
+                        <i class="fas fa-minus"></i>
+                    </button>
                 </div>
-            `;
-        } else {
-            // Additional entries
-            addEditIpAddress();
-            document.getElementById(`edit-vlan-ip-${window.editIpAddressCounter}`).value = ip;
-        }
+            </div>
+        `;
+        
+        container.insertAdjacentHTML('beforeend', entryHtml);
+        NetworkLogger.info(`VlanManager: Created IP entry ${index} with value: '${ip}'`);
     });
     
+    // Set the counter to the highest index for future additions
+    window.editIpAddressCounter = ipAddresses.length - 1;
+    
+    // Update button visibility
     updateEditRemoveButtonVisibility();
+    
+    // Log final state
+    const finalInputs = container.querySelectorAll('.edit-ip-address-input');
+    NetworkLogger.info(`VlanManager: Created ${finalInputs.length} IP input fields`);
+    finalInputs.forEach((input, idx) => {
+        NetworkLogger.info(`VlanManager: Input ${idx}: value='${input.value}', id='${input.id}'`);
+    });
 }
-
-let editIpAddressCounter = 0;
 
 function addEditIpAddress() {
     if (!window.editIpAddressCounter) window.editIpAddressCounter = 0;
@@ -2661,9 +2469,9 @@ function addEditIpAddress() {
     newEntry.setAttribute('data-index', window.editIpAddressCounter);
     
     newEntry.innerHTML = `
-        <div style="display: flex; gap: 8px; align-items: flex-end; margin-top: 8px;">
-            <div style="flex: 1;">
-                <input type="text" id="edit-vlan-ip-${window.editIpAddressCounter}" class="form-control edit-ip-address-input" placeholder="10.100.1.51/24" data-validate="cidr">
+        <div class="ip-entry-row" style="margin-top: 8px;">
+            <div>
+                <input type="text" id="edit-vlan-ip-${window.editIpAddressCounter}" class="form-control edit-ip-address-input" placeholder="10.100.1.51 (default /24)" data-validate="cidr">
             </div>
             <button type="button" class="btn btn-sm btn-outline-danger remove-edit-ip-btn" onclick="removeEditIpAddress(${window.editIpAddressCounter})">
                 <i class="fas fa-minus"></i>
@@ -2696,7 +2504,13 @@ function updateEditRemoveButtonVisibility() {
     entries.forEach((entry, idx) => {
         const removeBtn = entry.querySelector('.remove-edit-ip-btn');
         if (removeBtn) {
-            removeBtn.style.display = entries.length > 1 ? 'block' : 'none';
+            // Always hide the remove button for the first entry (index 0) and only show for additional entries when there are multiple
+            const entryIndex = parseInt(entry.getAttribute('data-index') || '0');
+            if (entryIndex === 0) {
+                removeBtn.style.display = 'none';
+            } else {
+                removeBtn.style.display = entries.length > 1 ? 'block' : 'none';
+            }
         }
     });
 }
@@ -2728,9 +2542,9 @@ function addIpAddress() {
     newEntry.setAttribute('data-index', ipAddressCounter);
     
     newEntry.innerHTML = `
-        <div style="display: flex; gap: 8px; align-items: flex-end; margin-top: 8px;">
-            <div style="flex: 1;">
-                <input type="text" id="vlan-ip-${ipAddressCounter}" class="form-control ip-address-input" placeholder="10.100.1.51/24" data-validate="cidr">
+        <div class="ip-entry-row" style="margin-top: 8px;">
+            <div>
+                <input type="text" id="vlan-ip-${ipAddressCounter}" class="form-control ip-address-input" placeholder="10.100.1.51 (default /24)" data-validate="cidr">
             </div>
             <button type="button" class="btn btn-sm btn-outline-danger remove-ip-btn" onclick="removeIpAddress(${ipAddressCounter})">
                 <i class="fas fa-minus"></i>
@@ -2817,34 +2631,75 @@ function populateIpAddresses(ipAddresses) {
 }
 
 // Test function to validate VLAN parent interface detection
-async function testVlanParentDetection() {
-    console.log('=== VLAN PARENT INTERFACE DETECTION TEST ===');
-    
+async function testVlanIpParsing() {
+    NetworkLogger.info('Testing VLAN IP parsing...');
     try {
-        console.log('1. Testing Netplan VLAN parsing...');
-        const netplanVlans = await VlanManager.fetchVlansFromNetplan();
-        console.log('Netplan VLANs:', netplanVlans);
+        // Get current ip a output
+        const ipOutput = await cockpit.spawn(['ip', 'a'], { superuser: 'try' });
+        NetworkLogger.info('Current ip a output:', ipOutput.substring(0, 1000) + '...');
         
-        console.log('\n2. Testing full VLAN loading...');
-        const allVlans = await VlanManager.fetchVlans();
-        console.log('All VLANs:', allVlans);
-        
-        console.log('\n3. Parent interface summary:');
-        allVlans.forEach(vlan => {
-            console.log(`VLAN ${vlan.id} (${vlan.name}): Parent = '${vlan.parentInterface}'`);
-        });
-        
-        NetworkManager.showSuccess('VLAN parent interface test completed. Check browser console for detailed results.');
-        
+        // Find VLAN interfaces and test parsing
+        const vlans = VlanManager.vlans;
+        for (const vlan of vlans) {
+            NetworkLogger.info(`Testing IP parsing for VLAN: ${vlan.name}`);
+            const details = await VlanManager.getVlanDetailsFromSystem(vlan.name, ipOutput);
+            NetworkLogger.info(`Parsed details for ${vlan.name}:`, details);
+        }
     } catch (error) {
-        console.error('VLAN test failed:', error);
-        NetworkManager.showError(`VLAN test failed: ${error.message || error}`);
+        NetworkLogger.error('Error in testVlanIpParsing:', error);
     }
-    
-    console.log('=== END VLAN PARENT INTERFACE TEST ===');
 }
 
-// Helper function to normalize IP addresses with default CIDR
+// Simple test function for browser console
+function testParsingLogic() {
+    console.log('Testing IP parsing logic...');
+    
+    const sampleOutput = `1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+2: eno1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
+    link/ether 00:25:90:8e:7e:f8 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.1.100/24 brd 192.168.1.255 scope global eno1
+3: eno1.100@eno1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+    link/ether 00:25:90:8e:7e:f8 brd ff:ff:ff:ff:ff:ff
+    inet 10.100.1.50/24 brd 10.100.1.255 scope global eno1.100
+    inet 10.100.1.51/24 scope global secondary eno1.100`;
+    
+    const interfaceName = 'eno1.100';
+    const details = { ipAddresses: [], status: 'unknown' };
+    
+    const lines = sampleOutput.split('\n');
+    let inInterfaceBlock = false;
+    
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const interfaceMatch = line.match(/^\d+:\s+([^@:\s]+)(?:@([^:\s]+))?:/);
+        
+        if (interfaceMatch) {
+            const currentInterface = interfaceMatch[1];
+            if (currentInterface === interfaceName) {
+                inInterfaceBlock = true;
+                details.status = line.includes('state UP') ? 'up' : 'down';
+                console.log(`Found interface ${interfaceName}, status: ${details.status}`);
+                continue;
+            } else {
+                if (inInterfaceBlock) break;
+                inInterfaceBlock = false;
+            }
+        }
+        
+        if (inInterfaceBlock && line.trim().startsWith('inet ')) {
+            const ipMatch = line.match(/inet\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(?:\/[0-9]+)?)/);
+            if (ipMatch) {
+                details.ipAddresses.push(ipMatch[1]);
+                console.log(`Found IP: ${ipMatch[1]}`);
+            }
+        }
+    }
+    
+    console.log('Final details:', details);
+    return details;
+}
 function normalizeIpWithCidr(ipAddress) {
     if (!ipAddress || !ipAddress.trim()) {
         return '';
@@ -2865,3 +2720,59 @@ function normalizeIpWithCidr(ipAddress) {
     // Return as is if it doesn't match IP pattern
     return ip;
 }
+
+// Wrapper function to handle async editVlan calls with refresh
+async function handleEditVlan(vlanIdentifier) {
+    try {
+        // Force refresh the specific VLAN data before editing
+        NetworkLogger.info(`Refreshing VLAN data before editing: ${vlanIdentifier}`);
+        
+        // Find the VLAN to refresh
+        let vlanToRefresh = VlanManager.vlans.find(v => v.name === vlanIdentifier);
+        if (!vlanToRefresh) {
+            vlanToRefresh = VlanManager.vlans.find(v => v.id == vlanIdentifier);
+        }
+        
+        if (vlanToRefresh) {
+            // Get fresh system data for this VLAN
+            const ipOutput = await cockpit.spawn(['ip', 'a'], { superuser: 'try' });
+            const freshDetails = await VlanManager.getVlanDetailsFromSystem(vlanToRefresh.name, ipOutput);
+            
+            // Update the VLAN object with fresh data
+            const vlanIndex = VlanManager.vlans.findIndex(v => v.name === vlanToRefresh.name);
+            if (vlanIndex !== -1) {
+                VlanManager.vlans[vlanIndex] = {
+                    ...VlanManager.vlans[vlanIndex],
+                    ipAddresses: freshDetails.ipAddresses || [],
+                    ip: freshDetails.ip || VlanManager.vlans[vlanIndex].ip,
+                    gateway: freshDetails.gateway || VlanManager.vlans[vlanIndex].gateway,
+                    dns: freshDetails.dns || VlanManager.vlans[vlanIndex].dns,
+                    status: freshDetails.status || VlanManager.vlans[vlanIndex].status
+                };
+                NetworkLogger.info(`Refreshed VLAN data for ${vlanToRefresh.name}:`, VlanManager.vlans[vlanIndex]);
+            }
+        }
+        
+        await editVlan(vlanIdentifier);
+    } catch (error) {
+        NetworkLogger.error('Error editing VLAN:', error);
+        NetworkManager.showError('Error loading VLAN edit form: ' + (error.message || error));
+    }
+}
+
+// Make function globally accessible
+window.handleEditVlan = handleEditVlan;
+window.addVlan = addVlan;
+window.addEditIpAddress = addEditIpAddress;
+window.removeEditIpAddress = removeEditIpAddress;
+window.updateEditRemoveButtonVisibility = updateEditRemoveButtonVisibility;
+window.collectEditIpAddresses = collectEditIpAddresses;
+window.addIpAddress = addIpAddress;
+window.removeIpAddress = removeIpAddress;
+window.updateRemoveButtonVisibility = updateRemoveButtonVisibility;
+window.collectIpAddresses = collectIpAddresses;
+window.testVlanIpParsing = testVlanIpParsing;
+window.testParsingLogic = testParsingLogic;
+
+// Export VlanManager globally so NetworkManager can access it
+window.VlanManager = VlanManager;

@@ -17,7 +17,6 @@ const BridgeManager = {
     // Load bridge configurations
     async loadBridges() {
         if (this.isLoading) {
-            console.log('BridgeManager: Already loading bridges, skipping...');
             return;
         }
         
@@ -33,7 +32,7 @@ const BridgeManager = {
             this.renderBridges();
             NetworkLogger.success(`Loaded ${this.bridges.length} bridge(s)`);
         } catch (error) {
-            console.error('BridgeManager: Failed to load bridges:', error);
+            NetworkLogger.error(' Failed to load bridges:', error);
             NetworkLogger.error(`Failed to load bridges: ${error.message}`);
             if (listElement) {
                 listElement.innerHTML = '<div class="error-message"><i class="fas fa-exclamation-triangle"></i>Failed to load bridges</div>';
@@ -45,8 +44,6 @@ const BridgeManager = {
     
     // Fetch real bridges from system using Cockpit APIs
     async fetchBridges() {
-        console.log('BridgeManager: Fetching real bridges from system...');
-        
         if (!cockpit || !cockpit.spawn) {
             throw new Error('Cockpit API not available');
         }
@@ -83,7 +80,7 @@ const BridgeManager = {
                                 type: this.determineBridgeType(interfaceName, details)
                             });
                         } catch (error) {
-                            console.warn(`BridgeManager: Could not get details for bridge ${interfaceName}:`, error);
+                            NetworkLogger.warning(`BridgeManager: Could not get details for bridge ${interfaceName}:`, error);
                             bridges.push({
                                 name: interfaceName,
                                 description: `Bridge ${interfaceName}`,
@@ -100,11 +97,10 @@ const BridgeManager = {
                 }
             }
             
-            console.log('BridgeManager: Found bridges:', bridges);
             return bridges;
             
         } catch (error) {
-            console.error('BridgeManager: Error fetching bridges:', error);
+            NetworkLogger.error(' Error fetching bridges:', error);
             return [];
         }
     },
@@ -120,7 +116,7 @@ const BridgeManager = {
                 const bridgeOutput = await cockpit.spawn(['bridge', 'link', 'show'], { superuser: 'try' });
                 return bridgeOutput.includes(`master ${interfaceName}`);
             } catch (error2) {
-                console.warn(`BridgeManager: Could not check if ${interfaceName} is a bridge:`, error2);
+                NetworkLogger.warning(`BridgeManager: Could not check if ${interfaceName} is a bridge:`, error2);
                 return false;
             }
         }
@@ -178,7 +174,7 @@ const BridgeManager = {
                         }
                     }
                 } catch (bridgeError) {
-                    console.warn(`BridgeManager: Could not get bridge members for ${interfaceName}:`, bridgeError);
+                    NetworkLogger.warning(`BridgeManager: Could not get bridge members for ${interfaceName}:`, bridgeError);
                 }
             }
 
@@ -188,7 +184,7 @@ const BridgeManager = {
                     { superuser: 'try' });
                 details.stp = stpOutput.trim() === '1';
             } catch (stpError) {
-                console.warn(`BridgeManager: Could not get STP state for ${interfaceName}:`, stpError);
+                NetworkLogger.warning(`BridgeManager: Could not get STP state for ${interfaceName}:`, stpError);
             }
 
             // Try to get forward delay
@@ -198,7 +194,7 @@ const BridgeManager = {
                 const delayMs = parseInt(delayOutput.trim());
                 details.forwardDelay = `${Math.round(delayMs / 100)}s`;
             } catch (delayError) {
-                console.warn(`BridgeManager: Could not get forward delay for ${interfaceName}:`, delayError);
+                NetworkLogger.warning(`BridgeManager: Could not get forward delay for ${interfaceName}:`, delayError);
             }
 
             // Try to get route information for gateway (use global default route)
@@ -212,11 +208,11 @@ const BridgeManager = {
                     }
                 }
             } catch (routeError) {
-                console.warn(`BridgeManager: Could not get default route info:`, routeError);
+                NetworkLogger.warning(`BridgeManager: Could not get default route info:`, routeError);
             }
 
         } catch (error) {
-            console.warn(`BridgeManager: Error getting details for ${interfaceName}:`, error);
+            NetworkLogger.warning(`BridgeManager: Error getting details for ${interfaceName}:`, error);
         }
 
         return details;
@@ -315,7 +311,7 @@ const BridgeManager = {
 
 // Get available interfaces for bridging (exclude already bridged, system interfaces, etc.)
 async function getAvailableInterfacesForBridging() {
-    console.log('BridgeManager: Getting available interfaces for bridging...');
+    NetworkLogger.info(' Getting available interfaces for bridging...');
     
     if (!cockpit || !cockpit.spawn) {
         throw new Error('Cockpit API not available');
@@ -351,11 +347,11 @@ async function getAvailableInterfacesForBridging() {
         }
         
     } catch (error) {
-        console.error('BridgeManager: Error getting available interfaces:', error);
+        NetworkLogger.error(' Error getting available interfaces:', error);
         throw error;
     }
     
-    console.log('BridgeManager: Available interfaces for bridging:', availableInterfaces);
+    NetworkLogger.info(' Available interfaces for bridging:', availableInterfaces);
     return availableInterfaces;
 }
 
@@ -411,7 +407,7 @@ async function addBridge() {
     try {
         availableInterfaces = await getAvailableInterfacesForBridging();
     } catch (error) {
-        console.warn('Could not get available interfaces for bridging:', error);
+        NetworkLogger.warning('Could not get available interfaces for bridging:', error);
         NetworkManager.showError('Cannot load network interfaces. Please ensure Cockpit is running properly and try again.');
         return;
     }
@@ -486,7 +482,7 @@ async function addBridge() {
                         <div class="ip-address-entry" data-index="0">
                             <div style="display: flex; gap: 8px; align-items: flex-end;">
                                 <div style="flex: 1;">
-                                    <input type="text" id="bridge-ip-0" class="form-control bridge-ip-address-input" placeholder="192.168.1.50/24" data-validate="cidr">
+                                    <input type="text" id="bridge-ip-0" class="form-control bridge-ip-address-input" placeholder="192.168.1.50 (default /24)" data-validate="cidr">
                                 </div>
                                 <button type="button" class="btn btn-sm btn-outline-danger remove-bridge-ip-btn" onclick="removeBridgeIpAddress(0)" style="display: none;">
                                     <i class="fas fa-minus"></i>
@@ -528,6 +524,12 @@ async function addBridge() {
     `;
     
     NetworkManager.createModal('Add Bridge Configuration', modalContent, modalFooter);
+    
+    // Setup live validation for the form
+    const form = document.getElementById('bridge-form');
+    if (typeof setupLiveValidation === 'function') {
+        setupLiveValidation(form);
+    }
     
     // Setup toggle functionality
     setupBridgeToggle();
@@ -586,9 +588,15 @@ async function editBridge(bridgeName) {
                 <div class="hint">Click on interfaces below to add them to the bridge.</div>
             </div>
             
-            <div class="form-group">
-                <label class="form-label" for="edit-bridge-ip">IP Address</label>
-                <input type="text" id="edit-bridge-ip" class="form-control" value="${bridge.ip}">
+            <div class="form-group full-width">
+                <label class="form-label">IP Addresses</label>
+                <div id="edit-bridge-ip-addresses-container">
+                    <!-- IP addresses will be populated by populateEditBridgeIpAddresses() -->
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-brand" onclick="addEditBridgeIpAddress()">
+                    <i class="fas fa-plus"></i> Add IP Address
+                </button>
+                <div class="hint">Enter IP addresses in CIDR notation (e.g., 192.168.1.10/24)</div>
             </div>
             
             <div class="form-group">
@@ -618,6 +626,29 @@ async function editBridge(bridgeName) {
     `;
     
     NetworkManager.createModal(`Edit Bridge: ${bridgeName}`, modalContent, modalFooter);
+    
+    // Populate IP addresses for editing
+    const ipAddresses = [];
+    if (bridge.ipAddresses && Array.isArray(bridge.ipAddresses) && bridge.ipAddresses.length > 0) {
+        // Use the stored IP addresses array
+        ipAddresses.push(...bridge.ipAddresses);
+    } else if (bridge.ip && bridge.ip !== 'Not configured' && bridge.ip !== 'DHCP') {
+        // Fallback to single IP field if ipAddresses not available
+        if (bridge.ip.includes(',')) {
+            ipAddresses.push(...bridge.ip.split(',').map(ip => ip.trim()));
+        } else {
+            ipAddresses.push(bridge.ip);
+        }
+    }
+    
+    NetworkLogger.info(`BridgeManager: Populating edit form with IP addresses:`, ipAddresses);
+    populateEditBridgeIpAddresses(ipAddresses);
+    
+    // Setup live validation for the edit form
+    const editForm = document.getElementById('bridge-edit-form');
+    if (typeof setupLiveValidation === 'function') {
+        setupLiveValidation(editForm);
+    }
     
     // Initialize edit interface selection
     setupEditBridgeInterfaceSelection(bridge);
@@ -655,7 +686,7 @@ function setupBridgeInterfaceSelection() {
 }
 
 function toggleBridgeInterface(interfaceName) {
-    console.log(`BridgeManager: Toggling interface ${interfaceName}`);
+    NetworkLogger.info(`BridgeManager: Toggling interface ${interfaceName}`);
     
     const interfaceCard = document.querySelector(`[data-interface="${interfaceName}"]`);
     const checkbox = document.getElementById(`bridge-${interfaceName}`);
@@ -681,7 +712,7 @@ function toggleBridgeInterface(interfaceName) {
 }
 
 function removeBridgeInterface(interfaceName) {
-    console.log(`BridgeManager: Removing interface ${interfaceName}`);
+    NetworkLogger.info(`BridgeManager: Removing interface ${interfaceName}`);
     
     if (window.selectedBridgeInterfaces) {
         window.selectedBridgeInterfaces.delete(interfaceName);
@@ -745,12 +776,12 @@ async function loadAvailableInterfacesForEdit() {
             `).join('');
         }
     } catch (error) {
-        console.warn('Could not load available interfaces for bridge editing:', error);
+        NetworkLogger.warning('Could not load available interfaces for bridge editing:', error);
     }
 }
 
 function toggleEditBridgeInterface(interfaceName) {
-    console.log(`BridgeManager: Toggling edit interface ${interfaceName}`);
+    NetworkLogger.info(`BridgeManager: Toggling edit interface ${interfaceName}`);
     
     const interfaceCard = document.querySelector(`[data-interface="${interfaceName}"]`);
     const checkbox = document.getElementById(`edit-bridge-${interfaceName}`);
@@ -776,7 +807,7 @@ function toggleEditBridgeInterface(interfaceName) {
 }
 
 function removeEditBridgeInterface(interfaceName) {
-    console.log(`BridgeManager: Removing edit interface ${interfaceName}`);
+    NetworkLogger.info(`BridgeManager: Removing edit interface ${interfaceName}`);
     
     if (window.editSelectedBridgeInterfaces) {
         window.editSelectedBridgeInterfaces.delete(interfaceName);
@@ -821,7 +852,7 @@ async function addInterfaceToBridge(bridgeName) {
     try {
         availableInterfaces = await getAvailableInterfacesForBridging();
     } catch (error) {
-        console.warn('Could not get available interfaces:', error);
+        NetworkLogger.warning('Could not get available interfaces:', error);
         NetworkManager.showError('Cannot load network interfaces. Please try again.');
         return;
     }
@@ -852,7 +883,7 @@ async function addInterfaceToBridge(bridgeName) {
 }
 
 async function saveBridge() {
-    console.log('BridgeManager: Creating new bridge...');
+    NetworkLogger.info(' Creating new bridge...');
     NetworkLogger.info('Creating new bridge...');
     
     const modal = document.querySelector('.modal');
@@ -895,12 +926,12 @@ async function saveBridge() {
         forwardDelay: document.getElementById('bridge-forward-delay')?.value || '4s'
     };
     
-    console.log('BridgeManager: Form data collected:', formData);
+    NetworkLogger.info(' Form data collected:', formData);
     NetworkLogger.info(`Creating bridge ${formData.name} with ${formData.interfaces.length} interfaces`);
     
     // Basic validation
     if (!formData.name || !formData.type) {
-        console.error('BridgeManager: Validation failed - insufficient data');
+        NetworkLogger.error(' Validation failed - insufficient data');
         ButtonProgress.clearLoading(saveButton);
         if (typeof showModalError === 'function') {
             showModalError(modal, 'Please fill in all required fields.');
@@ -912,7 +943,7 @@ async function saveBridge() {
     
     // Validate bridge name format
     if (!/^br[\w-]*$/.test(formData.name)) {
-        console.error('BridgeManager: Invalid bridge name format');
+        NetworkLogger.error(' Invalid bridge name format');
         ButtonProgress.clearLoading(saveButton);
         if (typeof showModalError === 'function') {
             showModalError(modal, 'Bridge name must start with "br" (e.g., br-vm, br-mgmt).');
@@ -927,7 +958,7 @@ async function saveBridge() {
         assertValidInterfaceName(formData.name);
         formData.interfaces.forEach(assertValidInterfaceName);
     } catch (validationError) {
-        console.error('BridgeManager: Interface name validation failed:', validationError);
+        NetworkLogger.error(' Interface name validation failed:', validationError);
         ButtonProgress.clearLoading(saveButton);
         if (typeof showModalError === 'function') {
             showModalError(modal, `Invalid interface name: ${validationError.message}`);
@@ -937,13 +968,13 @@ async function saveBridge() {
         return;
     }
     
-    console.log('BridgeManager: Validation passed, creating bridge configuration...');
+    NetworkLogger.info(' Validation passed, creating bridge configuration...');
     NetworkLogger.info(`Applying bridge configuration for ${formData.name}...`);
     
     // Create bridge using real system calls
     createRealBridge(formData)
         .then(() => {
-            console.log('BridgeManager: Bridge created successfully');
+            NetworkLogger.info(' Bridge created successfully');
             NetworkLogger.success(`Bridge ${formData.name} created successfully`);
             ButtonProgress.clearLoading(saveButton);
             if (typeof showModalSuccess === 'function') {
@@ -959,7 +990,7 @@ async function saveBridge() {
             }
         })
         .catch((error) => {
-            console.error('BridgeManager: Error creating bridge:', error);
+            NetworkLogger.error(' Error creating bridge:', error);
             NetworkLogger.error(`Failed to create bridge ${formData.name}: ${error.message}`);
             ButtonProgress.clearLoading(saveButton);
             if (typeof showModalError === 'function') {
@@ -972,7 +1003,7 @@ async function saveBridge() {
 
 // Create real bridge configuration
 async function createRealBridge(config) {
-    console.log('BridgeManager: Creating real bridge with config:', config);
+    NetworkLogger.info(' Creating real bridge with config:', config);
     
     if (!cockpit || !cockpit.spawn || !cockpit.file) {
         throw new Error('Cockpit API not available. Please ensure this module is running within Cockpit.');
@@ -981,61 +1012,61 @@ async function createRealBridge(config) {
     try {
         // Generate Netplan configuration for the bridge
         const netplanConfig = generateBridgeNetplanConfig(config);
-        console.log('BridgeManager: Generated Netplan config:', netplanConfig);
+        NetworkLogger.info(' Generated Netplan config:', netplanConfig);
         
         // Write Netplan configuration file
         const configFile = `/etc/netplan/90-xavs-${config.name}.yaml`;
-        console.log(`BridgeManager: Writing configuration to ${configFile}`);
+        NetworkLogger.info(`BridgeManager: Writing configuration to ${configFile}`);
         
         await cockpit.file(configFile, { superuser: 'require' }).replace(netplanConfig);
-        console.log('BridgeManager: Netplan configuration written successfully');
+        NetworkLogger.info(' Netplan configuration written successfully');
         
         // Set proper permissions
         await cockpit.spawn(['chmod', '600', configFile], { superuser: 'require' });
         
         // Test the configuration first with netplan try
-        console.log('BridgeManager: Testing Netplan configuration with netplan --debug try...');
+        NetworkLogger.info(' Testing Netplan configuration with netplan --debug try...');
         try {
             const debugOutput = await cockpit.spawn(['netplan', '--debug', 'try', '--timeout=30'], { superuser: 'require' });
-            console.log('BridgeManager: Netplan debug output:', debugOutput);
+            NetworkLogger.info(' Netplan debug output:', debugOutput);
         } catch (tryError) {
-            console.error('BridgeManager: Netplan try failed:', tryError);
+            NetworkLogger.error(' Netplan try failed:', tryError);
             
             // Check if this is just the bridge revert warning (exit status 78)
             if (tryError.exit_status === 78) {
-                console.log('BridgeManager: Netplan try exit 78: bridge change warning in non-interactive session; proceeding to apply');
+                NetworkLogger.info(' Netplan try exit 78: bridge change warning in non-interactive session; proceeding to apply');
             } else {
                 // Fallback: try preflight validation with netplan generate
-                console.log('BridgeManager: Attempting fallback preflight validation...');
+                NetworkLogger.info(' Attempting fallback preflight validation...');
                 try {
                     await cockpit.spawn(['netplan', 'generate'], { superuser: 'require' });
-                    console.log('BridgeManager: Preflight validation passed, proceeding to apply');
+                    NetworkLogger.info(' Preflight validation passed, proceeding to apply');
                 } catch (generateError) {
-                    console.error('BridgeManager: Preflight validation failed:', generateError);
+                    NetworkLogger.error(' Preflight validation failed:', generateError);
                     throw new Error(`Configuration validation failed: ${tryError.message || tryError}. The bridge configuration has not been applied.`);
                 }
             }
         }
         
         // Apply Netplan configuration permanently
-        console.log('BridgeManager: Applying Netplan configuration permanently...');
+        NetworkLogger.info(' Applying Netplan configuration permanently...');
         await cockpit.spawn(['netplan', 'apply'], { superuser: 'require' });
-        console.log('BridgeManager: Netplan applied successfully');
+        NetworkLogger.info(' Netplan applied successfully');
         
         // Verify bridge creation
-        console.log('BridgeManager: Verifying bridge creation...');
+        NetworkLogger.info(' Verifying bridge creation...');
         await cockpit.spawn(['ip', 'link', 'show', config.name], { superuser: 'try' });
-        console.log('BridgeManager: Bridge interface verified');
+        NetworkLogger.info(' Bridge interface verified');
         
     } catch (error) {
-        console.error('BridgeManager: Error creating bridge:', error);
+        NetworkLogger.error(' Error creating bridge:', error);
         throw new Error(`Failed to create bridge interface: ${error.message}`);
     }
 }
 
 // Generate Netplan configuration for bridge with modern features
 function generateBridgeNetplanConfig(config) {
-    console.log('BridgeManager: Generating Netplan config for bridge:', config.name);
+    NetworkLogger.info(' Generating Netplan config for bridge:', config.name);
     
     // Build configuration object for better structure
     let yamlContent = `network:
@@ -1098,12 +1129,12 @@ function generateBridgeNetplanConfig(config) {
 `;
     }
     
-    console.log('BridgeManager: Generated Netplan YAML:', yamlContent);
+    NetworkLogger.info(' Generated Netplan YAML:', yamlContent);
     return yamlContent;
 }
 
 async function updateBridge(bridgeName) {
-    console.log(`BridgeManager: Updating bridge ${bridgeName}...`);
+    NetworkLogger.info(`BridgeManager: Updating bridge ${bridgeName}...`);
     NetworkLogger.info(`Updating bridge ${bridgeName}...`);
     
     const modal = document.querySelector('.modal');
@@ -1118,18 +1149,19 @@ async function updateBridge(bridgeName) {
         description: document.getElementById('edit-bridge-description')?.value || '',
         interfaces: window.editSelectedBridgeInterfaces ? 
             Array.from(window.editSelectedBridgeInterfaces) : [],
-        ip: document.getElementById('edit-bridge-ip')?.value || '',
+        ipAddresses: collectEditBridgeIpAddresses(),
+        ip: collectEditBridgeIpAddresses()[0] || '', // Backward compatibility
         gateway: document.getElementById('edit-bridge-gateway')?.value || '',
         stp: document.getElementById('edit-bridge-stp')?.checked || false,
         forwardDelay: document.getElementById('edit-bridge-forward-delay')?.value || '4s'
     };
     
-    console.log('BridgeManager: Update form data:', formData);
+    NetworkLogger.info(' Update form data:', formData);
     
     // Update bridge configuration using real system calls
     updateRealBridge(formData)
         .then(() => {
-            console.log('BridgeManager: Bridge updated successfully');
+            NetworkLogger.info(' Bridge updated successfully');
             NetworkLogger.success(`Bridge ${bridgeName} updated successfully`);
             ButtonProgress.clearLoading(updateButton);
             if (typeof showModalSuccess === 'function') {
@@ -1145,7 +1177,7 @@ async function updateBridge(bridgeName) {
             }
         })
         .catch((error) => {
-            console.error('BridgeManager: Failed to update bridge:', error);
+            NetworkLogger.error(' Failed to update bridge:', error);
             NetworkLogger.error(`Failed to update bridge ${bridgeName}: ${error.message}`);
             ButtonProgress.clearLoading(updateButton);
             if (typeof showModalError === 'function') {
@@ -1158,7 +1190,7 @@ async function updateBridge(bridgeName) {
 
 // Update real bridge configuration
 async function updateRealBridge(config) {
-    console.log('BridgeManager: Updating real bridge configuration:', config);
+    NetworkLogger.info(' Updating real bridge configuration:', config);
     
     if (!cockpit || !cockpit.spawn || !cockpit.file) {
         throw new Error('Cockpit API not available');
@@ -1167,7 +1199,7 @@ async function updateRealBridge(config) {
     try {
         // Read existing configuration
         const configFile = `/etc/netplan/90-xavs-${config.name}.yaml`;
-        console.log(`BridgeManager: Reading existing config from ${configFile}`);
+        NetworkLogger.info(`BridgeManager: Reading existing config from ${configFile}`);
         
         // Find bridge in current configuration
         const bridge = BridgeManager.bridges.find(b => b.name === config.name);
@@ -1190,31 +1222,31 @@ async function updateRealBridge(config) {
         
         // Generate updated Netplan configuration
         const newNetplanConfig = generateBridgeNetplanConfig(updatedConfig);
-        console.log('BridgeManager: Generated updated Netplan config:', newNetplanConfig);
+        NetworkLogger.info(' Generated updated Netplan config:', newNetplanConfig);
         
         // Write updated configuration
         await cockpit.file(configFile, { superuser: 'require' }).replace(newNetplanConfig);
-        console.log('BridgeManager: Updated configuration written');
+        NetworkLogger.info(' Updated configuration written');
         
         // Apply changes
         await cockpit.spawn(['netplan', 'apply'], { superuser: 'require' });
-        console.log('BridgeManager: Configuration applied successfully');
+        NetworkLogger.info(' Configuration applied successfully');
         
     } catch (error) {
-        console.error('BridgeManager: Error updating bridge:', error);
+        NetworkLogger.error(' Error updating bridge:', error);
         throw error;
     }
 }
 
 async function toggleBridge(bridgeName, currentStatus) {
-    console.log(`BridgeManager: Toggling bridge ${bridgeName} from ${currentStatus}`);
+    NetworkLogger.info(`BridgeManager: Toggling bridge ${bridgeName} from ${currentStatus}`);
     NetworkLogger.info(`${currentStatus === 'up' ? 'Disabling' : 'Enabling'} bridge ${bridgeName}...`);
     
     const newStatus = currentStatus === 'up' ? 'down' : 'up';
     const action = newStatus === 'up' ? 'enable' : 'disable';
     
     if (confirm(`Are you sure you want to ${action} bridge ${bridgeName}?`)) {
-        console.log(`BridgeManager: User confirmed ${action} for bridge ${bridgeName}`);
+        NetworkLogger.info(`BridgeManager: User confirmed ${action} for bridge ${bridgeName}`);
         
         // Use real system command to toggle bridge
         toggleRealBridge(bridgeName, newStatus)
@@ -1224,7 +1256,7 @@ async function toggleBridge(bridgeName, currentStatus) {
                 BridgeManager.loadBridges();
             })
             .catch((error) => {
-                console.error('BridgeManager: Failed to toggle bridge:', error);
+                NetworkLogger.error(' Failed to toggle bridge:', error);
                 NetworkLogger.error(`Failed to ${action} bridge ${bridgeName}: ${error.message}`);
                 NetworkManager.showError(`Failed to ${action} bridge: ${error.message}`);
             });
@@ -1233,7 +1265,7 @@ async function toggleBridge(bridgeName, currentStatus) {
 
 // Toggle real bridge interface
 async function toggleRealBridge(bridgeName, targetStatus) {
-    console.log(`BridgeManager: Setting bridge ${bridgeName} to ${targetStatus}`);
+    NetworkLogger.info(`BridgeManager: Setting bridge ${bridgeName} to ${targetStatus}`);
     
     if (!cockpit || !cockpit.spawn) {
         throw new Error('Cockpit API not available');
@@ -1244,23 +1276,23 @@ async function toggleRealBridge(bridgeName, targetStatus) {
     
     try {
         const command = targetStatus === 'up' ? 'up' : 'down';
-        console.log(`BridgeManager: Running: ip link set ${bridgeName} ${command}`);
+        NetworkLogger.info(`BridgeManager: Running: ip link set ${bridgeName} ${command}`);
         
         await cockpit.spawn(['ip', 'link', 'set', bridgeName, command], { superuser: 'require' });
-        console.log(`BridgeManager: Bridge ${bridgeName} set to ${targetStatus} successfully`);
+        NetworkLogger.info(`BridgeManager: Bridge ${bridgeName} set to ${targetStatus} successfully`);
         
     } catch (error) {
-        console.error(`BridgeManager: Error toggling bridge ${bridgeName}:`, error);
+        NetworkLogger.error(`BridgeManager: Error toggling bridge ${bridgeName}:`, error);
         throw new Error(`Failed to set bridge ${bridgeName} to ${targetStatus}: ${error.message}`);
     }
 }
 
 async function deleteBridge(bridgeName) {
-    console.log(`BridgeManager: Delete bridge ${bridgeName} requested`);
+    NetworkLogger.info(`BridgeManager: Delete bridge ${bridgeName} requested`);
     NetworkLogger.warning(`Bridge deletion requested for ${bridgeName}`);
     
     if (confirm(`Are you sure you want to delete bridge ${bridgeName}? This will remove the bridge interface and its configuration. This action cannot be undone.`)) {
-        console.log(`BridgeManager: User confirmed deletion of bridge ${bridgeName}`);
+        NetworkLogger.info(`BridgeManager: User confirmed deletion of bridge ${bridgeName}`);
         NetworkLogger.info(`Deleting bridge ${bridgeName}...`);
         
         // Use real system commands to delete bridge
@@ -1271,7 +1303,7 @@ async function deleteBridge(bridgeName) {
                 BridgeManager.loadBridges();
             })
             .catch((error) => {
-                console.error('BridgeManager: Failed to delete bridge:', error);
+                NetworkLogger.error(' Failed to delete bridge:', error);
                 NetworkLogger.error(`Failed to delete bridge ${bridgeName}: ${error.message}`);
                 NetworkManager.showError(`Failed to delete bridge: ${error.message}`);
             });
@@ -1280,7 +1312,7 @@ async function deleteBridge(bridgeName) {
 
 // Delete real bridge interface and configuration
 async function deleteRealBridge(bridgeName) {
-    console.log(`BridgeManager: Deleting real bridge ${bridgeName}`);
+    NetworkLogger.info(`BridgeManager: Deleting real bridge ${bridgeName}`);
     
     if (!cockpit || !cockpit.spawn || !cockpit.file) {
         throw new Error('Cockpit API not available');
@@ -1291,45 +1323,45 @@ async function deleteRealBridge(bridgeName) {
     
     try {
         // First, bring the bridge down
-        console.log(`BridgeManager: Bringing bridge ${bridgeName} down...`);
+        NetworkLogger.info(`BridgeManager: Bringing bridge ${bridgeName} down...`);
         try {
             await cockpit.spawn(['ip', 'link', 'set', bridgeName, 'down'], { superuser: 'require' });
         } catch (downError) {
-            console.warn(`BridgeManager: Could not bring bridge down (may not exist):`, downError);
+            NetworkLogger.warning(`BridgeManager: Could not bring bridge down (may not exist):`, downError);
         }
         
         // Remove the XAVS configuration file
         const configFile = `/etc/netplan/90-xavs-${bridgeName}.yaml`;
-        console.log(`BridgeManager: Removing configuration file ${configFile}`);
+        NetworkLogger.info(`BridgeManager: Removing configuration file ${configFile}`);
         
         try {
             await cockpit.spawn(['rm', '-f', configFile], { superuser: 'require' });
-            console.log('BridgeManager: Configuration file removed');
+            NetworkLogger.info(' Configuration file removed');
         } catch (rmError) {
-            console.warn('BridgeManager: Could not remove configuration file:', rmError);
+            NetworkLogger.warning(' Could not remove configuration file:', rmError);
         }
         
         // Apply Netplan to remove the bridge from system
-        console.log('BridgeManager: Applying Netplan to remove bridge...');
+        NetworkLogger.info(' Applying Netplan to remove bridge...');
         await cockpit.spawn(['netplan', 'apply'], { superuser: 'require' });
-        console.log('BridgeManager: Netplan applied - bridge should be removed');
+        NetworkLogger.info(' Netplan applied - bridge should be removed');
         
         // Verify bridge is gone
         try {
             await cockpit.spawn(['ip', 'link', 'show', bridgeName], { superuser: 'try' });
-            console.warn(`BridgeManager: Bridge ${bridgeName} still exists after deletion attempt`);
+            NetworkLogger.warning(`BridgeManager: Bridge ${bridgeName} still exists after deletion attempt`);
         } catch (verifyError) {
-            console.log(`BridgeManager: Bridge ${bridgeName} successfully removed`);
+            NetworkLogger.info(`BridgeManager: Bridge ${bridgeName} successfully removed`);
         }
         
     } catch (error) {
-        console.error(`BridgeManager: Error deleting bridge ${bridgeName}:`, error);
+        NetworkLogger.error(`BridgeManager: Error deleting bridge ${bridgeName}:`, error);
         throw new Error(`Failed to delete bridge ${bridgeName}: ${error.message}`);
     }
 }
 
 async function addInterfaceToExistingBridge(bridgeName) {
-    console.log(`BridgeManager: Adding interface to bridge ${bridgeName}`);
+    NetworkLogger.info(`BridgeManager: Adding interface to bridge ${bridgeName}`);
     
     const interfaceName = document.getElementById('new-interface').value;
     if (!interfaceName) {
@@ -1341,12 +1373,12 @@ async function addInterfaceToExistingBridge(bridgeName) {
         return;
     }
     
-    console.log(`BridgeManager: Adding interface ${interfaceName} to bridge ${bridgeName}`);
+    NetworkLogger.info(`BridgeManager: Adding interface ${interfaceName} to bridge ${bridgeName}`);
     
     // Add interface using real system commands
     addRealInterfaceToBridge(bridgeName, interfaceName)
         .then(() => {
-            console.log(`BridgeManager: Interface ${interfaceName} added to bridge ${bridgeName} successfully`);
+            NetworkLogger.info(`BridgeManager: Interface ${interfaceName} added to bridge ${bridgeName} successfully`);
             if (typeof showModalSuccess === 'function') {
                 showModalSuccess(document.querySelector('.modal'), `Interface ${interfaceName} added to bridge ${bridgeName}`);
                 setTimeout(() => {
@@ -1360,7 +1392,7 @@ async function addInterfaceToExistingBridge(bridgeName) {
             }
         })
         .catch((error) => {
-            console.error('BridgeManager: Failed to add interface to bridge:', error);
+            NetworkLogger.error(' Failed to add interface to bridge:', error);
             if (typeof showModalError === 'function') {
                 showModalError(document.querySelector('.modal'), `Failed to add interface to bridge: ${error.message}`);
             } else {
@@ -1371,7 +1403,7 @@ async function addInterfaceToExistingBridge(bridgeName) {
 
 // Add real interface to bridge
 async function addRealInterfaceToBridge(bridgeName, interfaceName) {
-    console.log(`BridgeManager: Adding real interface ${interfaceName} to bridge ${bridgeName}`);
+    NetworkLogger.info(`BridgeManager: Adding real interface ${interfaceName} to bridge ${bridgeName}`);
     
     if (!cockpit || !cockpit.spawn) {
         throw new Error('Cockpit API not available');
@@ -1383,21 +1415,21 @@ async function addRealInterfaceToBridge(bridgeName, interfaceName) {
     
     try {
         // First, ensure the interface is down
-        console.log(`BridgeManager: Bringing interface ${interfaceName} down...`);
+        NetworkLogger.info(`BridgeManager: Bringing interface ${interfaceName} down...`);
         await cockpit.spawn(['ip', 'link', 'set', interfaceName, 'down'], { superuser: 'require' });
         
         // Add interface to bridge
-        console.log(`BridgeManager: Adding ${interfaceName} to bridge ${bridgeName}...`);
+        NetworkLogger.info(`BridgeManager: Adding ${interfaceName} to bridge ${bridgeName}...`);
         await cockpit.spawn(['ip', 'link', 'set', interfaceName, 'master', bridgeName], { superuser: 'require' });
         
         // Bring the interface back up
-        console.log(`BridgeManager: Bringing interface ${interfaceName} up...`);
+        NetworkLogger.info(`BridgeManager: Bringing interface ${interfaceName} up...`);
         await cockpit.spawn(['ip', 'link', 'set', interfaceName, 'up'], { superuser: 'require' });
         
-        console.log(`BridgeManager: Interface ${interfaceName} added to bridge ${bridgeName} successfully`);
+        NetworkLogger.info(`BridgeManager: Interface ${interfaceName} added to bridge ${bridgeName} successfully`);
         
     } catch (error) {
-        console.error(`BridgeManager: Error adding interface ${interfaceName} to bridge ${bridgeName}:`, error);
+        NetworkLogger.error(`BridgeManager: Error adding interface ${interfaceName} to bridge ${bridgeName}:`, error);
         throw new Error(`Failed to add ${interfaceName} to bridge ${bridgeName}: ${error.message}`);
     }
 }
@@ -1410,6 +1442,129 @@ function refreshBridges() {
 NetworkManager.loadBridges = function() {
     BridgeManager.loadBridges();
 };
+
+// Bridge Edit IP Address Management Functions
+function populateEditBridgeIpAddresses(ipAddresses) {
+    const container = document.getElementById('edit-bridge-ip-addresses-container');
+    
+    // Clear existing entries
+    container.innerHTML = '';
+    window.editBridgeIpAddressCounter = 0;
+    
+    // Ensure we have at least one entry
+    if (ipAddresses.length === 0) {
+        ipAddresses = [''];
+    }
+    
+    // Add entries for each IP address
+    ipAddresses.forEach((ip, index) => {
+        if (index === 0) {
+            // First entry
+            container.innerHTML = `
+                <div class="ip-address-entry" data-index="0">
+                    <div style="display: flex; gap: 8px; align-items: flex-end;">
+                        <div style="flex: 1;">
+                            <input type="text" id="edit-bridge-ip-0" class="form-control edit-bridge-ip-address-input" placeholder="192.168.1.50 (default /24)" data-validate="cidr" value="${ip}">
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-danger remove-edit-bridge-ip-btn" onclick="removeEditBridgeIpAddress(0)" style="display: none;">
+                            <i class="fas fa-minus"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        } else {
+            // Additional entries
+            addEditBridgeIpAddress();
+            const newInput = document.getElementById(`edit-bridge-ip-${window.editBridgeIpAddressCounter}`);
+            if (newInput) {
+                newInput.value = ip;
+            }
+        }
+    });
+    
+    updateEditBridgeRemoveButtonVisibility();
+}
+
+function addEditBridgeIpAddress() {
+    if (!window.editBridgeIpAddressCounter) window.editBridgeIpAddressCounter = 0;
+    window.editBridgeIpAddressCounter++;
+    
+    const container = document.getElementById('edit-bridge-ip-addresses-container');
+    
+    const newEntry = document.createElement('div');
+    newEntry.className = 'ip-address-entry';
+    newEntry.setAttribute('data-index', window.editBridgeIpAddressCounter);
+    
+    newEntry.innerHTML = `
+        <div style="display: flex; gap: 8px; align-items: flex-end; margin-top: 8px;">
+            <div style="flex: 1;">
+                <input type="text" id="edit-bridge-ip-${window.editBridgeIpAddressCounter}" class="form-control edit-bridge-ip-address-input" placeholder="192.168.1.51 (default /24)" data-validate="cidr">
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-danger remove-edit-bridge-ip-btn" onclick="removeEditBridgeIpAddress(${window.editBridgeIpAddressCounter})">
+                <i class="fas fa-minus"></i>
+            </button>
+        </div>
+    `;
+    
+    container.appendChild(newEntry);
+    
+    updateEditBridgeRemoveButtonVisibility();
+    
+    // Setup live validation for the new input
+    const newInput = document.getElementById(`edit-bridge-ip-${window.editBridgeIpAddressCounter}`);
+    if (typeof setupLiveValidation === 'function') {
+        setupLiveValidation(newInput.closest('form'));
+    }
+}
+
+function removeEditBridgeIpAddress(index) {
+    const container = document.getElementById('edit-bridge-ip-addresses-container');
+    const entry = container.querySelector(`[data-index="${index}"]`);
+    if (entry) {
+        entry.remove();
+    }
+    
+    // Ensure at least one IP address field remains
+    const remainingEntries = container.querySelectorAll('.ip-address-entry');
+    if (remainingEntries.length === 0) {
+        addEditBridgeIpAddress();
+    }
+    
+    updateEditBridgeRemoveButtonVisibility();
+}
+
+function updateEditBridgeRemoveButtonVisibility() {
+    const container = document.getElementById('edit-bridge-ip-addresses-container');
+    if (!container) return;
+    
+    const removeButtons = container.querySelectorAll('.remove-edit-bridge-ip-btn');
+    
+    // Hide remove button if only one IP address field, show otherwise
+    if (removeButtons.length <= 1) {
+        removeButtons.forEach(btn => btn.style.display = 'none');
+    } else {
+        removeButtons.forEach(btn => btn.style.display = 'inline-flex');
+    }
+}
+
+function collectEditBridgeIpAddresses() {
+    const inputs = document.querySelectorAll('#edit-bridge-ip-addresses-container .edit-bridge-ip-address-input');
+    const ipAddresses = [];
+    
+    inputs.forEach(input => {
+        const value = input.value.trim();
+        if (value) {
+            // Add /24 as default CIDR if not provided
+            if (!value.includes('/') && /^(\d{1,3}\.){3}\d{1,3}$/.test(value)) {
+                ipAddresses.push(value + '/24');
+            } else {
+                ipAddresses.push(value);
+            }
+        }
+    });
+    
+    return ipAddresses;
+}
 
 // Bridge Multiple IP Address Management Functions
 let bridgeIpAddressCounter = 0;
@@ -1425,7 +1580,7 @@ function addBridgeIpAddress() {
     newEntry.innerHTML = `
         <div style="display: flex; gap: 8px; align-items: flex-end; margin-top: 8px;">
             <div style="flex: 1;">
-                <input type="text" id="bridge-ip-${bridgeIpAddressCounter}" class="form-control bridge-ip-address-input" placeholder="192.168.1.51/24" data-validate="cidr">
+                <input type="text" id="bridge-ip-${bridgeIpAddressCounter}" class="form-control bridge-ip-address-input" placeholder="192.168.1.51 (default /24)" data-validate="cidr">
             </div>
             <button type="button" class="btn btn-sm btn-outline-danger remove-bridge-ip-btn" onclick="removeBridgeIpAddress(${bridgeIpAddressCounter})">
                 <i class="fas fa-minus"></i>
@@ -1470,7 +1625,13 @@ function collectBridgeIpAddresses() {
     
     ipInputs.forEach(input => {
         if (input.value.trim()) {
-            ipAddresses.push(input.value.trim());
+            const ip = input.value.trim();
+            // Add /24 as default CIDR if not provided
+            if (!ip.includes('/') && /^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) {
+                ipAddresses.push(ip + '/24');
+            } else {
+                ipAddresses.push(ip);
+            }
         }
     });
     
@@ -1494,3 +1655,6 @@ window.deleteBridge = deleteBridge;
 window.addInterfaceToBridge = addInterfaceToBridge;
 window.addInterfaceToExistingBridge = addInterfaceToExistingBridge;
 window.saveBridge = saveBridge;
+window.addEditBridgeIpAddress = addEditBridgeIpAddress;
+window.removeEditBridgeIpAddress = removeEditBridgeIpAddress;
+window.collectEditBridgeIpAddresses = collectEditBridgeIpAddresses;

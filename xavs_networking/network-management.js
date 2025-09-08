@@ -2,9 +2,9 @@
 
 // Check for Cockpit API availability
 if (typeof cockpit === 'undefined') {
-    console.error('Cockpit API not available. Make sure cockpit.js is loaded.');
-    console.error('This module requires Cockpit to be properly installed and running.');
-    console.error('Please ensure you are accessing this page through the Cockpit web interface.');
+    NetworkLogger.error('Cockpit API not available. Make sure cockpit.js is loaded.');
+    NetworkLogger.error('This module requires Cockpit to be properly installed and running.');
+    NetworkLogger.error('Please ensure you are accessing this page through the Cockpit web interface.');
 }
 
 // Global constants
@@ -20,7 +20,7 @@ const NetworkLogger = {
         this.statusElement = document.getElementById('status-text');
         
         if (!this.logElement) {
-            console.warn('Log element not found');
+            NetworkLogger.warning('Log element not found');
             return;
         }
         
@@ -42,7 +42,7 @@ const NetworkLogger = {
     
     log(message = '') {
         if (!this.logElement) {
-            console.warn('Log element not available, using console:', message);
+            console.warn('⚠️ NetworkLogger: Log element not available, using console:', message);
             return;
         }
         
@@ -61,8 +61,8 @@ const NetworkLogger = {
         // Store logs for persistence
         this.storeLogs(logEntry);
         
-        // Console logging for debugging
-        console.log('NetworkManager:', message);
+        // Console logging for debugging - use console.info directly to avoid recursion
+        console.info(`📝 NetworkLogger: ${message}`);
     },
     
     loadStoredLogs() {
@@ -78,7 +78,7 @@ const NetworkLogger = {
                 this.logElement.scrollTop = this.logElement.scrollHeight;
             }
         } catch (e) {
-            console.warn('Could not load stored logs:', e);
+            NetworkLogger.warning('Could not load stored logs:', e);
         }
     },
     
@@ -93,12 +93,12 @@ const NetworkLogger = {
                 detail: { logs: newLogs }
             }));
         } catch (e) {
-            console.warn('localStorage failed, trying sessionStorage:', e);
+            console.warn('⚠️ NetworkLogger: localStorage failed, trying sessionStorage:', e);
             try {
                 const existingLogs = sessionStorage.getItem('xavs-network-logs') || '';
                 sessionStorage.setItem('xavs-network-logs', existingLogs + logEntry + '\n');
             } catch (e2) {
-                console.warn('Could not store logs:', e2);
+                console.warn('⚠️ NetworkLogger: Could not store logs:', e2);
             }
         }
     },
@@ -142,7 +142,7 @@ const NetworkLogger = {
                         detail: { logs: '' }
                     }));
                 } catch (e) {
-                    console.warn('Could not clear stored logs:', e);
+                    NetworkLogger.warning('Could not clear stored logs:', e);
                 }
                 
                 this.log('Log cleared');
@@ -251,7 +251,7 @@ const ButtonProgress = {
 
 // Global state management
 const NetworkManager = {
-    currentTab: 'overview',
+    currentTab: 'interfaces',
     interfaces: [],
     vlans: [],
     bridges: [],
@@ -264,11 +264,9 @@ const NetworkManager = {
     // Initialize the application
     init() {
         if (this.initialized) {
-            console.log('NetworkManager already initialized, skipping...');
             return;
         }
         
-        console.log('NetworkManager: Starting initialization...');
         this.initialized = true;
         
         // Initialize logging first
@@ -276,43 +274,39 @@ const NetworkManager = {
         
         this.setupTabNavigation();
         this.fixNetplanPermissions(); // Fix any permission issues on startup
-        this.loadSystemStatus();
         this.loadNetworkData();
         this.setupEventListeners();
         
         // Initialize external managers if available
-        if (typeof BondManager !== 'undefined' && BondManager.loadBonds) {
-            NetworkLogger.info('Initializing BondManager...');
-            BondManager.loadBonds().catch(error => {
-                NetworkLogger.error(`Failed to initialize BondManager: ${error.message}`);
+        if (typeof NetworkManager !== 'undefined' && this.loadBonds) {
+            NetworkLogger.info('Initializing NetworkManager bonds...');
+            this.loadBonds().catch(error => {
+                NetworkLogger.error(`Failed to initialize bonds: ${error.message}`);
             });
         }
         
         // Refresh data every 30 seconds
         setInterval(() => {
-            if (this.currentTab === 'overview') {
-                this.loadSystemStatus();
-            }
+            // Refresh current tab data
+            this.loadTabData(this.currentTab);
         }, 30000);
     },
 
     // Fix permissions for all XAVS Netplan files
     async fixNetplanPermissions() {
         try {
-            console.log('Checking and fixing Netplan file permissions...');
             const xavsFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '90-xavs-*.yaml'], { superuser: 'try' });
             const files = xavsFiles.trim().split('\n').filter(f => f.trim());
             
             for (const file of files) {
                 try {
                     await cockpit.spawn(['chmod', '600', file], { superuser: 'try' });
-                    console.log(`Fixed permissions for ${file}`);
                 } catch (error) {
-                    console.warn(`Could not fix permissions for ${file}:`, error);
+                    NetworkLogger.warning(`Could not fix permissions for ${file}:`, error);
                 }
             }
         } catch (error) {
-            console.warn('Error fixing Netplan permissions:', error);
+            NetworkLogger.warning('Error fixing Netplan permissions:', error);
         }
     },
     
@@ -342,9 +336,6 @@ const NetworkManager = {
     // Load data for specific tab
     loadTabData(tab) {
         switch(tab) {
-            case 'overview':
-                this.loadSystemStatus();
-                break;
             case 'interfaces':
                 this.loadInterfaces();
                 break;
@@ -356,9 +347,9 @@ const NetworkManager = {
                 break;
             case 'bonds':
                 this.loadBonds();
-                // Also initialize BondManager if it exists
-                if (typeof BondManager !== 'undefined' && BondManager.loadBonds) {
-                    BondManager.loadBonds();
+                // Also initialize bonds if available
+                if (typeof NetworkManager !== 'undefined' && this.loadBonds) {
+                    this.loadBonds();
                 }
                 break;
             case 'routes':
@@ -367,26 +358,10 @@ const NetworkManager = {
             case 'dns':
                 this.loadDnsConfig();
                 break;
-            case 'monitoring':
-                this.loadMonitoring();
-                break;
-            case 'config':
-                this.loadConfigManagement();
-                break;
         }
     },
     
-    // Load system status
-    async loadSystemStatus() {
-        try {
-            // Get real system status using Cockpit APIs
-            const status = await this.fetchSystemStatus();
-            this.updateStatusDisplay(status);
-        } catch (error) {
-            console.error('Failed to load system status:', error);
-            this.showError('Failed to load system status');
-        }
-    },
+    // Load network interfaces
     
     // Fetch real system status
     async fetchSystemStatus() {
@@ -403,7 +378,7 @@ const NetworkManager = {
         };
         
         if (!cockpit || !cockpit.spawn) {
-            console.warn('Cockpit API not available for system status');
+            NetworkLogger.warning('Cockpit API not available for system status');
             return status;
         }
         
@@ -423,7 +398,7 @@ const NetworkManager = {
                         status.networkd.uptime = uptime;
                     }
                 } catch (uptimeError) {
-                    console.warn('Failed to get networkd uptime:', uptimeError);
+                    NetworkLogger.warning('Failed to get networkd uptime:', uptimeError);
                 }
             }
             
@@ -441,7 +416,7 @@ const NetworkManager = {
                         status.resolved.uptime = uptime;
                     }
                 } catch (uptimeError) {
-                    console.warn('Failed to get resolved uptime:', uptimeError);
+                    NetworkLogger.warning('Failed to get resolved uptime:', uptimeError);
                 }
             }
             
@@ -456,7 +431,7 @@ const NetworkManager = {
                     }
                 }
             } catch (netplanError) {
-                console.warn('Failed to get Netplan renderer:', netplanError);
+                NetworkLogger.warning('Failed to get Netplan renderer:', netplanError);
             }
             
             // Count interfaces from our loaded data
@@ -479,12 +454,12 @@ const NetworkManager = {
                 const netplanCheck = await cockpit.spawn(['netplan', 'get'], { superuser: 'try' });
                 status.syntaxValid = true;
             } catch (netplanError) {
-                console.warn('Failed to check Netplan configuration:', netplanError);
+                NetworkLogger.warning('Failed to check Netplan configuration:', netplanError);
                 status.syntaxValid = false;
             }
             
         } catch (error) {
-            console.warn('Error fetching system status:', error);
+            NetworkLogger.warning('Error fetching system status:', error);
         }
         
         return status;
@@ -561,7 +536,7 @@ const NetworkManager = {
     // Fetch real system logs
     async fetchSystemLogs() {
         if (!cockpit || !cockpit.spawn) {
-            console.warn('Cockpit API not available for log fetching');
+            NetworkLogger.warning('Cockpit API not available for log fetching');
             return 'Cockpit API not available - please ensure you are running this module within Cockpit';
         }
         
@@ -582,7 +557,7 @@ const NetworkManager = {
                 return 'No recent network logs found.';
             }
         } catch (error) {
-            console.warn('Failed to fetch system logs:', error);
+            NetworkLogger.warning('Failed to fetch system logs:', error);
             return `Failed to fetch system logs: ${error.message}`;
         }
     },
@@ -603,11 +578,11 @@ const NetworkManager = {
     // Fetch real interfaces from system using Cockpit APIs
     async fetchInterfaces() {
         try {
-            console.log('Fetching real network interfaces from system...');
+            NetworkLogger.info('Fetching real network interfaces from system...');
             const interfaces = await this.getSystemInterfaces();
             return interfaces;
         } catch (error) {
-            console.error('Failed to fetch interfaces:', error);
+            NetworkLogger.error('Failed to fetch interfaces:', error);
             this.showError('Failed to load network interfaces: ' + error.message);
             return [];
         }
@@ -624,10 +599,12 @@ const NetworkManager = {
             }
             
             // Get interface list using networkctl
-            console.log('Running networkctl list command...');
+            NetworkLogger.info('Running networkctl list command...');
             const networkctlOutput = await cockpit.spawn(['networkctl', 'list', '--no-legend'], { superuser: 'try' });
             const interfaceLines = networkctlOutput.trim().split('\n').filter(line => line.trim());
             
+            // First pass: create basic interface objects
+            const interfacePromises = [];
             for (const line of interfaceLines) {
                 const parts = line.trim().split(/\s+/);
                 if (parts.length >= 4) {
@@ -648,7 +625,7 @@ const NetworkManager = {
                         systemInterface: this.isSystemInterface(parts[1])
                     };
                     
-                    console.log(`Interface ${ifaceData.name}: networkctl status = "${rawStatus}" -> normalized = "${normalizedStatus}"`);
+                    NetworkLogger.info(`Interface ${ifaceData.name}: networkctl status = "${rawStatus}" -> normalized = "${normalizedStatus}"`);
                     
                     // Override type detection for VLANs and other special cases
                     if (ifaceData.name.includes('.') || ifaceData.name.match(/^vlan\d+$/)) {
@@ -659,17 +636,22 @@ const NetworkManager = {
                         ifaceData.type = 'bond';
                     }
                     
-                    // Get detailed information for each interface
-                    await this.enrichInterfaceData(ifaceData);
-                    interfaces.push(ifaceData);
+                    // Create promise for enriching interface data in parallel
+                    interfacePromises.push(
+                        this.enrichInterfaceData(ifaceData).then(() => ifaceData)
+                    );
                 }
             }
             
-            console.log(`Found ${interfaces.length} network interfaces`);
+            // Wait for all interface enrichment to complete in parallel
+            NetworkLogger.info(`Enriching ${interfacePromises.length} interfaces in parallel...`);
+            const interfaces = await Promise.all(interfacePromises);
+            
+            NetworkLogger.info(`Found ${interfaces.length} network interfaces`);
             return interfaces;
             
         } catch (error) {
-            console.error('Error getting system interfaces:', error);
+            NetworkLogger.error('Error getting system interfaces:', error);
             
             if (error.message.includes('Cockpit API not available')) {
                 // Show a user-friendly message for Cockpit API issues
@@ -683,44 +665,72 @@ const NetworkManager = {
     // Enrich interface data with detailed information
     async enrichInterfaceData(iface) {
         try {
-            // Get interface details using networkctl status
-            const statusOutput = await cockpit.spawn(['networkctl', 'status', iface.name], { superuser: 'try' });
-            this.parseNetworkctlStatus(iface, statusOutput);
+            // Use Promise.allSettled to run all commands in parallel for better performance
+            const [statusResult, linkResult, ipResult, statsResult] = await Promise.allSettled([
+                // Get interface details using networkctl status
+                cockpit.spawn(['networkctl', 'status', iface.name], { superuser: 'try' }),
+                
+                // Verify interface status using ip link command for more accurate state
+                cockpit.spawn(['ip', 'link', 'show', iface.name], { superuser: 'try' }),
+                
+                // Get IP addresses using ip command
+                cockpit.spawn(['ip', 'addr', 'show', iface.name], { superuser: 'try' }),
+                
+                // Get interface statistics
+                cockpit.spawn(['cat', `/sys/class/net/${iface.name}/statistics/rx_bytes`, 
+                                    `/sys/class/net/${iface.name}/statistics/tx_bytes`], { superuser: 'try' })
+            ]);
             
-            // Verify interface status using ip link command for more accurate state
-            try {
-                const linkOutput = await cockpit.spawn(['ip', 'link', 'show', iface.name], { superuser: 'try' });
+            // Process networkctl status
+            if (statusResult.status === 'fulfilled') {
+                this.parseNetworkctlStatus(iface, statusResult.value);
+            } else {
+                NetworkLogger.warning(`Failed to get networkctl status for ${iface.name}:`, statusResult.reason);
+            }
+            
+            // Process ip link output
+            if (linkResult.status === 'fulfilled') {
+                const linkOutput = linkResult.value;
                 const isLinkUp = linkOutput.includes('state UP') || linkOutput.includes('<UP,');
                 
                 // Update status based on ip link if there's a discrepancy
                 if (isLinkUp && iface.status === 'down') {
-                    console.log(`Interface ${iface.name}: Correcting status from '${iface.status}' to 'up' based on ip link output`);
+                    NetworkLogger.info(`Interface ${iface.name}: Correcting status from '${iface.status}' to 'up' based on ip link output`);
                     iface.status = 'up';
                 } else if (!isLinkUp && iface.status === 'up') {
-                    console.log(`Interface ${iface.name}: Correcting status from '${iface.status}' to 'down' based on ip link output`);
+                    NetworkLogger.info(`Interface ${iface.name}: Correcting status from '${iface.status}' to 'down' based on ip link output`);
                     iface.status = 'down';
                 }
                 
                 // Also check for carrier status
                 iface.carrier = linkOutput.includes('<BROADCAST,MULTICAST,UP,LOWER_UP>') || linkOutput.includes('state UP');
-            } catch (linkError) {
-                console.warn(`Could not verify link status for ${iface.name}:`, linkError);
+            } else {
+                NetworkLogger.warning(`Could not verify link status for ${iface.name}:`, linkResult.reason);
             }
             
-            // Get IP addresses using ip command
-            const ipOutput = await cockpit.spawn(['ip', 'addr', 'show', iface.name], { superuser: 'try' });
-            this.parseIpAddr(iface, ipOutput);
+            // Process IP addresses
+            if (ipResult.status === 'fulfilled') {
+                this.parseIpAddr(iface, ipResult.value);
+            } else {
+                NetworkLogger.warning(`Could not get IP addresses for ${iface.name}:`, ipResult.reason);
+            }
             
-            // Get interface statistics
-            const statsOutput = await cockpit.spawn(['cat', `/sys/class/net/${iface.name}/statistics/rx_bytes`, 
-                                                          `/sys/class/net/${iface.name}/statistics/tx_bytes`], { superuser: 'try' });
-            this.parseInterfaceStats(iface, statsOutput);
+            // Process interface statistics
+            if (statsResult.status === 'fulfilled') {
+                this.parseInterfaceStats(iface, statsResult.value);
+            } else {
+                NetworkLogger.warning(`Could not get statistics for ${iface.name}:`, statsResult.reason);
+            }
             
-            // Check for Netplan configuration
-            await this.checkNetplanConfig(iface);
+            // Check for Netplan configuration (can be done async without blocking)
+            this.checkNetplanConfig(iface).catch(error => {
+                NetworkLogger.warning(`Failed to check Netplan config for ${iface.name}:`, error);
+                iface.configFile = null;
+                iface.configType = 'unknown';
+            });
             
         } catch (error) {
-            console.warn(`Failed to get details for interface ${iface.name}:`, error);
+            NetworkLogger.warning(`Failed to get details for interface ${iface.name}:`, error);
             // Set default values if we can't get detailed info
             iface.ip = iface.ip || 'N/A';
             iface.mac = iface.mac || 'N/A';
@@ -825,7 +835,7 @@ const NetworkManager = {
                         break;
                     }
                 } catch (fileError) {
-                    console.warn(`Could not read ${file}:`, fileError);
+                    NetworkLogger.warning(`Could not read ${file}:`, fileError);
                 }
             }
             
@@ -835,7 +845,7 @@ const NetworkManager = {
             }
             
         } catch (error) {
-            console.warn(`Failed to check Netplan config for ${iface.name}:`, error);
+            NetworkLogger.warning(`Failed to check Netplan config for ${iface.name}:`, error);
             iface.configFile = null;
             iface.configType = 'unknown';
         }
@@ -1019,99 +1029,124 @@ const NetworkManager = {
     // Load VLANs from system
     async loadVlans() {
         try {
-            console.log('Loading VLANs...');
+            NetworkLogger.info('Loading VLANs...');
             
             if (!cockpit || !cockpit.spawn) {
-                console.warn('Cockpit API not available for VLAN loading');
+                NetworkLogger.warning('Cockpit API not available for VLAN loading');
                 this.vlans = [];
                 return;
             }
             
-            // Get VLAN interfaces from ip link show - try different approaches
+            // Use VlanManager to get complete VLAN data with IP addresses from Netplan
             let vlans = [];
             
             try {
-                // First try: get all VLAN type interfaces
-                const ipOutput = await cockpit.spawn(['ip', 'link', 'show', 'type', 'vlan'], { superuser: 'try' });
-                console.log('VLAN ip link output:', ipOutput);
-                
-                if (ipOutput.trim()) {
-                    const lines = ipOutput.trim().split('\n');
-                    for (const line of lines) {
-                        if (line.includes('@')) {
-                            const match = line.match(/(\d+):\s+([^@]+)@([^:]+):/);
-                            if (match) {
-                                const [, , vlanName, parentInterface] = match;
-                                
-                                // Get VLAN ID
-                                const vlanIdMatch = vlanName.match(/vlan(\d+)|\.(\d+)$/);
-                                const vlanId = vlanIdMatch ? (vlanIdMatch[1] || vlanIdMatch[2]) : null;
-                                
-                                vlans.push({
-                                    name: vlanName,
-                                    vlanId: vlanId,
-                                    parentInterface: parentInterface,
-                                    status: line.includes('UP') ? 'up' : 'down'
-                                });
-                            }
-                        }
-                    }
+                if (typeof VlanManager !== 'undefined' && VlanManager.fetchVlansFromNetplan) {
+                    NetworkLogger.info('Using VlanManager to get VLANs from Netplan...');
+                    vlans = await VlanManager.fetchVlansFromNetplan();
+                    NetworkLogger.info(`VlanManager returned ${vlans.length} VLANs:`, vlans);
+                } else {
+                    NetworkLogger.warning('VlanManager not available, falling back to basic VLAN detection');
+                    vlans = await this.getBasicVlans();
                 }
-            } catch (vlanError) {
-                console.warn('Failed to get VLAN interfaces via type filter:', vlanError);
-            }
-            
-            // Second try: look for VLAN interfaces in all interfaces
-            try {
-                const allInterfacesOutput = await cockpit.spawn(['ip', 'link', 'show'], { superuser: 'try' });
-                const lines = allInterfacesOutput.split('\n');
-                
-                for (const line of lines) {
-                    // Look for VLAN patterns: interface.vlanid or vlan* interfaces
-                    if (line.includes('@') && (line.includes('vlan') || line.includes('.'))) {
-                        const match = line.match(/(\d+):\s+([^@]+)@([^:]+):/);
-                        if (match) {
-                            const [, , ifaceName, parentInterface] = match;
-                            
-                            // Check if it's a VLAN interface we haven't already found
-                            if (!vlans.find(v => v.name === ifaceName)) {
-                                const vlanIdMatch = ifaceName.match(/vlan(\d+)|\.(\d+)$/);
-                                const vlanId = vlanIdMatch ? (vlanIdMatch[1] || vlanIdMatch[2]) : null;
-                                
-                                if (vlanId) {
-                                    vlans.push({
-                                        name: ifaceName,
-                                        vlanId: vlanId,
-                                        parentInterface: parentInterface,
-                                        status: line.includes('UP') ? 'up' : 'down'
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch (allError) {
-                console.warn('Failed to scan all interfaces for VLANs:', allError);
+            } catch (vlanManagerError) {
+                NetworkLogger.warning('Failed to get VLANs from VlanManager, falling back to basic detection:', vlanManagerError);
+                vlans = await this.getBasicVlans();
             }
             
             this.vlans = vlans;
-            console.log(`Found ${vlans.length} VLAN interfaces:`, vlans);
+            NetworkLogger.info(`Found ${vlans.length} VLAN interfaces:`, vlans);
             this.updateVlanDisplay();
             
         } catch (error) {
-            console.error('Failed to load VLANs:', error);
+            NetworkLogger.error('Failed to load VLANs:', error);
             this.vlans = [];
             this.updateVlanDisplay();
         }
     },
     
+    // Fallback method for basic VLAN detection
+    async getBasicVlans() {
+        let vlans = [];
+        
+        try {
+            // First try: get all VLAN type interfaces
+            const ipOutput = await cockpit.spawn(['ip', 'link', 'show', 'type', 'vlan'], { superuser: 'try' });
+            NetworkLogger.info('VLAN ip link output:', ipOutput);
+            
+            if (ipOutput.trim()) {
+                const lines = ipOutput.trim().split('\n');
+                for (const line of lines) {
+                    if (line.includes('@')) {
+                        const match = line.match(/(\d+):\s+([^@]+)@([^:]+):/);
+                        if (match) {
+                            const [, , vlanName, parentInterface] = match;
+                            
+                            // Get VLAN ID
+                            const vlanIdMatch = vlanName.match(/vlan(\d+)|\.(\d+)$/);
+                            const vlanId = vlanIdMatch ? (vlanIdMatch[1] || vlanIdMatch[2]) : null;
+                            
+                            vlans.push({
+                                name: vlanName,
+                                id: vlanId,
+                                parentInterface: parentInterface,
+                                status: line.includes('UP') ? 'up' : 'down',
+                                ip: 'Not configured',
+                                ipAddresses: []
+                            });
+                        }
+                    }
+                }
+            }
+        } catch (vlanError) {
+            NetworkLogger.warning('Failed to get VLAN interfaces via type filter:', vlanError);
+        }
+        
+        // Second try: look for VLAN interfaces in all interfaces
+        try {
+            const allInterfacesOutput = await cockpit.spawn(['ip', 'link', 'show'], { superuser: 'try' });
+            const lines = allInterfacesOutput.split('\n');
+            
+            for (const line of lines) {
+                // Look for VLAN patterns: interface.vlanid or vlan* interfaces
+                if (line.includes('@') && (line.includes('vlan') || line.includes('.'))) {
+                    const match = line.match(/(\d+):\s+([^@]+)@([^:]+):/);
+                    if (match) {
+                        const [, , ifaceName, parentInterface] = match;
+                        
+                        // Check if it's a VLAN interface we haven't already found
+                        if (!vlans.find(v => v.name === ifaceName)) {
+                            const vlanIdMatch = ifaceName.match(/vlan(\d+)|\.(\d+)$/);
+                            const vlanId = vlanIdMatch ? (vlanIdMatch[1] || vlanIdMatch[2]) : null;
+                            
+                            if (vlanId) {
+                                vlans.push({
+                                    name: ifaceName,
+                                    id: vlanId,
+                                    parentInterface: parentInterface,
+                                    status: line.includes('UP') ? 'up' : 'down',
+                                    ip: 'Not configured',
+                                    ipAddresses: []
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (allError) {
+            NetworkLogger.warning('Failed to scan all interfaces for VLANs:', allError);
+        }
+        
+        return vlans;
+    },
+    
     // Load bridges from system
     async loadBridges() {
         try {
-            console.log('Loading bridges from system interfaces...');
+            NetworkLogger.info('Loading bridges from system interfaces...');
             
             if (!cockpit || !cockpit.spawn) {
-                console.warn('Cockpit API not available for bridge loading');
+                NetworkLogger.warning('Cockpit API not available for bridge loading');
                 this.bridges = [];
                 return;
             }
@@ -1123,7 +1158,7 @@ const NetworkManager = {
                 const ipOutput = await cockpit.spawn(['ip', 'a'], { superuser: 'try' });
                 const lines = ipOutput.split('\n');
                 
-                console.log('[loadBridges] Processing ip a output for bridge interfaces...');
+                NetworkLogger.info('[loadBridges] Processing ip a output for bridge interfaces...');
                 
                 for (const line of lines) {
                     // Match interface lines
@@ -1136,7 +1171,7 @@ const NetworkManager = {
                             const bridgeCheck = await cockpit.spawn(['test', '-d', `/sys/class/net/${interfaceName}/bridge`], { superuser: 'try' });
                             
                             // If we get here, it's a bridge interface
-                            console.log(`Found system bridge interface: ${interfaceName}`);
+                            NetworkLogger.info(`Found system bridge interface: ${interfaceName}`);
                             
                             // Get bridge details from system
                             const details = await this.getBridgeDetailsFromSystem(interfaceName, ipOutput);
@@ -1161,7 +1196,7 @@ const NetworkManager = {
                 }
                 
                 // STEP 2: Check Netplan files for bridges that might not be active
-                console.log('[loadBridges] Checking Netplan files for additional bridge configurations...');
+                NetworkLogger.info('[loadBridges] Checking Netplan files for additional bridge configurations...');
                 const netplanBridges = await this.fetchBridgesFromNetplan();
                 
                 for (const netplanBridge of netplanBridges) {
@@ -1169,7 +1204,7 @@ const NetworkManager = {
                     const existingBridge = bridges.find(b => b.name === netplanBridge.name);
                     
                     if (!existingBridge) {
-                        console.log(`Adding Netplan-only bridge: ${netplanBridge.name}`);
+                        NetworkLogger.info(`Adding Netplan-only bridge: ${netplanBridge.name}`);
                         netplanBridge.source = 'netplan';
                         netplanBridge.status = 'configured';
                         bridges.push(netplanBridge);
@@ -1177,12 +1212,12 @@ const NetworkManager = {
                 }
                 
             } catch (ipError) {
-                console.warn('Failed to get system interfaces for bridges:', ipError);
+                NetworkLogger.warning('Failed to get system interfaces for bridges:', ipError);
                 
                 // Fallback: try old method with ip link show type bridge
                 try {
                     const ipOutput = await cockpit.spawn(['ip', 'link', 'show', 'type', 'bridge'], { superuser: 'try' });
-                    console.log('Bridge ip link output:', ipOutput);
+                    NetworkLogger.info('Bridge ip link output:', ipOutput);
                     
                     if (ipOutput.trim()) {
                         const lines = ipOutput.trim().split('\n');
@@ -1208,7 +1243,7 @@ const NetworkManager = {
                                         const sysBridge = await cockpit.spawn(['ls', `/sys/class/net/${bridgeName}/brif/`], { superuser: 'try' });
                                         members = sysBridge.trim().split('\n').filter(m => m.trim());
                                     } catch (sysError) {
-                                        console.warn(`Could not get members for bridge ${bridgeName}:`, sysError);
+                                        NetworkLogger.warning(`Could not get members for bridge ${bridgeName}:`, sysError);
                                     }
                                 }
                                 
@@ -1228,16 +1263,16 @@ const NetworkManager = {
                         }
                     }
                 } catch (bridgeError) {
-                    console.warn('Failed to get bridge interfaces:', bridgeError);
+                    NetworkLogger.warning('Failed to get bridge interfaces:', bridgeError);
                 }
             }
             
             this.bridges = bridges;
-            console.log(`Found ${bridges.length} bridge interfaces:`, bridges);
+            NetworkLogger.info(`Found ${bridges.length} bridge interfaces:`, bridges);
             this.updateBridgeDisplay();
             
         } catch (error) {
-            console.error('Failed to load bridges:', error);
+            NetworkLogger.error('Failed to load bridges:', error);
             this.bridges = [];
             this.updateBridgeDisplay();
         }
@@ -1245,7 +1280,7 @@ const NetworkManager = {
 
     // Get bridge details from system
     async getBridgeDetailsFromSystem(interfaceName, ipOutput) {
-        console.log(`[getBridgeDetailsFromSystem] Getting details for ${interfaceName}`);
+        NetworkLogger.info(`[getBridgeDetailsFromSystem] Getting details for ${interfaceName}`);
         
         const details = {
             ipAddresses: [],
@@ -1287,7 +1322,7 @@ const NetworkManager = {
                 const sysBridge = await cockpit.spawn(['ls', `/sys/class/net/${interfaceName}/brif/`], { superuser: 'try' });
                 details.members = sysBridge.trim().split('\n').filter(m => m.trim());
             } catch (membersError) {
-                console.warn(`Could not get members for bridge ${interfaceName}:`, membersError);
+                NetworkLogger.warning(`Could not get members for bridge ${interfaceName}:`, membersError);
             }
             
             // Try to find associated Netplan config file
@@ -1298,11 +1333,11 @@ const NetworkManager = {
                     details.configFile = files[0]; // Use first match
                 }
             } catch (configError) {
-                console.warn(`Could not find config file for ${interfaceName}:`, configError);
+                NetworkLogger.warning(`Could not find config file for ${interfaceName}:`, configError);
             }
             
         } catch (error) {
-            console.warn(`Error getting system details for bridge ${interfaceName}:`, error);
+            NetworkLogger.warning(`Error getting system details for bridge ${interfaceName}:`, error);
         }
         
         return details;
@@ -1310,7 +1345,7 @@ const NetworkManager = {
 
     // Fetch bridges from Netplan configuration files
     async fetchBridgesFromNetplan() {
-        console.log('[fetchBridgesFromNetplan] Checking Netplan files for bridge configurations...');
+        NetworkLogger.info('[fetchBridgesFromNetplan] Checking Netplan files for bridge configurations...');
         const bridges = [];
         
         try {
@@ -1335,7 +1370,7 @@ const NetworkManager = {
                                 const bridgeName = bridgeMatch[1];
                                 const bridgeConfig = bridgeMatch[2];
                                 
-                                console.log(`Found bridge in Netplan: ${bridgeName}`);
+                                NetworkLogger.info(`Found bridge in Netplan: ${bridgeName}`);
                                 
                                 bridges.push({
                                     name: bridgeName,
@@ -1353,11 +1388,11 @@ const NetworkManager = {
                         }
                     }
                 } catch (error) {
-                    console.warn(`Error parsing bridge from ${file}:`, error);
+                    NetworkLogger.warning(`Error parsing bridge from ${file}:`, error);
                 }
             }
         } catch (error) {
-            console.warn('Error fetching bridges from Netplan:', error);
+            NetworkLogger.warning('Error fetching bridges from Netplan:', error);
         }
         
         return bridges;
@@ -1366,10 +1401,10 @@ const NetworkManager = {
     // Load bonds from system
     async loadBonds() {
         try {
-            console.log('Loading bonds from system...');
+            NetworkLogger.info('Loading bonds from system...');
             
             if (!cockpit || !cockpit.spawn) {
-                console.warn('Cockpit API not available for bond loading');
+                NetworkLogger.warning('Cockpit API not available for bond loading');
                 this.bonds = [];
                 return;
             }
@@ -1378,7 +1413,7 @@ const NetworkManager = {
             
             try {
                 // STEP 1: Use the proper command to get bond interfaces directly
-                console.log('[loadBonds] Running ip link show type bond...');
+                NetworkLogger.info('[loadBonds] Running ip link show type bond...');
                 const bondOutput = await cockpit.spawn(['ip', 'link', 'show', 'type', 'bond'], { superuser: 'try' });
                 
                 if (bondOutput.trim()) {
@@ -1387,7 +1422,7 @@ const NetworkManager = {
                         const match = line.match(/(\d+):\s+([^:@]+)(?:@[^:]+)?:/);
                         if (match) {
                             const bondName = match[2].trim();
-                            console.log(`Found bond interface: ${bondName}`);
+                            NetworkLogger.info(`Found bond interface: ${bondName}`);
                             
                             // Get detailed bond information using proper commands
                             try {
@@ -1431,7 +1466,7 @@ const NetworkManager = {
                                     source: 'system'
                                 });
                             } catch (bondInfoError) {
-                                console.warn(`Could not get bond info for ${bondName}:`, bondInfoError);
+                                NetworkLogger.warning(`Could not get bond info for ${bondName}:`, bondInfoError);
                                 // Fallback to basic info
                                 bonds.push({
                                     name: bondName,
@@ -1450,15 +1485,15 @@ const NetworkManager = {
                         }
                     }
                 } else {
-                    console.log('[loadBonds] No bond interfaces found via type filter');
+                    NetworkLogger.info('[loadBonds] No bond interfaces found via type filter');
                 }
                 
             } catch (bondTypeError) {
-                console.warn('Failed to get bonds via type filter:', bondTypeError);
+                NetworkLogger.warning('Failed to get bonds via type filter:', bondTypeError);
                 
                 // STEP 2: Fallback - scan all interfaces for bond patterns
                 try {
-                    console.log('[loadBonds] Fallback - scanning all interfaces for bonds...');
+                    NetworkLogger.info('[loadBonds] Fallback - scanning all interfaces for bonds...');
                     const allOutput = await cockpit.spawn(['ip', 'link', 'show'], { superuser: 'try' });
                     const lines = allOutput.split('\n');
                     
@@ -1468,7 +1503,7 @@ const NetworkManager = {
                             if (match) {
                                 const ifaceName = match[2].trim();
                                 if (ifaceName.startsWith('bond')) {
-                                    console.log(`Found potential bond interface: ${ifaceName}`);
+                                    NetworkLogger.info(`Found potential bond interface: ${ifaceName}`);
                                     
                                     // Verify it's actually a bond by checking sysfs
                                     try {
@@ -1489,19 +1524,19 @@ const NetworkManager = {
                                             source: 'system'
                                         });
                                     } catch (verifyError) {
-                                        console.warn(`Interface ${ifaceName} is not a valid bond:`, verifyError);
+                                        NetworkLogger.warning(`Interface ${ifaceName} is not a valid bond:`, verifyError);
                                     }
                                 }
                             }
                         }
                     }
                 } catch (fallbackError) {
-                    console.warn('Fallback bond detection failed:', fallbackError);
+                    NetworkLogger.warning('Fallback bond detection failed:', fallbackError);
                 }
             }
             
             // STEP 3: Check Netplan files for bonds that might not be active
-            console.log('[loadBonds] Checking Netplan files for additional bond configurations...');
+            NetworkLogger.info('[loadBonds] Checking Netplan files for additional bond configurations...');
             const netplanBonds = await this.fetchBondsFromNetplan();
             
             for (const netplanBond of netplanBonds) {
@@ -1509,7 +1544,7 @@ const NetworkManager = {
                 const existingBond = bonds.find(b => b.name === netplanBond.name);
                 
                 if (!existingBond) {
-                    console.log(`Adding Netplan-only bond: ${netplanBond.name}`);
+                    NetworkLogger.info(`Adding Netplan-only bond: ${netplanBond.name}`);
                     netplanBond.source = 'netplan';
                     netplanBond.status = 'configured';
                     bonds.push(netplanBond);
@@ -1517,11 +1552,11 @@ const NetworkManager = {
             }
             
             this.bonds = bonds;
-            console.log(`Found ${bonds.length} bond interfaces:`, bonds);
+            NetworkLogger.info(`Found ${bonds.length} bond interfaces:`, bonds);
             this.updateBondDisplay();
             
         } catch (error) {
-            console.error('Failed to load bonds:', error);
+            NetworkLogger.error('Failed to load bonds:', error);
             this.bonds = [];
             this.updateBondDisplay();
         }
@@ -1529,7 +1564,7 @@ const NetworkManager = {
 
     // Get bond details from system
     async getBondDetailsFromSystem(interfaceName, ipOutput) {
-        console.log(`[getBondDetailsFromSystem] Getting details for ${interfaceName}`);
+        NetworkLogger.info(`[getBondDetailsFromSystem] Getting details for ${interfaceName}`);
         
         const details = {
             ipAddresses: [],
@@ -1592,7 +1627,7 @@ const NetworkManager = {
                     }
                 }
             } catch (bondInfoError) {
-                console.warn(`Could not get bond info for ${interfaceName}:`, bondInfoError);
+                NetworkLogger.warning(`Could not get bond info for ${interfaceName}:`, bondInfoError);
             }
             
             // Try to find associated Netplan config file
@@ -1603,11 +1638,11 @@ const NetworkManager = {
                     details.configFile = files[0]; // Use first match
                 }
             } catch (configError) {
-                console.warn(`Could not find config file for ${interfaceName}:`, configError);
+                NetworkLogger.warning(`Could not find config file for ${interfaceName}:`, configError);
             }
             
         } catch (error) {
-            console.warn(`Error getting system details for bond ${interfaceName}:`, error);
+            NetworkLogger.warning(`Error getting system details for bond ${interfaceName}:`, error);
         }
         
         return details;
@@ -1615,7 +1650,7 @@ const NetworkManager = {
 
     // Fetch bonds from Netplan configuration files
     async fetchBondsFromNetplan() {
-        console.log('[fetchBondsFromNetplan] Checking Netplan files for bond configurations...');
+        NetworkLogger.info('[fetchBondsFromNetplan] Checking Netplan files for bond configurations...');
         const bonds = [];
         
         try {
@@ -1640,7 +1675,7 @@ const NetworkManager = {
                                 const bondName = bondMatch[1];
                                 const bondConfig = bondMatch[2];
                                 
-                                console.log(`Found bond in Netplan: ${bondName}`);
+                                NetworkLogger.info(`Found bond in Netplan: ${bondName}`);
                                 
                                 bonds.push({
                                     name: bondName,
@@ -1659,11 +1694,11 @@ const NetworkManager = {
                         }
                     }
                 } catch (error) {
-                    console.warn(`Error parsing bond from ${file}:`, error);
+                    NetworkLogger.warning(`Error parsing bond from ${file}:`, error);
                 }
             }
         } catch (error) {
-            console.warn('Error fetching bonds from Netplan:', error);
+            NetworkLogger.warning('Error fetching bonds from Netplan:', error);
         }
         
         return bonds;
@@ -1713,13 +1748,18 @@ const NetworkManager = {
                         <div class="interface-details">
                             <div class="detail-item">
                                 <span class="detail-label">VLAN ID:</span>
-                                <span class="detail-value">${vlan.vlanId || 'Unknown'}</span>
+                                <span class="detail-value">${vlan.id || vlan.vlanId || 'Unknown'}</span>
                             </div>
                             <div class="detail-item">
                                 <span class="detail-label">Parent:</span>
-                                <span class="detail-value">${vlan.parent || 'Unknown'}</span>
+                                <span class="detail-value">${vlan.parentInterface || vlan.parent || 'Unknown'}</span>
                             </div>
-                            ${vlan.ip ? `
+                            ${vlan.ipAddresses && vlan.ipAddresses.length > 0 ? `
+                            <div class="detail-item">
+                                <span class="detail-label">IP Address${vlan.ipAddresses.length > 1 ? 'es' : ''}:</span>
+                                <span class="detail-value">${vlan.ipAddresses.join(', ')}</span>
+                            </div>
+                            ` : vlan.ip ? `
                             <div class="detail-item">
                                 <span class="detail-label">IP Address:</span>
                                 <span class="detail-value">${vlan.ip}</span>
@@ -1821,21 +1861,20 @@ const NetworkManager = {
 
     // Update Bond display
     updateBondDisplay() {
-        const bondContainer = document.getElementById('bonds');
-        if (!bondContainer) return;
-        
-        const bondList = bondContainer.querySelector('.interface-list') || 
-                        bondContainer.querySelector('.card-body') ||
-                        bondContainer;
+        const bondContainer = document.getElementById('bond-list'); // Target the actual bond-list element
+        if (!bondContainer) {
+            NetworkLogger.warning('Bond list container not found');
+            return;
+        }
         
         if (this.bonds.length === 0) {
-            bondList.innerHTML = `
+            bondContainer.innerHTML = `
                 <div class="empty-state">
                     <i class="fas fa-link fa-3x text-muted mb-3"></i>
                     <h5 class="text-muted">No Bond Interfaces</h5>
                     <p class="text-muted">No bond interfaces are currently configured on this system.</p>
-                    <button class="btn btn-brand" onclick="addBond()">
-                        <i class="fas fa-plus"></i> Create Bond
+                    <button class="btn btn-brand create-bond-button" onclick="addBond()">
+                        <i class="fas fa-plus"></i> Create First Bond
                     </button>
                 </div>
             `;
@@ -1843,7 +1882,7 @@ const NetworkManager = {
             let html = `
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h6 class="mb-0">Bond Interfaces (${this.bonds.length})</h6>
-                    <button class="btn btn-sm btn-brand" onclick="addBond()">
+                    <button class="btn btn-sm btn-brand create-bond-button" onclick="addBond()">
                         <i class="fas fa-plus"></i> Add Bond
                     </button>
                 </div>
@@ -1852,10 +1891,16 @@ const NetworkManager = {
             
             this.bonds.forEach(bond => {
                 const statusIcon = bond.status === 'up' ? 'fa-arrow-up text-success' : 'fa-arrow-down text-danger';
+                const slavesDisplay = bond.slaves && bond.slaves.length > 0 
+                    ? (bond.slaves.length > 2 
+                        ? `${bond.slaves.slice(0, 2).join(', ')} +${bond.slaves.length - 2} more`
+                        : bond.slaves.join(', '))
+                    : 'None';
+                
                 html += `
-                    <div class="interface-card">
+                    <div class="interface-card bond-card">
                         <div class="interface-header">
-                            <h6 class="interface-name">${bond.name}</h6>
+                            <h6 class="interface-name" title="${bond.name}">${bond.name}</h6>
                             <span class="interface-status">
                                 <i class="fas ${statusIcon}"></i> ${bond.status.toUpperCase()}
                             </span>
@@ -1863,26 +1908,24 @@ const NetworkManager = {
                         <div class="interface-details">
                             <div class="detail-item">
                                 <span class="detail-label">Mode:</span>
-                                <span class="detail-value">${bond.mode || 'Unknown'}</span>
+                                <span class="detail-value" title="${bond.mode || 'Unknown'}">${bond.mode || 'Unknown'}</span>
                             </div>
-                            ${bond.slaves && bond.slaves.length > 0 ? `
                             <div class="detail-item">
                                 <span class="detail-label">Slaves:</span>
-                                <span class="detail-value">${bond.slaves.join(', ')}</span>
+                                <span class="detail-value" title="${bond.slaves ? bond.slaves.join(', ') : 'None'}">${slavesDisplay}</span>
                             </div>
-                            ` : ''}
-                            ${bond.ip ? `
+                            ${bond.ip && bond.ip !== 'Not configured' ? `
                             <div class="detail-item">
-                                <span class="detail-label">IP Address:</span>
-                                <span class="detail-value">${bond.ip}</span>
+                                <span class="detail-label">IP:</span>
+                                <span class="detail-value" title="${bond.ip}">${bond.ip.length > 15 ? bond.ip.substring(0, 15) + '...' : bond.ip}</span>
                             </div>
                             ` : ''}
                         </div>
                         <div class="interface-actions">
-                            <button class="btn btn-sm btn-outline-primary" onclick="editBond('${bond.name}')">
+                            <button class="btn btn-sm btn-outline-primary" onclick="editBond('${bond.name}')" title="Edit bond configuration">
                                 <i class="fas fa-edit"></i> Edit
                             </button>
-                            <button class="btn btn-sm btn-outline-danger" onclick="deleteBond('${bond.name}')">
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteBond('${bond.name}')" title="Delete bond">
                                 <i class="fas fa-trash"></i> Delete
                             </button>
                         </div>
@@ -1891,17 +1934,17 @@ const NetworkManager = {
             });
             
             html += '</div>';
-            bondList.innerHTML = html;
+            bondContainer.innerHTML = html;
         }
     },
 
     // Load routes from system
     async loadRoutes() {
         try {
-            console.log('Loading routes...');
+            NetworkLogger.info('Loading routes...');
             
             if (!cockpit || !cockpit.spawn) {
-                console.warn('Cockpit API not available for route loading');
+                NetworkLogger.warning('Cockpit API not available for route loading');
                 this.routes = [];
                 this.renderRoutes();
                 return;
@@ -1958,11 +2001,11 @@ const NetworkManager = {
             }
             
             this.routes = routes;
-            console.log(`Found ${routes.length} routes`);
+            NetworkLogger.info(`Found ${routes.length} routes`);
             this.renderRoutes();
             
         } catch (error) {
-            console.warn('Failed to load routes:', error);
+            NetworkLogger.warning('Failed to load routes:', error);
             this.routes = [];
             this.renderRoutes();
         }
@@ -1973,7 +2016,7 @@ const NetworkManager = {
         const routeListElement = document.getElementById('route-list');
         
         if (!routeListElement) {
-            console.warn('Route list element not found');
+            NetworkLogger.warning('Route list element not found');
             return;
         }
         
@@ -2031,10 +2074,10 @@ const NetworkManager = {
     // Load DNS configuration from system
     async loadDnsConfig() {
         try {
-            console.log('Loading DNS configuration...');
+            NetworkLogger.info('Loading DNS configuration...');
             
             if (!cockpit || !cockpit.file) {
-                console.warn('Cockpit API not available for DNS loading');
+                NetworkLogger.warning('Cockpit API not available for DNS loading');
                 this.dnsServers = [];
                 return;
             }
@@ -2077,31 +2120,17 @@ const NetworkManager = {
                         }
                     }
                 } catch (resolvError) {
-                    console.warn('Failed to read DNS configuration:', resolvError);
+                    NetworkLogger.warning('Failed to read DNS configuration:', resolvError);
                 }
             }
             
             this.dnsServers = dnsServers;
-            console.log(`Found ${dnsServers.length} DNS servers`);
+            NetworkLogger.info(`Found ${dnsServers.length} DNS servers`);
             
         } catch (error) {
-            console.warn('Failed to load DNS configuration:', error);
+            NetworkLogger.warning('Failed to load DNS configuration:', error);
             this.dnsServers = [];
         }
-    },
-    
-    async loadMonitoring() {
-        // Real monitoring data implementation
-        console.log('Loading monitoring data...');
-        // This function can be expanded to include real system monitoring
-        // For now, the monitoring is handled by the real interface data
-    },
-    
-    async loadConfigManagement() {
-        // Real configuration management implementation  
-        console.log('Loading configuration management...');
-        // This function can be expanded to include real configuration management
-        // For now, configurations are handled by real Netplan file operations
     },
     
     // Setup additional event listeners
@@ -2132,7 +2161,7 @@ const NetworkManager = {
         const currentTab = this.currentTab;
         
         // Implement search based on current tab
-        console.log(`Searching for "${searchTerm}" in ${currentTab}`);
+        NetworkLogger.info(`Searching for "${searchTerm}" in ${currentTab}`);
     },
     
     // Show error message
@@ -2382,7 +2411,7 @@ function redirectToManagementTab(interfaceType, interfaceName) {
     
     const targetTab = tabMap[interfaceType];
     if (!targetTab) {
-        console.error(`Unknown interface type: ${interfaceType}`);
+        NetworkLogger.error(`Unknown interface type: ${interfaceType}`);
         return;
     }
     
@@ -2584,6 +2613,12 @@ function addInterface() {
     
     NetworkManager.createModal('Add Network Interface', modalContent, modalFooter);
     
+    // Setup live validation for the form
+    const form = document.getElementById('interface-form');
+    if (typeof setupLiveValidation === 'function') {
+        setupLiveValidation(form);
+    }
+    
     // Setup toggle functionality
     const toggleButtons = document.querySelectorAll('.toggle-seg');
     toggleButtons.forEach(btn => {
@@ -2727,13 +2762,37 @@ function editInterface(name) {
     
     NetworkManager.createModal(`Edit Interface: ${name}`, modalContent, modalFooter);
     
+    // Setup live validation for the edit form
+    const editForm = document.getElementById('interface-edit-form');
+    if (typeof setupLiveValidation === 'function') {
+        setupLiveValidation(editForm);
+    }
+    
     // Populate IP addresses for editing
     const ipAddresses = [];
-    if (iface.ipAddresses && iface.ipAddresses.length > 0) {
-        ipAddresses.push(...iface.ipAddresses);
-    } else if (iface.ip && iface.ip !== 'N/A') {
+    
+    // Collect all IP addresses from different sources
+    if (iface.ipAddresses && Array.isArray(iface.ipAddresses) && iface.ipAddresses.length > 0) {
+        // Use the ipAddresses array if available (filter out loopback and invalid IPs)
+        const validIPs = iface.ipAddresses.filter(ip => 
+            ip && 
+            ip !== 'N/A' && 
+            ip !== '127.0.0.1/8' && 
+            !ip.startsWith('127.') &&
+            !ip.startsWith('169.254.') // Skip link-local addresses
+        );
+        ipAddresses.push(...validIPs);
+    } else if (iface.ip && iface.ip !== 'N/A' && iface.ip !== 'Not configured' && !iface.ip.startsWith('127.')) {
+        // Fall back to single IP field
         ipAddresses.push(iface.ip);
     }
+    
+    NetworkLogger.info(`[editInterface] Interface ${name} IP analysis:`, {
+        rawIpAddresses: iface.ipAddresses,
+        singleIp: iface.ip,
+        filteredAndCollected: ipAddresses,
+        interfaceData: iface
+    });
     
     populateInterfaceIpAddresses(ipAddresses);
     
@@ -2743,11 +2802,11 @@ function editInterface(name) {
 
 // Function to populate IP addresses for interface editing
 function populateInterfaceIpAddresses(ipAddresses) {
-    console.log('[populateInterfaceIpAddresses] Input IPs:', ipAddresses);
+    NetworkLogger.info('[populateInterfaceIpAddresses] Input IPs:', ipAddresses);
     const container = document.getElementById('edit-interface-ip-addresses-container');
     
     if (!container) {
-        console.error('[populateInterfaceIpAddresses] Container not found');
+        NetworkLogger.error('[populateInterfaceIpAddresses] Container not found');
         return;
     }
     
@@ -2791,7 +2850,7 @@ function addInterfaceIpField(value = '', index = 0) {
     ipField.innerHTML = `
         <div class="d-flex align-items-center">
             <input type="text" class="form-control me-2" 
-                   placeholder="IP address (e.g., 192.168.1.10/24)" 
+                   placeholder="IP address (default /24, e.g., 192.168.1.10)" 
                    value="${value}" 
                    id="interface-ip-${index}">
             <button type="button" class="btn btn-outline-danger btn-sm" 
@@ -2823,6 +2882,12 @@ function addInterfaceIpAddress() {
     const newIndex = container.children.length;
     addInterfaceIpField('', newIndex);
     
+    // Setup live validation for the new input
+    const newInput = container.children[newIndex].querySelector('input');
+    if (typeof setupLiveValidation === 'function' && newInput) {
+        setupLiveValidation(newInput.closest('form'));
+    }
+    
     // Show remove button on first field if there are now multiple fields
     if (container.children.length > 1) {
         const firstRemoveBtn = container.querySelector('.ip-field-group:first-child .btn-outline-danger');
@@ -2850,7 +2915,7 @@ function getInterfaceIpAddresses() {
         }
     });
     
-    console.log('[getInterfaceIpAddresses] Collected IPs:', ips);
+    NetworkLogger.info('[getInterfaceIpAddresses] Collected IPs:', ips);
     return ips;
 }
 
@@ -2864,14 +2929,14 @@ async function saveInterfaceEdit(interfaceName) {
         saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
         saveBtn.disabled = true;
         
-        console.log(`[saveInterfaceEdit] Saving interface: ${interfaceName}`);
+        NetworkLogger.info(`[saveInterfaceEdit] Saving interface: ${interfaceName}`);
         
         const enabled = document.getElementById('interface-enabled')?.checked;
         const ipAddresses = getInterfaceIpAddresses();
         const gateway = document.getElementById('interface-gateway')?.value?.trim();
         const dns = document.getElementById('interface-dns')?.value?.trim();
         
-        console.log('[saveInterfaceEdit] Form data:', {
+        NetworkLogger.info('[saveInterfaceEdit] Form data:', {
             enabled,
             ipAddresses,
             gateway,
@@ -2899,7 +2964,7 @@ async function saveInterfaceEdit(interfaceName) {
             throw new Error(`Interface ${interfaceName} not found`);
         }
         
-        console.log('[saveInterfaceEdit] Current interface:', currentInterface);
+        NetworkLogger.info('[saveInterfaceEdit] Current interface:', currentInterface);
         
         // Handle different interface types
         if (currentInterface.type === 'vlan') {
@@ -2911,7 +2976,7 @@ async function saveInterfaceEdit(interfaceName) {
                 throw new Error('Could not determine VLAN ID or parent interface');
             }
             
-            console.log(`[saveInterfaceEdit] Updating VLAN ${vlanId} on ${parentInterface}`);
+            NetworkLogger.info(`[saveInterfaceEdit] Updating VLAN ${vlanId} on ${parentInterface}`);
             
             const vlanConfig = {
                 id: vlanId,
@@ -2940,7 +3005,7 @@ async function saveInterfaceEdit(interfaceName) {
         NetworkManager.showSuccess(`Interface ${interfaceName} updated successfully`);
         
     } catch (error) {
-        console.error('[saveInterfaceEdit] Error:', error);
+        NetworkLogger.error('[saveInterfaceEdit] Error:', error);
         NetworkManager.showError(`Failed to update interface: ${error.message}`);
     } finally {
         // Restore button state
@@ -2951,7 +3016,7 @@ async function saveInterfaceEdit(interfaceName) {
 
 // Function to update regular interface (non-VLAN)
 async function updateRegularInterface(interfaceName, config) {
-    console.log(`[updateRegularInterface] Updating ${interfaceName}:`, config);
+    NetworkLogger.info(`[updateRegularInterface] Updating ${interfaceName}:`, config);
     
     try {
         // Create Netplan configuration
@@ -3019,7 +3084,7 @@ async function updateRegularInterface(interfaceName, config) {
         
         const configFile = `/etc/netplan/90-xavs-${interfaceName}.yaml`;
         
-        console.log(`[updateRegularInterface] Writing config to ${configFile}:`, yamlContent);
+        NetworkLogger.info(`[updateRegularInterface] Writing config to ${configFile}:`, yamlContent);
         
         // Write configuration file
         await executeCommand(`echo '${yamlContent}' | sudo tee ${configFile}`);
@@ -3027,7 +3092,7 @@ async function updateRegularInterface(interfaceName, config) {
         
         // Test configuration
         const testResult = await executeCommand('sudo netplan --debug try');
-        console.log('[updateRegularInterface] Test result:', testResult);
+        NetworkLogger.info('[updateRegularInterface] Test result:', testResult);
         
         if (testResult.includes('Error') || testResult.includes('error')) {
             throw new Error(`Configuration test failed: ${testResult}`);
@@ -3045,7 +3110,7 @@ async function updateRegularInterface(interfaceName, config) {
         });
         
     } catch (error) {
-        console.error('[updateRegularInterface] Error:', error);
+        NetworkLogger.error('[updateRegularInterface] Error:', error);
         throw error;
     }
 }
@@ -3250,7 +3315,7 @@ function toggleAdvancedOptions() {
 }
 
 function updateInterface(name) {
-    console.log(`updateInterface called for interface: ${name}`);
+    NetworkLogger.info(`updateInterface called for interface: ${name}`);
     
     // Collect basic form data
     const formData = {
@@ -3267,7 +3332,7 @@ function updateInterface(name) {
         optional: document.getElementById('edit-if-optional')?.checked || false
     };
     
-    console.log('Initial form data collected:', formData);
+    NetworkLogger.info('Initial form data collected:', formData);
     
     // DHCP configuration
     if (formData.configType === 'dhcp') {
@@ -3306,23 +3371,23 @@ function updateInterface(name) {
         }
     });
     
-    console.log('Final collected form data for validation:', formData);
+    NetworkLogger.info('Final collected form data for validation:', formData);
     
     // Validate form data
-    console.log('Starting form data validation...');
+    NetworkLogger.info('Starting form data validation...');
     const validation = validateInterfaceConfig(formData);
-    console.log('Validation result:', validation);
+    NetworkLogger.info('Validation result:', validation);
     if (!validation.valid) {
-        console.error('Validation failed:', validation.message);
+        NetworkLogger.error('Validation failed:', validation.message);
         NetworkManager.showError(validation.message);
         return;
     }
-    console.log('Form data validation passed');
+    NetworkLogger.info('Form data validation passed');
     
     // Show configuration preview
-    console.log('Generating configuration preview...');
+    NetworkLogger.info('Generating configuration preview...');
     const yamlPreview = generateNetplanYaml(formData);
-    console.log('Generated YAML preview:', yamlPreview);
+    NetworkLogger.info('Generated YAML preview:', yamlPreview);
     
     const confirmModal = `
         <div>
@@ -3402,7 +3467,7 @@ function validateInterfaceConfig(formData) {
 }
 
 function confirmUpdateInterface(name) {
-    console.log(`confirmUpdateInterface called for interface: ${name}`);
+    NetworkLogger.info(`confirmUpdateInterface called for interface: ${name}`);
     
     try {
         // Collect form data from the updateInterface function's saved data
@@ -3420,7 +3485,7 @@ function confirmUpdateInterface(name) {
             optional: document.getElementById('edit-if-optional')?.checked || false
         };
         
-        console.log('Collected form data:', formData);
+        NetworkLogger.info('Collected form data:', formData);
         
         // DHCP configuration
         if (formData.configType === 'dhcp') {
@@ -3430,7 +3495,7 @@ function confirmUpdateInterface(name) {
             formData.dhcpUseRoutes = document.getElementById('edit-dhcp-use-routes')?.checked !== false;
             formData.dhcpSendHostname = document.getElementById('edit-dhcp-send-hostname')?.checked === true;
             formData.dhcpMetric = document.getElementById('edit-dhcp-metric')?.value || '';
-            console.log('Added DHCP configuration:', {
+            NetworkLogger.info('Added DHCP configuration:', {
                 dhcp4: formData.dhcp4,
                 dhcp6: formData.dhcp6,
                 dhcpUseDns: formData.dhcpUseDns,
@@ -3465,7 +3530,7 @@ function confirmUpdateInterface(name) {
             }
         });
         
-        console.log('Final form data for processing:', formData);
+        NetworkLogger.info('Final form data for processing:', formData);
         
         // Close the modal first
         NetworkManager.closeModal();
@@ -3474,20 +3539,20 @@ function confirmUpdateInterface(name) {
         NetworkManager.showSuccess('Updating interface configuration...');
         
         // Use NetworkAPI to configure the interface
-        console.log('Calling NetworkAPI.configureInterface...');
+        NetworkLogger.info('Calling NetworkAPI.configureInterface...');
         NetworkAPI.configureInterface(formData)
             .then(() => {
-                console.log('Interface configuration completed successfully');
+                NetworkLogger.info('Interface configuration completed successfully');
                 NetworkManager.showSuccess(`Interface ${name} configuration updated successfully`);
                 NetworkManager.loadInterfaces(); // Reload interfaces to show updated config
             })
             .catch((error) => {
-                console.error('Failed to update interface:', error);
+                NetworkLogger.error('Failed to update interface:', error);
                 NetworkManager.showError(`Failed to update interface: ${error.message}`);
             });
             
     } catch (error) {
-        console.error('Error in confirmUpdateInterface:', error);
+        NetworkLogger.error('Error in confirmUpdateInterface:', error);
         NetworkManager.showError(`Error processing interface update: ${error.message}`);
     }
 }
@@ -3557,7 +3622,7 @@ async function performDeleteInterface(name) {
         deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting...';
         deleteBtn.disabled = true;
         
-        console.log(`[performDeleteInterface] Deleting interface: ${name}`);
+        NetworkLogger.info(`[performDeleteInterface] Deleting interface: ${name}`);
         
         // Get current interface info to determine type
         const currentInterface = interfaces.find(iface => iface.name === name);
@@ -3565,7 +3630,7 @@ async function performDeleteInterface(name) {
             throw new Error(`Interface ${name} not found`);
         }
         
-        console.log('[performDeleteInterface] Current interface:', currentInterface);
+        NetworkLogger.info('[performDeleteInterface] Current interface:', currentInterface);
         
         // Handle different interface types
         if (currentInterface.type === 'vlan') {
@@ -3577,11 +3642,11 @@ async function performDeleteInterface(name) {
                 throw new Error('Could not determine VLAN ID or parent interface');
             }
             
-            console.log(`[performDeleteInterface] Deleting VLAN ${vlanId} on ${parentInterface}`);
+            NetworkLogger.info(`[performDeleteInterface] Deleting VLAN ${vlanId} on ${parentInterface}`);
             await deleteVlan(vlanId, parentInterface);
         } else {
             // For regular interfaces, bonds, bridges
-            console.log(`[performDeleteInterface] Deleting regular interface ${name}`);
+            NetworkLogger.info(`[performDeleteInterface] Deleting regular interface ${name}`);
             await deleteRegularInterface(name);
         }
         
@@ -3590,7 +3655,7 @@ async function performDeleteInterface(name) {
         NetworkManager.showSuccess(`Interface ${name} deleted successfully`);
         
     } catch (error) {
-        console.error('[performDeleteInterface] Error:', error);
+        NetworkLogger.error('[performDeleteInterface] Error:', error);
         NetworkManager.showError(`Failed to delete interface: ${error.message}`);
     } finally {
         // Restore button state
@@ -3601,7 +3666,7 @@ async function performDeleteInterface(name) {
 
 // Function to delete regular interface (non-VLAN)
 async function deleteRegularInterface(interfaceName) {
-    console.log(`[deleteRegularInterface] Deleting ${interfaceName}`);
+    NetworkLogger.info(`[deleteRegularInterface] Deleting ${interfaceName}`);
     
     try {
         const configFile = `/etc/netplan/90-xavs-${interfaceName}.yaml`;
@@ -3612,12 +3677,12 @@ async function deleteRegularInterface(interfaceName) {
         if (fileExists.includes('exists')) {
             // Remove configuration file
             await executeCommand(`sudo rm -f ${configFile}`);
-            console.log(`[deleteRegularInterface] Removed config file: ${configFile}`);
+            NetworkLogger.info(`[deleteRegularInterface] Removed config file: ${configFile}`);
         }
         
         // Test configuration
         const testResult = await executeCommand('sudo netplan --debug try');
-        console.log('[deleteRegularInterface] Test result:', testResult);
+        NetworkLogger.info('[deleteRegularInterface] Test result:', testResult);
         
         if (testResult.includes('Error') || testResult.includes('error')) {
             throw new Error(`Configuration test failed: ${testResult}`);
@@ -3634,14 +3699,14 @@ async function deleteRegularInterface(interfaceName) {
         });
         
     } catch (error) {
-        console.error('[deleteRegularInterface] Error:', error);
+        NetworkLogger.error('[deleteRegularInterface] Error:', error);
         throw error;
     }
 }
 
 // Helper function to extract VLAN ID from interface name
 function extractVlanId(interfaceName) {
-    console.log(`[extractVlanId] Extracting VLAN ID from: ${interfaceName}`);
+    NetworkLogger.info(`[extractVlanId] Extracting VLAN ID from: ${interfaceName}`);
     
     // Try different VLAN naming patterns
     const patterns = [
@@ -3655,18 +3720,18 @@ function extractVlanId(interfaceName) {
         const match = interfaceName.match(pattern);
         if (match) {
             const vlanId = parseInt(match[1], 10);
-            console.log(`[extractVlanId] Found VLAN ID: ${vlanId}`);
+            NetworkLogger.info(`[extractVlanId] Found VLAN ID: ${vlanId}`);
             return vlanId;
         }
     }
     
-    console.log(`[extractVlanId] No VLAN ID found in: ${interfaceName}`);
+    NetworkLogger.info(`[extractVlanId] No VLAN ID found in: ${interfaceName}`);
     return null;
 }
 
 // Helper function to get parent interface from VLAN name
 function getVlanParentFromName(interfaceName) {
-    console.log(`[getVlanParentFromName] Getting parent from: ${interfaceName}`);
+    NetworkLogger.info(`[getVlanParentFromName] Getting parent from: ${interfaceName}`);
     
     // Try different VLAN naming patterns
     const patterns = [
@@ -3679,18 +3744,18 @@ function getVlanParentFromName(interfaceName) {
         const match = interfaceName.match(pattern);
         if (match) {
             const parent = match[1];
-            console.log(`[getVlanParentFromName] Found parent: ${parent}`);
+            NetworkLogger.info(`[getVlanParentFromName] Found parent: ${parent}`);
             return parent;
         }
     }
     
     // For simple vlan naming, try to find in system interfaces
     if (/^vlan(\d+)$/i.test(interfaceName)) {
-        console.log(`[getVlanParentFromName] Simple VLAN name, checking system for parent`);
+        NetworkLogger.info(`[getVlanParentFromName] Simple VLAN name, checking system for parent`);
         // This would need system lookup - for now return null
     }
     
-    console.log(`[getVlanParentFromName] No parent found for: ${interfaceName}`);
+    NetworkLogger.info(`[getVlanParentFromName] No parent found for: ${interfaceName}`);
     return null;
 }
 
@@ -3748,7 +3813,7 @@ async function performToggleInterface(name, newStatus) {
             return;
         }
         
-        console.log(`Performing ${action} operation on interface ${name}...`);
+        NetworkLogger.info(`Performing ${action} operation on interface ${name}...`);
         
         // First, check the current interface state to avoid unnecessary operations
         try {
@@ -3762,9 +3827,9 @@ async function performToggleInterface(name, newStatus) {
                 return;
             }
             
-            console.log(`Interface ${name} current state: ${isCurrentlyUp ? 'up' : 'down'}, target state: ${newStatus}`);
+            NetworkLogger.info(`Interface ${name} current state: ${isCurrentlyUp ? 'up' : 'down'}, target state: ${newStatus}`);
         } catch (stateCheckError) {
-            console.warn(`Could not check current state of interface ${name}:`, stateCheckError);
+            NetworkLogger.warning(`Could not check current state of interface ${name}:`, stateCheckError);
             // Continue with the operation anyway, as the state check is informational
         }
         
@@ -3784,7 +3849,7 @@ async function performToggleInterface(name, newStatus) {
         }, 1000);
         
     } catch (error) {
-        console.error(`Error ${newStatus === 'up' ? 'enabling' : 'disabling'} interface:`, error);
+        NetworkLogger.error(`Error ${newStatus === 'up' ? 'enabling' : 'disabling'} interface:`, error);
         NetworkManager.showError(`Failed to ${newStatus === 'up' ? 'enable' : 'disable'} interface ${name}: ${error.message || error}`);
     }
 }
@@ -3871,7 +3936,7 @@ class NetworkError extends Error {
 }
 
 function handleNetworkError(error) {
-    console.error('Network operation failed:', error);
+    NetworkLogger.error('Network operation failed:', error);
     
     let message = 'An unexpected error occurred';
     
@@ -3897,7 +3962,7 @@ const NetworkAPI = {
 
     // Configure VLAN interface specifically
     async configureVlanInterface(config) {
-        console.log('Configuring VLAN interface:', config.name);
+        NetworkLogger.info('Configuring VLAN interface:', config.name);
         
         try {
             // Find the existing VLAN configuration
@@ -3918,36 +3983,36 @@ const NetworkAPI = {
                         // Extract VLAN ID and link
                         const vlanSection = content.match(new RegExp(`${config.name}:\\s*\\n([\\s\\S]*?)(?=^\\s{2,4}\\w|\\n$|$)`, 'm'));
                         if (vlanSection) {
-                            console.log(`Found VLAN section for ${config.name}:`, vlanSection[1]);
+                            NetworkLogger.info(`Found VLAN section for ${config.name}:`, vlanSection[1]);
                             
                             const idMatch = vlanSection[1].match(/id:\s*(\d+)/);
                             const linkMatch = vlanSection[1].match(/link:\s*([a-zA-Z0-9\._-]+)/);
                             
                             if (idMatch) {
                                 vlanId = parseInt(idMatch[1]);
-                                console.log(`Extracted VLAN ID: ${vlanId}`);
+                                NetworkLogger.info(`Extracted VLAN ID: ${vlanId}`);
                             }
                             if (linkMatch && linkMatch[1] !== 'null') {
                                 linkInterface = linkMatch[1];
-                                console.log(`Extracted link interface: ${linkInterface}`);
+                                NetworkLogger.info(`Extracted link interface: ${linkInterface}`);
                             } else {
-                                console.log(`Link match result:`, linkMatch);
+                                NetworkLogger.info(`Link match result:`, linkMatch);
                             }
                         }
                         
                         // If link is null or not found, try to extract parent from interface name
                         if (!linkInterface || linkInterface === 'null') {
-                            console.log(`Link interface not found in config, extracting from interface name: ${config.name}`);
+                            NetworkLogger.info(`Link interface not found in config, extracting from interface name: ${config.name}`);
                             const nameParts = config.name.split('.');
                             if (nameParts.length === 2) {
                                 linkInterface = nameParts[0]; // e.g., bond0.3333 -> bond0
-                                console.log(`Extracted parent interface from name: ${linkInterface}`);
+                                NetworkLogger.info(`Extracted parent interface from name: ${linkInterface}`);
                             }
                         }
                         break;
                     }
                 } catch (fileError) {
-                    console.warn(`Could not read file ${file}:`, fileError);
+                    NetworkLogger.warning(`Could not read file ${file}:`, fileError);
                 }
             }
             
@@ -3957,17 +4022,17 @@ const NetworkAPI = {
             
             // If we still don't have a link interface, try to get it from the system
             if (!linkInterface) {
-                console.log(`Attempting to get parent interface from system for ${config.name}`);
+                NetworkLogger.info(`Attempting to get parent interface from system for ${config.name}`);
                 try {
                     // Try to get the link information from ip command
                     const ipLinkOutput = await cockpit.spawn(['ip', 'link', 'show', config.name], { superuser: 'try' });
                     const linkMatch = ipLinkOutput.match(new RegExp(`${config.name}@([a-zA-Z0-9\\._-]+):`));
                     if (linkMatch) {
                         linkInterface = linkMatch[1];
-                        console.log(`Found parent interface from system: ${linkInterface}`);
+                        NetworkLogger.info(`Found parent interface from system: ${linkInterface}`);
                     }
                 } catch (systemError) {
-                    console.warn(`Could not get parent interface from system for ${config.name}:`, systemError);
+                    NetworkLogger.warning(`Could not get parent interface from system for ${config.name}:`, systemError);
                 }
             }
             
@@ -3975,7 +4040,7 @@ const NetworkAPI = {
                 throw new Error(`Could not determine parent interface for VLAN ${config.name}. Please ensure the VLAN is properly configured.`);
             }
 
-            console.log(`Found VLAN ${config.name} (ID: ${vlanId}, Link: ${linkInterface}) in ${vlanConfigFile}`);
+            NetworkLogger.info(`Found VLAN ${config.name} (ID: ${vlanId}, Link: ${linkInterface}) in ${vlanConfigFile}`);
             
             // Generate new VLAN configuration
             const vlanConfig = {
@@ -3992,48 +4057,48 @@ const NetworkAPI = {
             // Generate new Netplan VLAN configuration
             const netplanConfig = generateVlanNetplanConfig(vlanConfig);
             
-            console.log('Generated VLAN Netplan config:', netplanConfig);
+            NetworkLogger.info('Generated VLAN Netplan config:', netplanConfig);
             
             // Write the configuration to the same file or a new XAVS file
             const newConfigPath = vlanConfigFile.includes('90-xavs-') ? vlanConfigFile : `/etc/netplan/90-xavs-vlan${vlanId}.yaml`;
             
             // Remove old file if creating a new one
             if (newConfigPath !== vlanConfigFile) {
-                console.log(`Moving VLAN configuration from ${vlanConfigFile} to ${newConfigPath}`);
+                NetworkLogger.info(`Moving VLAN configuration from ${vlanConfigFile} to ${newConfigPath}`);
                 await cockpit.spawn(['rm', '-f', vlanConfigFile], { superuser: 'try' });
             }
             
             // Write new configuration
             await cockpit.file(newConfigPath, { superuser: 'try' }).replace(netplanConfig);
-            console.log('VLAN configuration written successfully');
+            NetworkLogger.info('VLAN configuration written successfully');
             
             // Set proper file permissions
             await cockpit.spawn(['chmod', '600', newConfigPath], { superuser: 'try' });
-            console.log('File permissions set to 600');
+            NetworkLogger.info('File permissions set to 600');
             
             // Test the configuration with netplan try
-            console.log('Testing VLAN configuration with netplan --debug try...');
+            NetworkLogger.info('Testing VLAN configuration with netplan --debug try...');
             try {
                 const debugOutput = await cockpit.spawn(['netplan', '--debug', 'try', '--timeout=30'], { superuser: 'try' });
-                console.log('Netplan debug output:');
-                console.log('--- START NETPLAN DEBUG ---');
-                console.log(debugOutput);
-                console.log('--- END NETPLAN DEBUG ---');
-                console.log('Netplan try completed successfully');
+                NetworkLogger.info('Netplan debug output:');
+                NetworkLogger.info('--- START NETPLAN DEBUG ---');
+                NetworkLogger.info(debugOutput);
+                NetworkLogger.info('--- END NETPLAN DEBUG ---');
+                NetworkLogger.info('Netplan try completed successfully');
             } catch (tryError) {
-                console.error('Netplan try failed:', tryError);
+                NetworkLogger.error('Netplan try failed:', tryError);
                 
                 // Log the debug output even on failure
                 if (tryError.message) {
-                    console.log('Netplan error output:');
-                    console.log('--- START NETPLAN ERROR ---');
-                    console.log(tryError.message);
-                    console.log('--- END NETPLAN ERROR ---');
+                    NetworkLogger.info('Netplan error output:');
+                    NetworkLogger.info('--- START NETPLAN ERROR ---');
+                    NetworkLogger.info(tryError.message);
+                    NetworkLogger.info('--- END NETPLAN ERROR ---');
                 }
                 
                 // Check if this is just the bond revert warning (exit status 78)
                 if (tryError.exit_status === 78) {
-                    console.log('Netplan try exited with status 78 (bond revert warning) - this is expected for bond configurations');
+                    NetworkLogger.info('Netplan try exited with status 78 (bond revert warning) - this is expected for bond configurations');
                     // This is the expected bond warning, not a real error
                 } else {
                     // This is a real error
@@ -4042,14 +4107,14 @@ const NetworkAPI = {
             }
             
             // Apply the configuration
-            console.log('Applying VLAN configuration...');
+            NetworkLogger.info('Applying VLAN configuration...');
             await cockpit.spawn(['netplan', 'apply'], { superuser: 'try' });
-            console.log('VLAN configuration applied successfully');
+            NetworkLogger.info('VLAN configuration applied successfully');
             
             return { success: true, message: `VLAN ${config.name} configured successfully` };
             
         } catch (error) {
-            console.error('Error configuring VLAN interface:', error);
+            NetworkLogger.error('Error configuring VLAN interface:', error);
             
             // Enhanced error handling for GUI display
             let enhancedError = error;
@@ -4065,7 +4130,7 @@ const NetworkAPI = {
 
     // Check for interface definition conflicts across Netplan files
     async checkForInterfaceConflicts(interfaceName, intendedType) {
-        console.log(`Checking for conflicts for interface '${interfaceName}' intended as '${intendedType}'...`);
+        NetworkLogger.info(`Checking for conflicts for interface '${interfaceName}' intended as '${intendedType}'...`);
         
         try {
             // Get all Netplan files
@@ -4086,24 +4151,24 @@ const NetworkAPI = {
                                 const regex = new RegExp(`${type}:\\s*\\n([\\s\\S]*?)\\n\\s*${interfaceName}:`, 'm');
                                 if (regex.test(content) && type !== intendedType) {
                                     conflictingFiles.push({ file, type, intendedType });
-                                    console.log(`Found conflict: ${interfaceName} defined as ${type} in ${file}, but trying to define as ${intendedType}`);
+                                    NetworkLogger.info(`Found conflict: ${interfaceName} defined as ${type} in ${file}, but trying to define as ${intendedType}`);
                                 }
                             }
                         }
                     }
                 } catch (fileError) {
-                    console.warn(`Could not read file ${file}:`, fileError);
+                    NetworkLogger.warning(`Could not read file ${file}:`, fileError);
                 }
             }
             
             // If conflicts found, handle them
             if (conflictingFiles.length > 0) {
-                console.log(`Found ${conflictingFiles.length} conflicting definitions for interface '${interfaceName}'`);
+                NetworkLogger.info(`Found ${conflictingFiles.length} conflicting definitions for interface '${interfaceName}'`);
                 
                 // For XAVS files, we can remove the conflicting definition
                 for (const conflict of conflictingFiles) {
                     if (conflict.file.includes('90-xavs-')) {
-                        console.log(`Removing conflicting XAVS configuration file: ${conflict.file}`);
+                        NetworkLogger.info(`Removing conflicting XAVS configuration file: ${conflict.file}`);
                         await cockpit.spawn(['rm', '-f', conflict.file], { superuser: 'try' });
                     } else {
                         throw new NetworkError(
@@ -4118,14 +4183,14 @@ const NetworkAPI = {
             if (error instanceof NetworkError) {
                 throw error;
             }
-            console.warn('Error checking for interface conflicts:', error);
+            NetworkLogger.warning('Error checking for interface conflicts:', error);
             // Don't throw here - allow the operation to continue if conflict check fails
         }
     },
 
     async configureInterface(config) {
         try {
-            console.log('NetworkAPI.configureInterface called with config:', config);
+            NetworkLogger.info('NetworkAPI.configureInterface called with config:', config);
             
             // Determine interface type based on configuration or interface name
             let interfaceType = 'ethernets';
@@ -4136,7 +4201,7 @@ const NetworkAPI = {
             if (vlanPattern.test(config.name)) {
                 interfaceType = 'vlans';
                 isVlanInterface = true;
-                console.log(`Detected VLAN interface: ${config.name}`);
+                NetworkLogger.info(`Detected VLAN interface: ${config.name}`);
             }
             
             // Also check if interface exists in any VLAN netplan files
@@ -4151,30 +4216,30 @@ const NetworkAPI = {
                             if (content && content.includes('vlans:') && content.includes(`${config.name}:`)) {
                                 interfaceType = 'vlans';
                                 isVlanInterface = true;
-                                console.log(`Found ${config.name} defined as VLAN in ${file}`);
+                                NetworkLogger.info(`Found ${config.name} defined as VLAN in ${file}`);
                                 break;
                             }
                         } catch (fileError) {
-                            console.warn(`Could not read file ${file}:`, fileError);
+                            NetworkLogger.warning(`Could not read file ${file}:`, fileError);
                         }
                     }
                 } catch (searchError) {
-                    console.warn('Error searching for VLAN definitions:', searchError);
+                    NetworkLogger.warning('Error searching for VLAN definitions:', searchError);
                 }
             }
             
             // If this is a VLAN interface, delegate to VLAN manager
             if (isVlanInterface) {
-                console.log(`Delegating VLAN interface ${config.name} configuration to VLAN manager`);
+                NetworkLogger.info(`Delegating VLAN interface ${config.name} configuration to VLAN manager`);
                 return await this.configureVlanInterface(config);
             }
             
             // Check for interface conflicts before proceeding
-            console.log('Checking for interface conflicts...');
+            NetworkLogger.info('Checking for interface conflicts...');
             await this.checkForInterfaceConflicts(config.name, interfaceType);
             
             // Validate configuration
-            console.log('Validating configuration...');
+            NetworkLogger.info('Validating configuration...');
             if (config.configType === 'static' && config.ip && !validateCIDR(config.ip)) {
                 throw new NetworkError('Invalid IP address format', 'INVALID_IP');
             }
@@ -4183,72 +4248,72 @@ const NetworkAPI = {
                 throw new NetworkError('Invalid gateway address', 'INVALID_GATEWAY');
             }
             
-            console.log('Configuration validation passed');
+            NetworkLogger.info('Configuration validation passed');
             
             // Generate Netplan configuration
-            console.log('Generating Netplan YAML configuration...');
+            NetworkLogger.info('Generating Netplan YAML configuration...');
             const netplanConfig = generateNetplanYaml(config);
-            console.log('Generated Netplan config:');
-            console.log('--- START CONFIG ---');
-            console.log(netplanConfig);
-            console.log('--- END CONFIG ---');
+            NetworkLogger.info('Generated Netplan config:');
+            NetworkLogger.info('--- START CONFIG ---');
+            NetworkLogger.info(netplanConfig);
+            NetworkLogger.info('--- END CONFIG ---');
             
             // Use XAVS-specific naming to avoid conflicts with installer configs
             const configFile = `/etc/netplan/90-xavs-${config.name}.yaml`;
-            console.log(`Writing configuration to file: ${configFile}`);
+            NetworkLogger.info(`Writing configuration to file: ${configFile}`);
             
             // Show what we're about to write
-            console.log('File path details:');
-            console.log('- config.name:', config.name);
-            console.log('- Full file path:', configFile);
-            console.log('- Content length:', netplanConfig.length, 'characters');
+            NetworkLogger.info('File path details:');
+            NetworkLogger.info('- config.name:', config.name);
+            NetworkLogger.info('- Full file path:', configFile);
+            NetworkLogger.info('- Content length:', netplanConfig.length, 'characters');
             
             // Check Cockpit API availability
             if (!cockpit || !cockpit.file) {
-                console.error('Cockpit API check failed - cockpit object:', cockpit);
+                NetworkLogger.error('Cockpit API check failed - cockpit object:', cockpit);
                 throw new Error('Cockpit API not available - please ensure you are running this module within Cockpit');
             } else {
-                console.log('Cockpit API is available');
+                NetworkLogger.info('Cockpit API is available');
             }
             
-            console.log('Attempting to write file with Cockpit API...');
+            NetworkLogger.info('Attempting to write file with Cockpit API...');
             await cockpit.file(configFile, { superuser: 'require' }).replace(netplanConfig);
-            console.log('Configuration file written successfully');
+            NetworkLogger.info('Configuration file written successfully');
             
             // Set proper file permissions (600 = rw-------)
-            console.log('Setting file permissions to 600...');
+            NetworkLogger.info('Setting file permissions to 600...');
             await cockpit.spawn(['chmod', '600', configFile], { superuser: 'require' });
-            console.log('File permissions set successfully');
+            NetworkLogger.info('File permissions set successfully');
             
             // Test the configuration first with netplan try
-            console.log('Testing Netplan configuration with netplan --debug try...');
+            NetworkLogger.info('Testing Netplan configuration with netplan --debug try...');
             if (!cockpit.spawn) {
-                console.error('Cockpit spawn API not available');
+                NetworkLogger.error('Cockpit spawn API not available');
                 throw new Error('Cockpit spawn API not available');
             }
             
             try {
-                console.log('Running: netplan --debug try --timeout=30');
+                NetworkLogger.info('Running: netplan --debug try --timeout=30');
                 const debugOutput = await cockpit.spawn(['netplan', '--debug', 'try', '--timeout=30'], { superuser: 'require' });
-                console.log('Netplan debug output:');
-                console.log('--- START NETPLAN DEBUG ---');
-                console.log(debugOutput);
-                console.log('--- END NETPLAN DEBUG ---');
-                console.log('Netplan try completed successfully');
+                NetworkLogger.info('Netplan debug output:');
+                NetworkLogger.info('--- START NETPLAN DEBUG ---');
+                NetworkLogger.info(debugOutput);
+                NetworkLogger.info('--- END NETPLAN DEBUG ---');
+                NetworkLogger.info('Netplan try completed successfully');
             } catch (tryError) {
-                console.error('Netplan try failed:', tryError);
+                NetworkLogger.error('Netplan try failed:', tryError);
                 
                 // Log the debug output even on failure
                 if (tryError.message) {
-                    console.log('Netplan error output:');
-                    console.log('--- START NETPLAN ERROR ---');
-                    console.log(tryError.message);
-                    console.log('--- END NETPLAN ERROR ---');
+                    NetworkLogger.info('Netplan error output:');
+                    NetworkLogger.info('--- START NETPLAN ERROR ---');
+                    NetworkLogger.info(tryError.message);
+                    NetworkLogger.info('--- END NETPLAN ERROR ---');
                 }
                 
                 // Check if this is just the bond revert warning (exit status 78)
                 if (tryError.exit_status === 78) {
-                    console.log('Netplan try exited with status 78 (bond revert warning) - this is expected for bond configurations');
+                    NetworkLogger.info('Netplan try exited with status 78 (bond revert warning) - this is expected for bond configurations');
                     // This is the expected bond warning, not a real error
                 } else {
                     // This is a real error
@@ -4257,14 +4322,14 @@ const NetworkAPI = {
             }
             
             // Apply configuration permanently
-            console.log('Applying Netplan configuration permanently...');
-            console.log('Running: netplan apply');
+            NetworkLogger.info('Applying Netplan configuration permanently...');
+            NetworkLogger.info('Running: netplan apply');
             await cockpit.spawn(['netplan', 'apply'], { superuser: 'require' });
-            console.log('Netplan configuration applied successfully');
+            NetworkLogger.info('Netplan configuration applied successfully');
             
             return { success: true };
         } catch (error) {
-            console.error('Error in NetworkAPI.configureInterface:', error);
+            NetworkLogger.error('Error in NetworkAPI.configureInterface:', error);
             throw new NetworkError('Failed to configure interface', 'CONFIGURE_FAILED', error);
         }
     },
@@ -4281,12 +4346,12 @@ const NetworkAPI = {
     },
     
     async deleteInterface(name) {
-        console.log(`NetworkAPI.deleteInterface called for: ${name}`);
+        NetworkLogger.info(`NetworkAPI.deleteInterface called for: ${name}`);
         
         try {
             // Detect interface type and delegate to appropriate manager
             if (name.includes('.') && /\.\d+$/.test(name)) {
-                console.log(`Detected VLAN interface: ${name}, delegating to VLAN manager`);
+                NetworkLogger.info(`Detected VLAN interface: ${name}, delegating to VLAN manager`);
                 
                 // Extract VLAN ID from name
                 const vlanIdMatch = name.match(/\.(\d+)$/);
@@ -4295,19 +4360,19 @@ const NetworkAPI = {
                     
                     // Check if VlanManager is available and has the deleteRealVlan function
                     if (typeof VlanManager !== 'undefined' && typeof VlanManager.deleteRealVlan === 'function') {
-                        console.log(`Calling VlanManager.deleteRealVlan for VLAN ${vlanId}`);
+                        NetworkLogger.info(`Calling VlanManager.deleteRealVlan for VLAN ${vlanId}`);
                         await VlanManager.deleteRealVlan(vlanId, name);
                         return { success: true };
                     } else {
                         // Fallback to legacy VLAN deletion
-                        console.log(`VlanManager not available, using fallback deletion for VLAN ${name}`);
+                        NetworkLogger.info(`VlanManager not available, using fallback deletion for VLAN ${name}`);
                         return await this.deleteVlanInterface(name, vlanId);
                     }
                 }
             }
             
             // For non-VLAN interfaces, use the standard deletion process
-            console.log(`Deleting standard interface: ${name}`);
+            NetworkLogger.info(`Deleting standard interface: ${name}`);
             
             // Only look for XAVS-managed configuration files to avoid touching installer configs
             const xavsConfigFile = `/etc/netplan/90-xavs-${name}.yaml`;
@@ -4316,12 +4381,12 @@ const NetworkAPI = {
                 // Check if our XAVS config file exists
                 const content = await cockpit.file(xavsConfigFile).read();
                 if (content) {
-                    console.log(`Removing XAVS config file: ${xavsConfigFile}`);
+                    NetworkLogger.info(`Removing XAVS config file: ${xavsConfigFile}`);
                     // Remove the XAVS-managed configuration file
                     await cockpit.spawn(['rm', xavsConfigFile], { superuser: 'require' });
                 }
             } catch (fileError) {
-                console.log(`XAVS config file ${xavsConfigFile} not found, checking other Netplan files`);
+                NetworkLogger.info(`XAVS config file ${xavsConfigFile} not found, checking other Netplan files`);
                 // If the specific XAVS file doesn't exist, look in other Netplan files
                 // but exclude installer configs (00-installer-config.yaml, 01-network-manager-all.yaml)
                 const netplanFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '*.yaml', '-not', '-name', '00-installer-config.yaml', '-not', '-name', '01-network-manager-all.yaml'], { superuser: 'try' });
@@ -4331,79 +4396,79 @@ const NetworkAPI = {
                     try {
                         const content = await cockpit.file(file).read();
                         if (content && content.includes(`${name}:`)) {
-                            console.log(`Found interface ${name} in file: ${file}`);
+                            NetworkLogger.info(`Found interface ${name} in file: ${file}`);
                             // Only remove from non-installer config files
                             if (!file.includes('00-installer-config') && !file.includes('01-network-manager')) {
                                 const updatedContent = removeInterfaceFromNetplan(content, name);
                                 await cockpit.file(file, { superuser: 'require' }).replace(updatedContent);
-                                console.log(`Updated file: ${file}`);
+                                NetworkLogger.info(`Updated file: ${file}`);
                                 break;
                             }
                         }
                     } catch (fileError) {
-                        console.warn(`Could not process ${file}:`, fileError);
+                        NetworkLogger.warning(`Could not process ${file}:`, fileError);
                     }
                 }
             }
             
             // Test configuration before applying
-            console.log('Testing Netplan configuration with netplan --debug try...');
+            NetworkLogger.info('Testing Netplan configuration with netplan --debug try...');
             try {
                 const debugOutput = await cockpit.spawn(['netplan', '--debug', 'try', '--timeout=30'], { superuser: 'require' });
-                console.log('NetworkAPI: Netplan debug output:');
-                console.log('--- START NETPLAN DEBUG ---');
-                console.log(debugOutput);
-                console.log('--- END NETPLAN DEBUG ---');
+                NetworkLogger.info('NetworkAPI: Netplan debug output:');
+                NetworkLogger.info('--- START NETPLAN DEBUG ---');
+                NetworkLogger.info(debugOutput);
+                NetworkLogger.info('--- END NETPLAN DEBUG ---');
             } catch (tryError) {
-                console.error('NetworkAPI: Netplan try failed:', tryError);
+                NetworkLogger.error('NetworkAPI: Netplan try failed:', tryError);
                 
                 // Log the debug output even on failure
                 if (tryError.message) {
-                    console.log('NetworkAPI: Netplan error output:');
-                    console.log('--- START NETPLAN ERROR ---');
-                    console.log(tryError.message);
-                    console.log('--- END NETPLAN ERROR ---');
+                    NetworkLogger.info('NetworkAPI: Netplan error output:');
+                    NetworkLogger.info('--- START NETPLAN ERROR ---');
+                    NetworkLogger.info(tryError.message);
+                    NetworkLogger.info('--- END NETPLAN ERROR ---');
                 }
                 
                 // Check if this is just the bond revert warning (exit status 78)
                 if (tryError.exit_status === 78) {
-                    console.log('NetworkAPI: Netplan try exited with status 78 (bond revert warning) - proceeding');
+                    NetworkLogger.info('NetworkAPI: Netplan try exited with status 78 (bond revert warning) - proceeding');
                 } else {
                     throw new Error(`Configuration test failed: ${tryError.message || tryError}`);
                 }
             }
             
             // Apply configuration
-            console.log('Applying Netplan configuration...');
+            NetworkLogger.info('Applying Netplan configuration...');
             await cockpit.spawn(['netplan', 'apply'], { superuser: 'require' });
-            console.log('Netplan applied successfully');
+            NetworkLogger.info('Netplan applied successfully');
             
             return { success: true };
         } catch (error) {
-            console.error(`NetworkAPI.deleteInterface error for ${name}:`, error);
+            NetworkLogger.error(`NetworkAPI.deleteInterface error for ${name}:`, error);
             throw new NetworkError(`Failed to delete interface ${name}`, 'DELETE_FAILED', error);
         }
     },
     
     // Fallback VLAN deletion method
     async deleteVlanInterface(name, vlanId) {
-        console.log(`NetworkAPI.deleteVlanInterface: Deleting VLAN ${name} (ID: ${vlanId})`);
+        NetworkLogger.info(`NetworkAPI.deleteVlanInterface: Deleting VLAN ${name} (ID: ${vlanId})`);
         
         try {
             // Try to bring down the interface first
             try {
-                console.log(`Bringing down VLAN interface: ${name}`);
+                NetworkLogger.info(`Bringing down VLAN interface: ${name}`);
                 await cockpit.spawn(['ip', 'link', 'set', name, 'down'], { superuser: 'try' });
             } catch (downError) {
-                console.warn(`Could not bring down interface ${name}:`, downError);
+                NetworkLogger.warning(`Could not bring down interface ${name}:`, downError);
             }
             
             // Try to delete the VLAN interface
             try {
-                console.log(`Deleting VLAN interface: ${name}`);
+                NetworkLogger.info(`Deleting VLAN interface: ${name}`);
                 await cockpit.spawn(['ip', 'link', 'delete', name], { superuser: 'try' });
             } catch (deleteError) {
-                console.warn(`Could not delete interface ${name}:`, deleteError);
+                NetworkLogger.warning(`Could not delete interface ${name}:`, deleteError);
             }
             
             // Remove VLAN-specific configuration files
@@ -4414,45 +4479,45 @@ const NetworkAPI = {
             
             for (const configFile of vlanConfigFiles) {
                 try {
-                    console.log(`Removing VLAN config file: ${configFile}`);
+                    NetworkLogger.info(`Removing VLAN config file: ${configFile}`);
                     await cockpit.spawn(['rm', '-f', configFile], { superuser: 'require' });
                 } catch (rmError) {
-                    console.warn(`Could not remove ${configFile}:`, rmError);
+                    NetworkLogger.warning(`Could not remove ${configFile}:`, rmError);
                 }
             }
             
             // Test and apply Netplan configuration
-            console.log('Testing VLAN deletion with netplan --debug try...');
+            NetworkLogger.info('Testing VLAN deletion with netplan --debug try...');
             try {
                 const debugOutput = await cockpit.spawn(['netplan', '--debug', 'try', '--timeout=30'], { superuser: 'require' });
-                console.log('NetworkAPI: VLAN deletion debug output:');
-                console.log('--- START NETPLAN DEBUG ---');
-                console.log(debugOutput);
-                console.log('--- END NETPLAN DEBUG ---');
+                NetworkLogger.info('NetworkAPI: VLAN deletion debug output:');
+                NetworkLogger.info('--- START NETPLAN DEBUG ---');
+                NetworkLogger.info(debugOutput);
+                NetworkLogger.info('--- END NETPLAN DEBUG ---');
             } catch (tryError) {
-                console.error('NetworkAPI: VLAN deletion netplan try failed:', tryError);
+                NetworkLogger.error('NetworkAPI: VLAN deletion netplan try failed:', tryError);
                 
                 if (tryError.message) {
-                    console.log('NetworkAPI: VLAN deletion netplan error output:');
-                    console.log('--- START NETPLAN ERROR ---');
-                    console.log(tryError.message);
-                    console.log('--- END NETPLAN ERROR ---');
+                    NetworkLogger.info('NetworkAPI: VLAN deletion netplan error output:');
+                    NetworkLogger.info('--- START NETPLAN ERROR ---');
+                    NetworkLogger.info(tryError.message);
+                    NetworkLogger.info('--- END NETPLAN ERROR ---');
                 }
                 
                 if (tryError.exit_status === 78) {
-                    console.log('NetworkAPI: Netplan try exited with status 78 (bond revert warning) - proceeding');
+                    NetworkLogger.info('NetworkAPI: Netplan try exited with status 78 (bond revert warning) - proceeding');
                 } else {
                     throw new Error(`VLAN deletion configuration test failed: ${tryError.message || tryError}`);
                 }
             }
             
-            console.log('Applying VLAN deletion configuration...');
+            NetworkLogger.info('Applying VLAN deletion configuration...');
             await cockpit.spawn(['netplan', 'apply'], { superuser: 'require' });
-            console.log('VLAN deletion configuration applied successfully');
+            NetworkLogger.info('VLAN deletion configuration applied successfully');
             
             return { success: true };
         } catch (error) {
-            console.error(`NetworkAPI.deleteVlanInterface error for ${name}:`, error);
+            NetworkLogger.error(`NetworkAPI.deleteVlanInterface error for ${name}:`, error);
             throw new Error(`Failed to delete VLAN interface ${name}: ${error.message || error}`);
         }
     }
@@ -4602,7 +4667,7 @@ function generateVlanConfig(config) {
 
 // Generate Netplan configuration specifically for VLAN interfaces
 function generateVlanNetplanConfig(config) {
-    console.log('Generating VLAN Netplan config for:', config.name);
+    NetworkLogger.info('Generating VLAN Netplan config for:', config.name);
     
     let yamlConfig = `network:
   version: 2
@@ -4819,11 +4884,11 @@ document.addEventListener('DOMContentLoaded', function() {
         // Ensure bond functions are available after all scripts load
         setTimeout(() => {
             if (typeof addBond === 'undefined') {
-                console.warn('addBond function not found, creating placeholder');
+                NetworkLogger.warning('addBond function not found, creating placeholder');
                 window.addBond = () => NetworkManager.showError('Bond manager not loaded. Please refresh the page.');
             }
             if (typeof editBond === 'undefined') {
-                console.warn('editBond function not found, creating placeholder');
+                NetworkLogger.warning('editBond function not found, creating placeholder');
                 window.editBond = (bondName) => NetworkManager.showError('Bond manager not loaded. Please refresh the page.');
             }
         }, 100);
@@ -4839,11 +4904,6 @@ window.addEventListener('beforeunload', function(e) {
 });
 
 // Quick Action Functions
-function refreshSystemStatus() {
-    NetworkManager.loadSystemStatus();
-    NetworkManager.showSuccess('System status refreshed');
-}
-
 function validateConfiguration() {
     // Real configuration validation using netplan
     if (!cockpit || !cockpit.spawn) {
@@ -4889,7 +4949,7 @@ function refreshInterfaces() {
 
 function filterInterfaces() {
     const filterValue = document.getElementById('interface-filter').value;
-    console.log('Filtering interfaces by:', filterValue);
+    NetworkLogger.info('Filtering interfaces by:', filterValue);
     
     const interfaceCards = document.querySelectorAll('#interface-list .interface-card');
     
@@ -4909,7 +4969,7 @@ function filterInterfaces() {
     const visibleCards = document.querySelectorAll('#interface-list .interface-card[style*="block"], #interface-list .interface-card:not([style])');
     const totalCards = interfaceCards.length;
     
-    console.log(`Showing ${visibleCards.length} of ${totalCards} interfaces (filter: ${filterValue})`);
+    NetworkLogger.info(`Showing ${visibleCards.length} of ${totalCards} interfaces (filter: ${filterValue})`);
 }
 
 // VLAN, Bridge, and Bond creation functions
@@ -5137,6 +5197,12 @@ function addRoute() {
     
     modal.style.display = 'block';
     
+    // Setup live validation for the form
+    const form = document.getElementById('route-form');
+    if (typeof setupLiveValidation === 'function') {
+        setupLiveValidation(form);
+    }
+    
     document.getElementById('route-form').onsubmit = function(e) {
         e.preventDefault();
         const formData = new FormData(e.target);
@@ -5223,115 +5289,33 @@ function addDnsServer() {
 }
 
 function refreshVlans() {
-    console.log('Refresh VLANs');
+    NetworkLogger.info('Refresh VLANs');
     NetworkManager.loadVlans();
     NetworkManager.showSuccess('VLANs refreshed');
 }
 
 function refreshBridges() {
-    console.log('Refresh Bridges');
+    NetworkLogger.info('Refresh Bridges');
     NetworkManager.loadBridges();
     NetworkManager.showSuccess('Bridges refreshed');
 }
 
 function refreshBonds() {
-    console.log('Refresh Bonds');
+    NetworkLogger.info('Refresh Bonds');
     NetworkManager.loadBonds();
     NetworkManager.showSuccess('Bonds refreshed');
 }
 
 function refreshRoutes() {
-    console.log('Refresh Routes');
+    NetworkLogger.info('Refresh Routes');
     NetworkManager.loadRoutes();
     NetworkManager.showSuccess('Routes refreshed');
 }
 
 function refreshDns() {
-    console.log('Refresh DNS');
+    NetworkLogger.info('Refresh DNS');
     NetworkManager.loadDnsConfig();
     NetworkManager.showSuccess('DNS configuration refreshed');
-}
-
-function refreshMonitoring() {
-    console.log('Refresh Monitoring');
-    NetworkManager.loadMonitoring();
-    NetworkManager.showSuccess('Monitoring data refreshed');
-}
-
-function exportLogs() {
-    console.log('Export Logs');
-    if (!cockpit || !cockpit.spawn) {
-        NetworkManager.showError('Cockpit API not available for log export');
-        return;
-    }
-    
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const logFile = `/tmp/network-logs-${timestamp}.log`;
-    
-    cockpit.spawn([
-        'journalctl', 
-        '-u', 'systemd-networkd',
-        '-u', 'systemd-resolved',
-        '--since=24 hours ago',
-        '--no-pager'
-    ], { superuser: 'try' })
-        .then((logs) => {
-            return cockpit.spawn(['tee', logFile], { input: logs, superuser: 'require' });
-        })
-        .then(() => {
-            NetworkManager.showSuccess(`Network logs exported to ${logFile}`);
-        })
-        .catch((error) => {
-            NetworkManager.showError(`Log export failed: ${error.message}`);
-        });
-}
-
-function applyConfiguration() {
-    console.log('Apply Configuration');
-    if (!cockpit || !cockpit.spawn) {
-        NetworkManager.showError('Cockpit API not available for configuration application');
-        return;
-    }
-    
-    cockpit.spawn(['netplan', 'apply'], { superuser: 'require' })
-        .then(() => {
-            NetworkManager.showSuccess('Configuration applied successfully');
-            // Reload all data to reflect changes
-            NetworkManager.loadNetworkData();
-        })
-        .catch((error) => {
-            NetworkManager.showError(`Failed to apply configuration: ${error.message}`);
-        });
-}
-
-function validateAllConfigs() {
-    console.log('Validate All Configs');
-    if (!cockpit || !cockpit.spawn) {
-        NetworkManager.showError('Cockpit API not available for validation');
-        return;
-    }
-    
-    cockpit.spawn(['netplan', 'get'], { superuser: 'try' })
-        .then(() => {
-            return cockpit.spawn(['netplan', '--debug', 'generate'], { superuser: 'try' });
-        })
-        .then(() => {
-            NetworkManager.showSuccess('All network configurations are valid');
-        })
-        .catch((error) => {
-            NetworkManager.showError(`Configuration validation failed: ${error.message}`);
-        });
-}
-
-function rollbackConfiguration() {
-    console.log('Rollback Configuration');
-    if (!cockpit || !cockpit.spawn) {
-        NetworkManager.showError('Cockpit API not available for rollback');
-        return;
-    }
-    
-    // This would need to be implemented with a proper backup/restore mechanism
-    NetworkManager.showError('Rollback functionality requires a previous backup to be available');
 }
 
 // Edit route function
@@ -5377,6 +5361,12 @@ function editRoute(index) {
     `;
     
     NetworkManager.createModal('Edit Route', modalContent, modalFooter);
+    
+    // Setup live validation for the edit form
+    const editForm = document.getElementById('route-edit-form');
+    if (typeof setupLiveValidation === 'function') {
+        setupLiveValidation(editForm);
+    }
 }
 
 // Delete route function
@@ -5420,7 +5410,7 @@ async function updateRoute(index) {
         NetworkManager.loadRoutes();
         
     } catch (error) {
-        console.error('Failed to update route:', error);
+        NetworkLogger.error('Failed to update route:', error);
         NetworkManager.showError(`Failed to update route: ${error.message || error}`);
     }
 }
@@ -5450,7 +5440,7 @@ async function deleteRouteFromSystem(route, index, showSuccess = true) {
             deleteCmd.push('dev', route.interface);
         }
         
-        console.log('Deleting route with command:', deleteCmd);
+        NetworkLogger.info('Deleting route with command:', deleteCmd);
         await cockpit.spawn(deleteCmd, { superuser: 'try' });
         
         if (showSuccess) {
@@ -5459,7 +5449,7 @@ async function deleteRouteFromSystem(route, index, showSuccess = true) {
         }
         
     } catch (error) {
-        console.error('Failed to delete route:', error);
+        NetworkLogger.error('Failed to delete route:', error);
         throw new Error(`Failed to delete route: ${error.message || error}`);
     }
 }
@@ -5482,7 +5472,7 @@ async function addRouteToSystem(routeData) {
         addCmd.push('metric', routeData.metric);
     }
     
-    console.log('Adding route with command:', addCmd);
+    NetworkLogger.info('Adding route with command:', addCmd);
     await cockpit.spawn(addCmd, { superuser: 'try' });
 }
 
@@ -5692,25 +5682,3 @@ function clearModalMessages(modalElement) {
 }
 
 // Debug Netplan configuration with detailed output - main network manager version
-async function debugNetplanConfiguration(section = 'general') {
-    console.log(`NetworkManager: Running netplan debug for ${section}...`);
-    
-    try {
-        // Run netplan --debug try to test current configuration
-        const result = await cockpit.spawn(['netplan', '--debug', 'try'], { 
-            superuser: 'try',
-            err: 'out'
-        });
-        
-        console.log('Netplan Debug Output:', result);
-        
-        // Show a user-friendly notification
-        NetworkManager.showSuccess('Netplan debug completed successfully. Check browser console for detailed output.');
-        
-    } catch (error) {
-        console.error('Netplan Debug Error:', error);
-        
-        // Show error to user
-        NetworkManager.showError(`Netplan debug failed: ${error.message || error}`);
-    }
-}

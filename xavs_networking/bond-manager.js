@@ -29,10 +29,10 @@ function normalizeBondMode(mode) {
 
 // Validate and fix bond mode
 function validateBondMode(mode) {
-    console.log(`[validateBondMode] Validating bond mode: ${mode}`);
+    NetworkLogger.info(`[validateBondMode] Validating bond mode: ${mode}`);
     
     if (!mode) {
-        console.warn('[validateBondMode] No mode provided, defaulting to active-backup');
+        NetworkLogger.warning('[validateBondMode] No mode provided, defaulting to active-backup');
         return 'active-backup';
     }
     
@@ -55,520 +55,31 @@ function validateBondMode(mode) {
     
     // Check if it's a mapped mode
     if (modeMap[normalized]) {
-        console.log(`[validateBondMode] Mapped ${normalized} to ${modeMap[normalized]}`);
+        NetworkLogger.info(`[validateBondMode] Mapped ${normalized} to ${modeMap[normalized]}`);
         return modeMap[normalized];
     }
     
     // Check if it's already a valid mode
     if (VALID_BOND_MODES.includes(normalized)) {
-        console.log(`[validateBondMode] Mode ${normalized} is valid`);
+        NetworkLogger.info(`[validateBondMode] Mode ${normalized} is valid`);
         return normalized;
     }
     
-    console.warn(`[validateBondMode] Invalid bond mode ${normalized}, defaulting to active-backup`);
+    NetworkLogger.warning(`[validateBondMode] Invalid bond mode ${normalized}, defaulting to active-backup`);
     return 'active-backup';
 }
 
 // Check for potentially invalid configurations in existing files
-async function validateExistingBondConfigs() {
-    console.log('[validateExistingBondConfigs] Checking existing bond configurations...');
-    
-    try {
-        const xavsFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '90-xavs-bond*.yaml'], { superuser: 'try' });
-        const files = xavsFiles.trim().split('\n').filter(f => f.trim());
-        
-        for (const file of files) {
-            try {
-                const content = await cockpit.file(file).read();
-                
-                // Check for invalid bond mode
-                const modeMatch = content.match(/mode:\s*(.+)/);
-                if (modeMatch) {
-                    const currentMode = modeMatch[1].trim();
-                    const validatedMode = validateBondMode(currentMode);
-                    
-                    if (validatedMode !== currentMode) {
-                        console.warn(`[validateExistingBondConfigs] Found invalid bond mode '${currentMode}' in ${file}, should be '${validatedMode}'`);
-                    }
-                }
-                
-                // Check for invalid gateway values
-                const gatewayMatch = content.match(/gateway4:\s*(.+)/);
-                if (gatewayMatch) {
-                    const gateway = gatewayMatch[1].trim();
-                    if (gateway === 'N/A' || gateway === 'null' || gateway === 'undefined') {
-                        console.warn(`[validateExistingBondConfigs] Found invalid gateway value '${gateway}' in ${file}`);
-                    }
-                }
-                
-            } catch (error) {
-                console.warn(`[validateExistingBondConfigs] Could not validate ${file}:`, error);
-            }
-        }
-    } catch (error) {
-        console.warn('[validateExistingBondConfigs] Error validating existing configs:', error);
-    }
-}
-
-const BondManager = {
-    bonds: [],
-    isLoading: false, // Flag to prevent concurrent loading
-    
-    // Fix permissions for all XAVS Netplan files
-    async fixNetplanPermissions() {
-        try {
-            console.log('BondManager: Checking and fixing Netplan file permissions...');
-            const xavsFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '90-xavs-*.yaml'], { superuser: 'try' });
-            const files = xavsFiles.trim().split('\n').filter(f => f.trim());
-            
-            for (const file of files) {
-                try {
-                    await cockpit.spawn(['chmod', '600', file], { superuser: 'try' });
-                    console.log(`BondManager: Fixed permissions for ${file}`);
-                } catch (error) {
-                    console.warn(`BondManager: Could not fix permissions for ${file}:`, error);
-                }
-            }
-        } catch (error) {
-            console.warn('BondManager: Error fixing Netplan permissions:', error);
-        }
-    },
-    
-    // Load bond configurations from real system
-    async loadBonds() {
-        if (this.isLoading) {
-            console.log('BondManager: Already loading bonds, skipping...');
-            return;
-        }
-        
-        this.isLoading = true;
-        console.log('BondManager: Loading real bond configurations...');
-        const listElement = document.getElementById('bond-list');
-        if (listElement) {
-            listElement.innerHTML = '<div class="loading"><i class="fas fa-spinner"></i>Loading bonds...</div>';
-        }
-        
-        try {
-            // Fix permissions on first load
-            if (!this.permissionsFixed) {
-                await this.fixNetplanPermissions();
-                this.permissionsFixed = true;
-                
-                // Also validate existing bond configs
-                await validateExistingBondConfigs();
-            }
-        
-            this.bonds = await this.fetchBonds();
-            this.renderBonds();
-        } catch (error) {
-            console.error('BondManager: Failed to load bonds:', error);
-            if (listElement) {
-                listElement.innerHTML = '<div class="error-message"><i class="fas fa-exclamation-triangle"></i>Failed to load bonds</div>';
-            }
-        } finally {
-            this.isLoading = false;
-        }
-    },
-    
-    // Fetch real bond configurations from system
-    async fetchBonds() {
-        console.log('BondManager: Fetching bonds from system...');
-        
-        if (!cockpit || !cockpit.spawn) {
-            throw new Error('Cockpit API not available. Please ensure this module is running within Cockpit.');
-        }
-        
-        const bonds = [];
-        
-        try {
-            // Get bond interfaces using ip command
-            console.log('BondManager: Running ip link show type bond...');
-            const ipOutput = await cockpit.spawn(['ip', 'link', 'show', 'type', 'bond'], { superuser: 'try' });
-            
-            if (ipOutput.trim()) {
-                const lines = ipOutput.trim().split('\n');
-                for (const line of lines) {
-                    const match = line.match(/(\d+):\s+([^:]+):/);
-                    if (match) {
-                        const bondName = match[2];
-                        console.log(`BondManager: Processing bond interface: ${bondName}`);
-                        
-                        const bondInfo = await this.getBondDetails(bondName);
-                        bonds.push(bondInfo);
-                    }
-                }
-            }
-        } catch (error) {
-            console.warn('BondManager: Failed to get bond interfaces via type filter:', error);
-            
-            // Fallback: check all interfaces for bond patterns
-            try {
-                console.log('BondManager: Fallback - scanning all interfaces for bonds...');
-                const allInterfacesOutput = await cockpit.spawn(['ip', 'link', 'show'], { superuser: 'try' });
-                const lines = allInterfacesOutput.split('\n');
-                
-                for (const line of lines) {
-                    if (line.includes(':') && (line.includes('bond') || line.includes('team'))) {
-                        const match = line.match(/(\d+):\s+([^:]+):/);
-                        if (match) {
-                            const ifaceName = match[2].trim();
-                            if (ifaceName.startsWith('bond') || ifaceName.includes('team')) {
-                                console.log(`BondManager: Found potential bond interface: ${ifaceName}`);
-                                
-                                // Verify it's actually a bond
-                                try {
-                                    const bondInfo = await this.getBondDetails(ifaceName);
-                                    bonds.push(bondInfo);
-                                } catch (bondError) {
-                                    console.warn(`BondManager: Interface ${ifaceName} is not a valid bond:`, bondError);
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch (fallbackError) {
-                console.warn('BondManager: Fallback bond detection failed:', fallbackError);
-            }
-        }
-        
-        console.log(`BondManager: Found ${bonds.length} bond interfaces:`, bonds);
-        return bonds;
-    },
-
-    // Get detailed information about a specific bond
-    async getBondDetails(bondName) {
-        console.log(`BondManager: Getting details for bond: ${bondName}`);
-        
-        const bondInfo = {
-            name: bondName,
-            status: 'unknown',
-            mode: 'unknown',
-            slaves: [],
-            activeSlaves: [],
-            inactiveSlaves: [],
-            primary: null,
-            miiMonitorInterval: 100,
-            upDelay: 0,
-            downDelay: 0,
-            ip: 'N/A',
-            gateway: 'N/A',
-            description: `Bond interface ${bondName}`
-        };
-        
-        try {
-            // Get bond status from ip link - check both administrative and operational state
-            const ipLinkOutput = await cockpit.spawn(['ip', 'link', 'show', bondName], { superuser: 'try' });
-            console.log(`[getBondDetails] ip link output for ${bondName}: ${ipLinkOutput.trim()}`);
-            
-            // More detailed status checking
-            const isAdminUp = ipLinkOutput.includes('UP');
-            const isOperUp = ipLinkOutput.includes(',UP,') || ipLinkOutput.includes(' UP ');
-            const hasLowerUp = ipLinkOutput.includes('LOWER_UP');
-            
-            // Bond is truly up only if it's administratively up AND operationally up
-            if (isAdminUp && (isOperUp || hasLowerUp)) {
-                bondInfo.status = 'up';
-            } else if (isAdminUp && !isOperUp && !hasLowerUp) {
-                bondInfo.status = 'degraded'; // Admin up but no link
-            } else {
-                bondInfo.status = 'down';
-            }
-            
-            console.log(`[getBondDetails] Bond ${bondName} status: ${bondInfo.status} (admin: ${isAdminUp}, oper: ${isOperUp}, lower: ${hasLowerUp})`);
-            
-            // Get bond configuration from /proc/net/bonding if available
-            try {
-                const bondingInfo = await cockpit.spawn(['cat', `/proc/net/bonding/${bondName}`], { superuser: 'try' });
-                this.parseBondingInfo(bondInfo, bondingInfo);
-            } catch (procError) {
-                console.warn(`BondManager: Could not read /proc/net/bonding/${bondName}:`, procError);
-                
-                // Try alternative method using sysfs
-                try {
-                    await this.getBondInfoFromSysfs(bondInfo);
-                } catch (sysfsError) {
-                    console.warn(`BondManager: Could not get bond info from sysfs:`, sysfsError);
-                }
-            }
-            
-            // Get IP configuration
-            try {
-                const ipAddrOutput = await cockpit.spawn(['ip', 'addr', 'show', bondName], { superuser: 'try' });
-                this.parseIpAddr(bondInfo, ipAddrOutput);
-            } catch (ipError) {
-                console.warn(`BondManager: Could not get IP info for ${bondName}:`, ipError);
-            }
-            
-            // Get route information for gateway (use global default route)
-            try {
-                const routeOutput = await cockpit.spawn(['ip', 'route', 'show', 'default'], { superuser: 'try' });
-                const defaultRoute = routeOutput.trim();
-                if (defaultRoute) {
-                    const gatewayMatch = defaultRoute.match(/default via\s+([^\s]+)/);
-                    if (gatewayMatch) {
-                        bondInfo.gateway = gatewayMatch[1];
-                    }
-                }
-            } catch (routeError) {
-                console.warn(`BondManager: Could not get default route info:`, routeError);
-            }
-            
-        } catch (error) {
-            console.error(`BondManager: Error getting bond details for ${bondName}:`, error);
-        }
-        
-        console.log(`BondManager: Bond details for ${bondName}:`, bondInfo);
-        return bondInfo;
-    },
-
-    // Parse bonding information from /proc/net/bonding
-    parseBondingInfo(bondInfo, bondingData) {
-        const lines = bondingData.split('\n');
-        let currentSlave = null;
-        
-        for (const line of lines) {
-            const trimmed = line.trim();
-            
-            if (trimmed.includes('Bonding Mode:')) {
-                const modeMatch = trimmed.match(/Bonding Mode:\s+(.+)/);
-                if (modeMatch) {
-                    const fullMode = modeMatch[1].trim();
-                    console.log(`[parseBondingInfo] Raw bonding mode from system: "${fullMode}"`);
-                    // Handle special case for IEEE 802.3ad
-                    if (fullMode.includes('IEEE 802.3ad') || fullMode.includes('802.3ad')) {
-                        bondInfo.mode = '802.3ad';
-                        console.log(`[parseBondingInfo] Normalized IEEE mode to: 802.3ad`);
-                    } else {
-                        bondInfo.mode = fullMode.split(' ')[0]; // Get just the mode name for other modes
-                        console.log(`[parseBondingInfo] Extracted mode: ${bondInfo.mode}`);
-                    }
-                }
-            }
-            
-            if (trimmed.includes('Primary Slave:')) {
-                const primaryMatch = trimmed.match(/Primary Slave:\s+(\w+)/);
-                if (primaryMatch && primaryMatch[1] !== 'None') {
-                    bondInfo.primary = primaryMatch[1];
-                }
-            }
-            
-            if (trimmed.includes('MII Polling Interval (ms):')) {
-                const intervalMatch = trimmed.match(/MII Polling Interval \(ms\):\s+(\d+)/);
-                if (intervalMatch) {
-                    bondInfo.miiMonitorInterval = parseInt(intervalMatch[1]);
-                }
-            }
-            
-            if (trimmed.includes('Up Delay (ms):')) {
-                const upDelayMatch = trimmed.match(/Up Delay \(ms\):\s+(\d+)/);
-                if (upDelayMatch) {
-                    bondInfo.upDelay = parseInt(upDelayMatch[1]);
-                }
-            }
-            
-            if (trimmed.includes('Down Delay (ms):')) {
-                const downDelayMatch = trimmed.match(/Down Delay \(ms\):\s+(\d+)/);
-                if (downDelayMatch) {
-                    bondInfo.downDelay = parseInt(downDelayMatch[1]);
-                }
-            }
-            
-            if (trimmed.startsWith('Slave Interface:')) {
-                const slaveMatch = trimmed.match(/Slave Interface:\s+(\w+)/);
-                if (slaveMatch) {
-                    currentSlave = slaveMatch[1];
-                    bondInfo.slaves.push(currentSlave);
-                }
-            }
-            
-            // Parse per-slave MII status when we're in a slave block
-            if (currentSlave && trimmed.startsWith('MII Status:')) {
-                const statusMatch = trimmed.match(/MII Status:\s+(\w+)/);
-                if (statusMatch) {
-                    const isUp = statusMatch[1].toLowerCase() === 'up';
-                    if (isUp) {
-                        bondInfo.activeSlaves.push(currentSlave);
-                    } else {
-                        bondInfo.inactiveSlaves.push(currentSlave);
-                    }
-                    currentSlave = null; // Close the current slave block
-                }
-            }
-        }
-    },
-
-    // Get bond information from sysfs as fallback
-    async getBondInfoFromSysfs(bondInfo) {
-        try {
-            // Get bonding mode
-            const modeContent = await cockpit.spawn(['cat', `/sys/class/net/${bondInfo.name}/bonding/mode`], { superuser: 'try' });
-            const fullMode = modeContent.trim();
-            
-            // Handle special case for IEEE 802.3ad
-            if (fullMode.includes('IEEE 802.3ad') || fullMode.includes('802.3ad')) {
-                bondInfo.mode = '802.3ad';
-            } else {
-                bondInfo.mode = fullMode.split(' ')[0];
-            }
-            
-            // Get slaves
-            const slavesContent = await cockpit.spawn(['cat', `/sys/class/net/${bondInfo.name}/bonding/slaves`], { superuser: 'try' });
-            bondInfo.slaves = slavesContent.trim().split(/\s+/).filter(s => s.trim());
-            
-            // For simplicity, assume all slaves are active if bond is up
-            if (bondInfo.status === 'up') {
-                bondInfo.activeSlaves = [...bondInfo.slaves];
-                bondInfo.inactiveSlaves = [];
-            } else {
-                bondInfo.activeSlaves = [];
-                bondInfo.inactiveSlaves = [...bondInfo.slaves];
-            }
-            
-            // Get MII monitoring interval
-            try {
-                const miimonContent = await cockpit.spawn(['cat', `/sys/class/net/${bondInfo.name}/bonding/miimon`], { superuser: 'try' });
-                bondInfo.miiMonitorInterval = parseInt(miimonContent.trim()) || 100;
-            } catch (miiError) {
-                console.warn('Could not get MII monitor interval from sysfs');
-            }
-            
-        } catch (error) {
-            console.warn(`Could not get bond info from sysfs for ${bondInfo.name}:`, error);
-        }
-    },
-
-    // Parse IP address information
-    parseIpAddr(bondInfo, ipAddrData) {
-        const lines = ipAddrData.split('\n');
-        const ipAddresses = [];
-        
-        for (const line of lines) {
-            const trimmed = line.trim();
-            
-            // Look for inet addresses
-            if (trimmed.startsWith('inet ')) {
-                const ipMatch = trimmed.match(/inet\s+([^\s]+)/);
-                if (ipMatch) {
-                    ipAddresses.push(ipMatch[1]);
-                }
-            }
-        }
-        
-        // Store all IP addresses
-        bondInfo.ipAddresses = ipAddresses;
-        
-        if (ipAddresses.length > 0) {
-            bondInfo.ip = ipAddresses[0]; // Primary IP for backward compatibility
-        } else {
-            // Check if this might be a DHCP interface
-            bondInfo.ip = 'DHCP';
-            bondInfo.ipAddresses = [];
-        }
-    },
-    
-    // Render bonds
-    renderBonds() {
-        const listElement = document.getElementById('bond-list');
-        
-        if (this.bonds.length === 0) {
-            listElement.innerHTML = `
-                <div class="alert">
-                    <p>No network bonds configured. Create bonds for high availability and increased bandwidth.</p>
-                </div>
-            `;
-            return;
-        }
-        
-        listElement.innerHTML = this.bonds.map(bond => `
-            <div class="bond-card">
-                <div class="vlan-header">
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        <i class="fas fa-link" style="font-size: 20px; color: var(--brand);"></i>
-                        <div>
-                            <h3 style="margin: 0; font-size: 18px;">${bond.name}</h3>
-                            <p style="margin: 4px 0 0; color: var(--muted); font-size: 14px;">${bond.description}</p>
-                        </div>
-                        <span class="bond-mode ${bond.mode.replace(/[^a-zA-Z0-9]/g, '-')}">${bond.mode}</span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span class="status-dot ${bond.status === 'up' ? 'ok' : bond.status === 'degraded' ? 'warning' : 'bad'}"></span>
-                        <span style="font-weight: 600; color: var(--text);">${bond.status.toUpperCase()}</span>
-                    </div>
-                </div>
-                
-                <div class="vlan-config">
-                    <div>
-                        <span class="detail-label">IP Configuration</span>
-                        <div class="detail-value">
-                            ${bond.ipAddresses && bond.ipAddresses.length > 0 
-                                ? bond.ipAddresses.map(ip => `<div class="ip-address-item">${ip}</div>`).join('')
-                                : (bond.ip || 'Not configured')
-                            }
-                        </div>
-                    </div>
-                    <div>
-                        <span class="detail-label">Gateway</span>
-                        <div class="detail-value">${bond.gateway}</div>
-                    </div>
-                    <div>
-                        <span class="detail-label">MII Monitor</span>
-                        <div class="detail-value">${bond.miiMonitorInterval}ms</div>
-                    </div>
-                    <div>
-                        <span class="detail-label">${bond.mode === 'active-backup' ? 'Primary' : 'Hash Policy'}</span>
-                        <div class="detail-value">${bond.primary || bond.transmitHashPolicy || 'N/A'}</div>
-                    </div>
-                </div>
-                
-                <div class="bridge-topology">
-                    <h4 style="margin: 0 0 12px; font-size: 14px; color: var(--text);">Bond Slaves</h4>
-                    <div style="margin-bottom: 8px;">
-                        <span style="font-size: 12px; color: var(--muted); font-weight: 600;">Active:</span>
-                        <div class="bond-slaves" style="margin-top: 4px;">
-                            ${bond.activeSlaves.map(slave => `<span class="bond-slave ${bond.primary === slave ? 'primary' : ''}">${slave}</span>`).join('')}
-                            ${bond.activeSlaves.length === 0 ? '<span style="color: var(--muted); font-size: 12px;">None</span>' : ''}
-                        </div>
-                    </div>
-                    ${bond.inactiveSlaves.length > 0 ? `
-                    <div>
-                        <span style="font-size: 12px; color: var(--muted); font-weight: 600;">Inactive:</span>
-                        <div class="bond-slaves" style="margin-top: 4px;">
-                            ${bond.inactiveSlaves.map(slave => `<span class="bond-slave">${slave}</span>`).join('')}
-                        </div>
-                    </div>
-                    ` : ''}
-                    <button class="btn btn-sm btn-outline-brand" onclick="manageBondSlaves('${bond.name}')" style="font-size: 12px; padding: 4px 8px; margin-top: 8px;">
-                        <i class="fas fa-cog"></i> Manage Slaves
-                    </button>
-                </div>
-                
-                <div class="interface-actions" style="margin-top: 16px;">
-                    <button class="btn btn-sm btn-outline-brand" onclick="editBond('${bond.name}')">
-                        <i class="fas fa-edit"></i> Edit
-                    </button>
-                    <button class="btn btn-sm btn-outline-secondary" onclick="toggleBond('${bond.name}', '${bond.status}')">
-                        <i class="fas fa-power-off"></i> ${bond.status === 'up' ? 'Disable' : 'Enable'}
-                    </button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteBond('${bond.name}')">
-                        <i class="fas fa-trash"></i> Delete
-                    </button>
-                </div>
-            </div>
-        `).join('');
-    }
-};
-
-// Bond Functions
 async function addBond() {
-    console.log('BondManager: Opening add bond dialog...');
+    NetworkLogger.info(' Opening add bond dialog...');
     
     // Get available interfaces for bonding
     let availableInterfaces = [];
     try {
-        console.log('BondManager: Getting available interfaces...');
+        NetworkLogger.info(' Getting available interfaces...');
         availableInterfaces = await getAvailableInterfacesForBonding();
     } catch (error) {
-        console.warn('BondManager: Could not get available interfaces:', error);
+        NetworkLogger.warning(' Could not get available interfaces:', error);
         // Instead of using mock data, show an error message
         if (typeof showModalError === 'function') {
             showModalError(document.querySelector('.modal'), 'Cannot load network interfaces. Please ensure Cockpit is running properly and try again.');
@@ -583,6 +94,144 @@ async function addBond() {
     ).join('');
     
     const modalContent = `
+        <style>
+            .interface-selection-container {
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                padding: 16px;
+                background: #f8f9fa;
+                margin: 8px 0;
+            }
+            .interface-selection-container.valid {
+                border-color: #28a745;
+                background: #f8fff8;
+            }
+            .interface-selection-container.invalid {
+                border-color: #dc3545;
+                background: #fff8f8;
+            }
+            .selected-interfaces {
+                margin-bottom: 16px;
+                padding: 12px;
+                background: #fff;
+                border-radius: 6px;
+                border: 1px solid #e9ecef;
+            }
+            .selected-header {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 8px;
+                font-weight: 500;
+                color: #495057;
+            }
+            .selected-header i {
+                color: #007bff;
+            }
+            .selected-list {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                min-height: 32px;
+            }
+            .no-selection {
+                color: #6c757d;
+                font-style: italic;
+                padding: 8px 0;
+            }
+            .selected-interface-tag {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                background: #007bff;
+                color: white;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 14px;
+            }
+            .selected-interface-tag i {
+                font-size: 12px;
+            }
+            .remove-interface {
+                background: none;
+                border: none;
+                color: white;
+                cursor: pointer;
+                padding: 0;
+                margin-left: 4px;
+                opacity: 0.8;
+            }
+            .remove-interface:hover {
+                opacity: 1;
+            }
+            .interface-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                gap: 12px;
+            }
+            .interface-card.selectable {
+                cursor: pointer;
+                transition: all 0.2s ease;
+                border: 2px solid #dee2e6;
+            }
+            .interface-card.selectable:hover {
+                border-color: #007bff;
+                transform: translateY(-2px);
+                box-shadow: 0 4px 8px rgba(0,123,255,0.2);
+            }
+            .interface-card.selected {
+                border-color: #28a745;
+                background-color: #f8fff8;
+            }
+            .interface-checkbox {
+                display: flex;
+                align-items: center;
+            }
+            .checkbox-label {
+                width: 20px;
+                height: 20px;
+                border: 2px solid #dee2e6;
+                border-radius: 4px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+            }
+            .interface-card.selected .checkbox-label {
+                background-color: #28a745;
+                border-color: #28a745;
+            }
+            .interface-card.selected .checkbox-label::after {
+                content: '✓';
+                color: white;
+                font-weight: bold;
+            }
+            /* Improved bond-specific styling */
+            .bond-mode-select {
+                font-size: 14px;
+            }
+            .bond-mode-select option {
+                padding: 8px;
+                font-size: 14px;
+                line-height: 1.4;
+                white-space: normal;
+                word-wrap: break-word;
+            }
+            .create-bond-button {
+                padding: 10px 20px;
+                font-size: 14px;
+                font-weight: 500;
+                border-radius: 6px;
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                min-width: 140px;
+                justify-content: center;
+            }
+            .create-bond-button i {
+                font-size: 14px;
+            }
+        </style>
         <form id="bond-form" class="form-grid">
             <div class="form-group">
                 <label class="form-label" for="bond-name">Bond Name</label>
@@ -592,17 +241,22 @@ async function addBond() {
             
             <div class="form-group">
                 <label class="form-label" for="bond-mode">Bonding Mode</label>
-                <select id="bond-mode" class="form-control" required onchange="updateBondModeOptions()">
-                    <option value="">Select mode</option>
-                    <option value="active-backup">Active-Backup (Failover)</option>
-                    <option value="802.3ad">802.3ad (LACP)</option>
-                    <option value="balance-rr">Balance Round-Robin</option>
-                    <option value="balance-xor">Balance XOR</option>
-                    <option value="broadcast">Broadcast</option>
-                    <option value="balance-tlb">Balance TLB</option>
-                    <option value="balance-alb">Balance ALB</option>
+                <select id="bond-mode" class="form-control bond-mode-select" required onchange="updateBondModeOptions()">
+                    <option value="">Select bonding mode</option>
+                    <option value="active-backup">Active-Backup - Failover mode</option>
+                    <option value="802.3ad">802.3ad LACP - Link aggregation</option>
+                    <option value="balance-rr">Balance Round-Robin - Sequential packets</option>
+                    <option value="balance-xor">Balance XOR - Hash-based balancing</option>
+                    <option value="broadcast">Broadcast - Transmit on all interfaces</option>
+                    <option value="balance-tlb">Balance TLB - Adaptive transmit balancing</option>
+                    <option value="balance-alb">Balance ALB - Adaptive load balancing</option>
                 </select>
-                <div class="hint">Choose based on switch support and requirements. Invalid modes will be automatically corrected.</div>
+                <div class="hint">
+                    <strong>Recommended modes:</strong>
+                    <br>• <strong>Active-Backup:</strong> Works with any switch, one active interface
+                    <br>• <strong>802.3ad LACP:</strong> Requires switch configuration, best performance
+                    <br>• <strong>Others:</strong> May require specific switch features
+                </div>
             </div>
             
             <div class="form-group full-width">
@@ -614,26 +268,38 @@ async function addBond() {
                 <label class="form-label">Slave Interfaces</label>
                 <div class="interface-selection-container">
                     <div class="selected-interfaces" id="selected-slaves">
-                        <!-- Selected slaves will appear here -->
+                        <div class="selected-header">
+                            <i class="fas fa-link"></i>
+                            <span class="selected-count">0 interfaces selected</span>
+                        </div>
+                        <div class="selected-list" id="selected-list">
+                            <!-- Selected slaves will appear here -->
+                        </div>
                     </div>
                     <div class="available-interfaces">
-                        <label class="form-label" style="font-size: 14px; margin-bottom: 8px;">Available Interfaces:</label>
+                        <label class="form-label" style="font-size: 14px; margin-bottom: 12px;">
+                            <i class="fas fa-ethernet"></i> Available Interfaces:
+                        </label>
                         <div class="interface-grid" id="interface-grid">
                             ${availableInterfaces.map(iface => `
-                                <div class="interface-card" data-interface="${iface}" onclick="toggleSlaveInterface('${iface}')">
+                                <div class="interface-card selectable" data-interface="${iface}" onclick="toggleSlaveInterface('${iface}')">
                                     <div class="interface-info">
                                         <span class="interface-name">${iface}</span>
-                                        <span class="interface-status">Available</span>
+                                        <span class="interface-status">Ready</span>
                                     </div>
                                     <div class="interface-checkbox">
                                         <input type="checkbox" id="slave-${iface}" value="${iface}">
+                                        <label for="slave-${iface}" class="checkbox-label"></label>
                                     </div>
                                 </div>
                             `).join('')}
                         </div>
                     </div>
                 </div>
-                <div class="hint">Select at least 2 interfaces for bonding. Click on interfaces to add/remove them.</div>
+                <div class="hint">
+                    <i class="fas fa-info-circle"></i>
+                    Select at least 2 interfaces for bonding. Click interfaces to add/remove them from the bond.
+                </div>
             </div>
             
             <div id="primary-interface-group" class="form-group" style="display: none;">
@@ -679,6 +345,7 @@ async function addBond() {
                     <button type="button" class="toggle-seg active" data-config="static">Static IP</button>
                     <button type="button" class="toggle-seg" data-config="dhcp">DHCP</button>
                 </div>
+                <div class="hint">Configure how this bond interface gets its IP address</div>
             </div>
             
             <div id="bond-static-config" class="static-config">
@@ -699,19 +366,25 @@ async function addBond() {
                     <button type="button" class="btn btn-sm btn-outline-brand" onclick="addBondIpAddress()" style="margin-top: 8px;">
                         <i class="fas fa-plus"></i> Add IP Address
                     </button>
-                    <div class="hint">Enter IP addresses in CIDR notation (e.g., 192.168.1.10/24)</div>
+                    <div class="hint">Enter IP addresses with CIDR notation (e.g., 192.168.1.100/24). Add multiple IPs for redundancy.</div>
                 </div>
                 
                 <div class="form-group">
-                    <label class="form-label" for="bond-gateway">Gateway</label>
+                    <label class="form-label" for="bond-gateway">Gateway (Optional)</label>
                     <input type="text" id="bond-gateway" class="form-control" placeholder="192.168.1.1" data-validate="ipAddress">
-                    <div class="hint">Gateway for this bond interface</div>
+                    <div class="hint">Gateway for routing. Leave empty if you don't want to change routing.</div>
+                </div>
+                
+                <div class="form-group full-width">
+                    <label class="form-label" for="bond-dns">DNS Servers (Optional)</label>
+                    <input type="text" id="bond-dns" class="form-control" placeholder="8.8.8.8, 1.1.1.1">
+                    <div class="hint">Comma-separated list of DNS servers (optional)</div>
                 </div>
                 
                 <div class="form-group full-width">
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <input type="checkbox" id="bond-set-default-route" class="form-control-checkbox">
-                        <label for="bond-set-default-route" style="margin: 0; font-size: 14px;">Set as default route (overrides system routing)</label>
+                        <label for="bond-set-default-route" style="margin: 0; font-size: 14px;">Set as default route</label>
                     </div>
                     <div class="hint" style="color: #d63384;">⚠️ <strong>Warning:</strong> This will replace the current default route and may affect connectivity to other networks. Only enable if this bond should handle all internet traffic.</div>
                 </div>
@@ -721,7 +394,9 @@ async function addBond() {
     
     const modalFooter = `
         <button class="btn btn-outline-secondary" onclick="NetworkManager.closeModal()">Cancel</button>
-        <button class="btn btn-brand" onclick="saveBond()">Create Bond</button>
+        <button class="btn btn-brand create-bond-button" onclick="saveBond()">
+            <i class="fas fa-plus"></i> Create Bond
+        </button>
     `;
     
     NetworkManager.createModal('Add Bond Configuration', modalContent, modalFooter);
@@ -738,7 +413,7 @@ async function addBond() {
 
 // Get available interfaces for bonding (exclude already bonded, system interfaces, etc.)
 async function getAvailableInterfacesForBonding() {
-    console.log('BondManager: Getting available interfaces for bonding...');
+    NetworkLogger.info(' Getting available interfaces for bonding...');
     
     if (!cockpit || !cockpit.spawn) {
         throw new Error('Cockpit API not available');
@@ -774,11 +449,11 @@ async function getAvailableInterfacesForBonding() {
         }
         
     } catch (error) {
-        console.error('BondManager: Error getting available interfaces:', error);
+        NetworkLogger.error(' Error getting available interfaces:', error);
         throw error;
     }
     
-    console.log('BondManager: Available interfaces for bonding:', availableInterfaces);
+    NetworkLogger.info(' Available interfaces for bonding:', availableInterfaces);
     return availableInterfaces;
 }
 
@@ -818,22 +493,22 @@ function isSystemInterface(name) {
 }
 
 function editBond(bondName) {
-    console.log(`editBond called with bondName: ${bondName}`);
+    NetworkLogger.info(`editBond called with bondName: ${bondName}`);
     
-    // Check if BondManager is initialized
-    if (!BondManager || !BondManager.bonds) {
-        console.warn('BondManager not initialized, initializing now...');
+    // Check if NetworkManager bonds are loaded
+    if (!NetworkManager || !NetworkManager.bonds) {
+        NetworkLogger.warning('NetworkManager bonds not initialized, initializing now...');
         NetworkManager.showError('Bond manager is not ready. Please wait a moment and try again.');
-        // Try to initialize BondManager
-        if (BondManager && BondManager.loadBonds) {
-            BondManager.loadBonds();
+        // Try to initialize NetworkManager bonds
+        if (NetworkManager && NetworkManager.loadBonds) {
+            NetworkManager.loadBonds();
         }
         return;
     }
     
-    const bond = BondManager.bonds.find(b => b.name === bondName);
+    const bond = NetworkManager.bonds.find(b => b.name === bondName);
     if (!bond) {
-        console.warn(`Bond ${bondName} not found in BondManager.bonds`);
+        NetworkLogger.warning(`Bond ${bondName} not found in NetworkManager.bonds`);
         NetworkManager.showError(`Bond ${bondName} not found. Please refresh and try again.`);
         return;
     }
@@ -861,24 +536,7 @@ function editBond(bondName) {
             <div class="form-group full-width">
                 <label class="form-label">IP Addresses</label>
                 <div id="edit-ip-addresses-container">
-                    ${bond.ipAddresses && bond.ipAddresses.length > 0 
-                        ? bond.ipAddresses.map((ip, index) => `
-                            <div class="ip-input-row" data-index="${index}">
-                                <input type="text" class="form-control ip-address-input" value="${ip}" placeholder="e.g., 192.168.1.10/24" data-validate="cidr">
-                                <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeEditIpAddress(${index})">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </div>
-                        `).join('')
-                        : `
-                            <div class="ip-input-row" data-index="0">
-                                <input type="text" class="form-control ip-address-input" value="${bond.ip && bond.ip !== 'Not configured' && bond.ip !== 'DHCP' ? bond.ip : ''}" placeholder="e.g., 192.168.1.10/24" data-validate="cidr">
-                                <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeEditIpAddress(0)">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </div>
-                        `
-                    }
+                    <!-- IP addresses will be populated by populateEditBondIpAddresses() -->
                 </div>
                 <button type="button" class="btn btn-sm btn-outline-brand" onclick="addEditIpAddress()">
                     <i class="fas fa-plus"></i> Add IP Address
@@ -920,9 +578,35 @@ function editBond(bondName) {
     `;
     
     NetworkManager.createModal(`Edit Bond: ${bondName}`, modalContent, modalFooter);
+    
+    // Populate IP addresses for editing
+    const ipAddresses = [];
+    if (bond.ipAddresses && Array.isArray(bond.ipAddresses) && bond.ipAddresses.length > 0) {
+        // Use the stored IP addresses array
+        ipAddresses.push(...bond.ipAddresses);
+    } else if (bond.ip && bond.ip !== 'Not configured' && bond.ip !== 'DHCP') {
+        // Fallback to single IP field if ipAddresses not available
+        if (bond.ip.includes(',')) {
+            ipAddresses.push(...bond.ip.split(',').map(ip => ip.trim()));
+        } else {
+            ipAddresses.push(bond.ip);
+        }
+    }
+    
+    NetworkLogger.info(`BondManager: Populating edit form with IP addresses:`, ipAddresses);
+    populateEditBondIpAddresses(ipAddresses);
+    
+    // Setup live validation for the edit form
+    const editForm = document.getElementById('bond-edit-form');
+    if (typeof setupLiveValidation === 'function') {
+        setupLiveValidation(editForm);
+    }
 }
 
 function setupBondForm() {
+    // Initialize bond IP address counter
+    bondIpAddressCounter = 0;
+    
     // Setup IP configuration toggle
     const toggleButtons = document.querySelectorAll('.toggle-seg');
     toggleButtons.forEach(btn => {
@@ -933,8 +617,15 @@ function setupBondForm() {
             const configType = btn.getAttribute('data-config');
             const staticConfig = document.getElementById('bond-static-config');
             
+            NetworkLogger.info(`Bond IP config changed to: ${configType}`);
+            
             if (configType === 'static') {
-                staticConfig.style.display = 'contents';
+                staticConfig.style.display = 'block';
+                // Focus on first IP input when switching to static
+                const firstIpInput = document.getElementById('bond-ip-0');
+                if (firstIpInput) {
+                    setTimeout(() => firstIpInput.focus(), 100);
+                }
             } else {
                 staticConfig.style.display = 'none';
             }
@@ -946,6 +637,12 @@ function setupBondForm() {
     
     // Initialize IP address management
     updateBondRemoveButtonVisibility();
+    
+    // Set initial state for static config (default active)
+    const staticConfig = document.getElementById('bond-static-config');
+    if (staticConfig) {
+        staticConfig.style.display = 'block';
+    }
 }
 
 // Enhanced interface selection system
@@ -958,7 +655,7 @@ function setupInterfaceSelection() {
 }
 
 function toggleSlaveInterface(interfaceName) {
-    console.log(`BondManager: Toggling interface ${interfaceName}`);
+    NetworkLogger.info(`BondManager: Toggling interface ${interfaceName}`);
     
     const interfaceCard = document.querySelector(`[data-interface="${interfaceName}"]`);
     const checkbox = document.getElementById(`slave-${interfaceName}`);
@@ -987,7 +684,7 @@ function toggleSlaveInterface(interfaceName) {
 }
 
 function removeSlaveInterface(interfaceName) {
-    console.log(`BondManager: Removing interface ${interfaceName}`);
+    NetworkLogger.info(`BondManager: Removing interface ${interfaceName}`);
     
     if (window.selectedSlaveInterfaces) {
         window.selectedSlaveInterfaces.delete(interfaceName);
@@ -1011,20 +708,53 @@ function removeSlaveInterface(interfaceName) {
 
 function updateSelectedInterfacesDisplay() {
     const selectedDiv = document.getElementById('selected-slaves');
+    const selectedList = document.getElementById('selected-list');
+    const selectedCount = document.querySelector('.selected-count');
+    
+    const count = window.selectedSlaveInterfaces ? window.selectedSlaveInterfaces.size : 0;
+    
+    // Update count
+    if (selectedCount) {
+        selectedCount.textContent = `${count} interface${count !== 1 ? 's' : ''} selected`;
+    }
     
     if (!window.selectedSlaveInterfaces || window.selectedSlaveInterfaces.size === 0) {
-        selectedDiv.innerHTML = '';
+        if (selectedList) {
+            selectedList.innerHTML = '<div class="no-selection">No interfaces selected</div>';
+        }
         return;
     }
     
-    selectedDiv.innerHTML = Array.from(window.selectedSlaveInterfaces).map(interfaceName => `
-        <div class="selected-interface-tag">
-            <span>${interfaceName}</span>
-            <button type="button" class="remove-interface" onclick="removeSlaveInterface('${interfaceName}')" title="Remove interface">
-                ×
-            </button>
-        </div>
-    `).join('');
+    if (selectedList) {
+        selectedList.innerHTML = Array.from(window.selectedSlaveInterfaces).map(interfaceName => `
+            <div class="selected-interface-tag">
+                <i class="fas fa-ethernet"></i>
+                <span class="interface-name">${interfaceName}</span>
+                <button type="button" class="remove-interface" onclick="removeSlaveInterface('${interfaceName}')" title="Remove interface">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `).join('');
+    }
+    
+    // Update validation status
+    const bondForm = document.getElementById('bond-form');
+    if (bondForm) {
+        const isValid = count >= 2;
+        bondForm.setAttribute('data-slaves-valid', isValid);
+        
+        // Update visual feedback
+        const interfaceContainer = document.querySelector('.interface-selection-container');
+        if (interfaceContainer) {
+            if (isValid) {
+                interfaceContainer.classList.remove('invalid');
+                interfaceContainer.classList.add('valid');
+            } else {
+                interfaceContainer.classList.add('invalid');
+                interfaceContainer.classList.remove('valid');
+            }
+        }
+    }
 }
 
 function updateBondModeOptions() {
@@ -1071,7 +801,7 @@ function addEditIpAddress() {
     newRow.className = 'ip-input-row';
     newRow.setAttribute('data-index', newIndex);
     newRow.innerHTML = `
-        <input type="text" class="form-control ip-address-input" placeholder="e.g., 192.168.1.10/24" data-validate="cidr">
+        <input type="text" class="form-control ip-address-input" placeholder="192.168.1.10 (default /24)" data-validate="cidr">
         <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeEditIpAddress(${newIndex})">
             <i class="fas fa-trash"></i>
         </button>
@@ -1079,10 +809,13 @@ function addEditIpAddress() {
     
     container.appendChild(newRow);
     
+    // Update remove button visibility
+    updateEditBondRemoveButtonVisibility();
+    
     // Set up validation for the new input if available
     const newInput = newRow.querySelector('input');
-    if (typeof setupInputValidation === 'function') {
-        setupInputValidation(newInput);
+    if (typeof setupLiveValidation === 'function') {
+        setupLiveValidation(newInput.closest('form'));
     }
 }
 
@@ -1098,6 +831,59 @@ function removeEditIpAddress(index) {
     if (remainingRows.length === 0) {
         addEditIpAddress();
     }
+    
+    // Update remove button visibility
+    updateEditBondRemoveButtonVisibility();
+}
+
+function populateEditBondIpAddresses(ipAddresses) {
+    const container = document.getElementById('edit-ip-addresses-container');
+    
+    // Clear existing entries
+    container.innerHTML = '';
+    window.editBondIpAddressCounter = 0;
+    
+    // Ensure we have at least one entry
+    if (ipAddresses.length === 0) {
+        ipAddresses = [''];
+    }
+    
+    // Add entries for each IP address
+    ipAddresses.forEach((ip, index) => {
+        if (index === 0) {
+            // First entry
+            container.innerHTML = `
+                <div class="ip-input-row" data-index="0">
+                    <input type="text" class="form-control ip-address-input" value="${ip}" placeholder="192.168.1.10 (default /24)" data-validate="cidr">
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeEditIpAddress(0)" style="display: none;">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            `;
+        } else {
+            // Additional entries
+            addEditIpAddress();
+            const newInput = document.querySelector(`#edit-ip-addresses-container .ip-input-row:last-child input`);
+            if (newInput) {
+                newInput.value = ip;
+            }
+        }
+    });
+    
+    // Update visibility of remove buttons
+    updateEditBondRemoveButtonVisibility();
+}
+
+function updateEditBondRemoveButtonVisibility() {
+    const container = document.getElementById('edit-ip-addresses-container');
+    const removeButtons = container.querySelectorAll('.btn-outline-danger');
+    
+    // Hide remove button if only one IP address field
+    if (removeButtons.length <= 1) {
+        removeButtons.forEach(btn => btn.style.display = 'none');
+    } else {
+        removeButtons.forEach(btn => btn.style.display = 'inline-flex');
+    }
 }
 
 function collectEditIpAddresses() {
@@ -1107,8 +893,10 @@ function collectEditIpAddresses() {
     inputs.forEach(input => {
         const value = input.value.trim();
         if (value) {
-            // Basic validation - check if it looks like an IP address with CIDR
-            if (value.includes('/') || value.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+            // Add /24 as default CIDR if not provided
+            if (!value.includes('/') && /^(\d{1,3}\.){3}\d{1,3}$/.test(value)) {
+                ipAddresses.push(value + '/24');
+            } else {
                 ipAddresses.push(value);
             }
         }
@@ -1118,7 +906,7 @@ function collectEditIpAddresses() {
 }
 
 async function manageBondSlaves(bondName) {
-    const bond = BondManager.bonds.find(b => b.name === bondName);
+    const bond = NetworkManager.bonds.find(b => b.name === bondName);
     if (!bond) return;
     
     // Get available interfaces for adding to bond
@@ -1126,7 +914,7 @@ async function manageBondSlaves(bondName) {
     try {
         availableForBonding = await getAvailableInterfacesForBonding();
     } catch (error) {
-        console.warn('Could not get available interfaces for bond management:', error);
+        NetworkLogger.warning('Could not get available interfaces for bond management:', error);
     }
     
     const availableOptions = availableForBonding.length > 0 
@@ -1179,7 +967,7 @@ async function manageBondSlaves(bondName) {
 }
 
 function saveBond() {
-    console.log('BondManager: Creating new bond...');
+    NetworkLogger.info(' Creating new bond...');
     NetworkLogger.info('Creating new bond...');
     
     const modal = document.querySelector('.modal');
@@ -1222,15 +1010,23 @@ function saveBond() {
         ipAddresses: collectBondIpAddresses(),
         ip: collectBondIpAddresses()[0] || '', // Backward compatibility
         gateway: document.getElementById('bond-gateway')?.value || '',
+        dns: document.getElementById('bond-dns')?.value || '',
         setDefaultRoute: document.getElementById('bond-set-default-route')?.checked || false
     };
     
-    console.log('BondManager: Form data collected:', formData);
+    NetworkLogger.info(' Form data collected:', formData);
     NetworkLogger.info(`Creating bond ${formData.name} with mode ${formData.mode}`);
+    NetworkLogger.info(`IP Configuration - Type: ${formData.configType}, IPs: ${JSON.stringify(formData.ipAddresses)}, Gateway: ${formData.gateway}`);
+    NetworkLogger.info(`DNS servers: ${formData.dns}`);
+    
+    // Debug: Log static configuration visibility
+    const staticConfig = document.getElementById('bond-static-config');
+    NetworkLogger.info(`Static config visibility: ${staticConfig ? staticConfig.style.display : 'element not found'}`);
+    NetworkLogger.info(`Selected config type: ${formData.configType}`);
     
     // Basic validation fallback
     if (!formData.name || !formData.mode || formData.slaves.length < 2) {
-        console.error('BondManager: Validation failed - insufficient data');
+        NetworkLogger.error(' Validation failed - insufficient data');
         ButtonProgress.clearLoading(saveButton);
         if (typeof showModalError === 'function') {
             showModalError(modal, 'Please fill in all required fields and select at least 2 slave interfaces.');
@@ -1240,9 +1036,24 @@ function saveBond() {
         return;
     }
     
+    // Validate IP addresses for static configuration
+    if (formData.configType === 'static') {
+        if (formData.ipAddresses.length === 0) {
+            NetworkLogger.error(' Static IP configuration selected but no IP addresses provided');
+            ButtonProgress.clearLoading(saveButton);
+            if (typeof showModalError === 'function') {
+                showModalError(modal, 'Please provide at least one IP address for static configuration.');
+            } else {
+                NetworkManager.showError('Please provide at least one IP address for static configuration');
+            }
+            return;
+        }
+        NetworkLogger.info(`Bond will be configured with ${formData.ipAddresses.length} IP addresses: ${formData.ipAddresses.join(', ')}`);
+    }
+    
     // Check for valid bond name and interface name security
     if (!/^bond\d+$/.test(formData.name)) {
-        console.error('BondManager: Invalid bond name format');
+        NetworkLogger.error(' Invalid bond name format');
         ButtonProgress.clearLoading(saveButton);
         if (typeof showModalError === 'function') {
             showModalError(modal, 'Bond name must be in format: bond0, bond1, etc.');
@@ -1257,7 +1068,7 @@ function saveBond() {
         assertValidInterfaceName(formData.name);
         formData.slaves.forEach(assertValidInterfaceName);
     } catch (validationError) {
-        console.error('BondManager: Interface name validation failed:', validationError);
+        NetworkLogger.error(' Interface name validation failed:', validationError);
         ButtonProgress.clearLoading(saveButton);
         if (typeof showModalError === 'function') {
             showModalError(modal, `Invalid interface name: ${validationError.message}`);
@@ -1267,7 +1078,7 @@ function saveBond() {
         return;
     }
     
-    console.log('BondManager: Validation passed, creating bond configuration...');
+    NetworkLogger.info(' Validation passed, creating bond configuration...');
     NetworkLogger.info(`Creating bond ${formData.name} with ${formData.slaves.length} interfaces`);
     
     if (formData.setDefaultRoute) {
@@ -1279,7 +1090,7 @@ function saveBond() {
     // Create bond using real system calls
     createRealBond(formData)
         .then(() => {
-            console.log('BondManager: Bond created successfully');
+            NetworkLogger.info(' Bond created successfully');
             NetworkLogger.success(`Bond ${formData.name} created successfully`);
             ButtonProgress.clearLoading(saveButton);
             if (typeof showModalSuccess === 'function') {
@@ -1287,16 +1098,16 @@ function saveBond() {
                 // Close modal after showing success
                 setTimeout(() => {
                     NetworkManager.closeModal();
-                    BondManager.loadBonds();
+                    NetworkManager.loadBonds();
                 }, 2000);
             } else {
                 NetworkManager.showSuccess(`Bond ${formData.name} created successfully`);
                 NetworkManager.closeModal();
-                BondManager.loadBonds();
+                NetworkManager.loadBonds();
             }
         })
         .catch((error) => {
-            console.error('BondManager: Error creating bond:', error);
+            NetworkLogger.error(' Error creating bond:', error);
             NetworkLogger.error(`Failed to create bond ${formData.name}: ${error.message}`);
             ButtonProgress.clearLoading(saveButton);
             if (typeof showModalError === 'function') {
@@ -1309,7 +1120,7 @@ function saveBond() {
 
 // Create real bond configuration
 async function createRealBond(config) {
-    console.log('BondManager: Creating real bond with config:', config);
+    NetworkLogger.info(' Creating real bond with config:', config);
     
     if (!cockpit || !cockpit.spawn || !cockpit.file) {
         throw new Error('Cockpit API not available. Please ensure this module is running within Cockpit.');
@@ -1317,73 +1128,73 @@ async function createRealBond(config) {
     
     try {
         // First, backup current routes to avoid losing them
-        console.log('BondManager: Backing up current routing table...');
+        NetworkLogger.info(' Backing up current routing table...');
         const currentRoutes = await backupCurrentRoutes();
         
         // Generate Netplan configuration for the bond
         const netplanConfig = generateBondNetplanConfig(config);
-        console.log('BondManager: Generated Netplan config:', netplanConfig);
+        NetworkLogger.info(' Generated Netplan config:', netplanConfig);
         
         // Write Netplan configuration file
         const configFile = `/etc/netplan/90-xavs-${config.name}.yaml`;
-        console.log(`BondManager: Writing configuration to ${configFile}`);
+        NetworkLogger.info(`BondManager: Writing configuration to ${configFile}`);
         
         await cockpit.file(configFile, { superuser: 'require' }).replace(netplanConfig);
-        console.log('BondManager: Netplan configuration written successfully');
+        NetworkLogger.info(' Netplan configuration written successfully');
         
         // Test the configuration first with netplan try
-        console.log('BondManager: Testing Netplan configuration with netplan --debug try...');
+        NetworkLogger.info(' Testing Netplan configuration with netplan --debug try...');
         try {
             const debugOutput = await cockpit.spawn(['netplan', '--debug', 'try', '--timeout=30'], { superuser: 'require' });
-            console.log('BondManager: Netplan debug output:');
-            console.log('--- START NETPLAN DEBUG ---');
-            console.log(debugOutput);
-            console.log('--- END NETPLAN DEBUG ---');
-            console.log('BondManager: Netplan try completed successfully');
+            NetworkLogger.info(' Netplan debug output:');
+            NetworkLogger.info('--- START NETPLAN DEBUG ---');
+            NetworkLogger.info(debugOutput);
+            NetworkLogger.info('--- END NETPLAN DEBUG ---');
+            NetworkLogger.info(' Netplan try completed successfully');
         } catch (tryError) {
-            console.error('BondManager: Netplan try failed:', tryError);
+            NetworkLogger.error(' Netplan try failed:', tryError);
             
             // Log the debug output even on failure
             if (tryError.message) {
-                console.log('BondManager: Netplan error output:');
-                console.log('--- START NETPLAN ERROR ---');
-                console.log(tryError.message);
-                console.log('--- END NETPLAN ERROR ---');
+                NetworkLogger.info(' Netplan error output:');
+                NetworkLogger.info('--- START NETPLAN ERROR ---');
+                NetworkLogger.info(tryError.message);
+                NetworkLogger.info('--- END NETPLAN ERROR ---');
             }
             
             // Check if this is just the bond revert warning (exit status 78)
             if (tryError.exit_status === 78) {
-                console.log('BondManager: Netplan try exit 78: bond change warning in non-interactive session; proceeding to apply');
+                NetworkLogger.info(' Netplan try exit 78: bond change warning in non-interactive session; proceeding to apply');
                 // This is the expected behavior for bond configs in headless/non-TTY environments
             } else {
                 // Fallback: try preflight validation with netplan generate
-                console.log('BondManager: Attempting fallback preflight validation...');
+                NetworkLogger.info(' Attempting fallback preflight validation...');
                 try {
                     await cockpit.spawn(['netplan', 'generate'], { superuser: 'require' });
-                    console.log('BondManager: Preflight validation passed, proceeding to apply');
+                    NetworkLogger.info(' Preflight validation passed, proceeding to apply');
                 } catch (generateError) {
-                    console.error('BondManager: Preflight validation failed:', generateError);
+                    NetworkLogger.error(' Preflight validation failed:', generateError);
                     throw new Error(`Configuration validation failed: ${tryError.message || tryError}. The bond configuration has not been applied.`);
                 }
             }
         }
         
         // Apply Netplan configuration permanently
-        console.log('BondManager: Applying Netplan configuration permanently...');
+        NetworkLogger.info(' Applying Netplan configuration permanently...');
         await cockpit.spawn(['netplan', 'apply'], { superuser: 'require' });
-        console.log('BondManager: Netplan applied successfully');
+        NetworkLogger.info(' Netplan applied successfully');
         
         // Verify bond creation
-        console.log('BondManager: Verifying bond creation...');
+        NetworkLogger.info(' Verifying bond creation...');
         await cockpit.spawn(['ip', 'link', 'show', config.name], { superuser: 'try' });
-        console.log('BondManager: Bond interface verified');
+        NetworkLogger.info(' Bond interface verified');
         
         // Restore any critical routes that might have been lost
-        console.log('BondManager: Checking and restoring critical routes...');
+        NetworkLogger.info(' Checking and restoring critical routes...');
         await restoreCriticalRoutes(currentRoutes, config);
         
     } catch (error) {
-        console.error('BondManager: Error creating bond:', error);
+        NetworkLogger.error(' Error creating bond:', error);
         throw new Error(`Failed to create bond interface: ${error.message}`);
     }
 }
@@ -1393,10 +1204,10 @@ async function backupCurrentRoutes() {
     try {
         const routeOutput = await cockpit.spawn(['ip', 'route', 'show'], { superuser: 'try' });
         const routes = routeOutput.split('\n').filter(line => line.trim());
-        console.log('BondManager: Current routes backed up:', routes.length, 'entries');
+        NetworkLogger.info(' Current routes backed up:', routes.length, 'entries');
         return routes;
     } catch (error) {
-        console.warn('BondManager: Could not backup routes:', error);
+        NetworkLogger.warning(' Could not backup routes:', error);
         return [];
     }
 }
@@ -1421,35 +1232,35 @@ async function restoreCriticalRoutes(originalRoutes, bondConfig) {
         });
         
         if (lostRoutes.length > 0) {
-            console.log('BondManager: Attempting to restore', lostRoutes.length, 'critical routes');
+            NetworkLogger.info(' Attempting to restore', lostRoutes.length, 'critical routes');
             for (const route of lostRoutes) {
                 try {
                     // Parse and restore the route
                     const routeParts = route.split(' ');
                     if (routeParts.length >= 3 && !route.includes('linkdown')) {
-                        console.log('BondManager: Restoring route:', route);
+                        NetworkLogger.info(' Restoring route:', route);
                         await cockpit.spawn(['ip', 'route', 'add', ...routeParts], { superuser: 'require' });
                     }
                 } catch (restoreError) {
-                    console.warn('BondManager: Could not restore route:', route, restoreError);
+                    NetworkLogger.warning(' Could not restore route:', route, restoreError);
                 }
             }
         } else {
-            console.log('BondManager: No critical routes need restoration');
+            NetworkLogger.info(' No critical routes need restoration');
         }
     } catch (error) {
-        console.warn('BondManager: Error during route restoration:', error);
+        NetworkLogger.warning(' Error during route restoration:', error);
     }
 }
 
 // Generate Netplan configuration for bond with modern features
 function generateBondNetplanConfig(config) {
-    console.log('BondManager: Generating Netplan config for bond:', config.name);
+    NetworkLogger.info(' Generating Netplan config for bond:', config.name);
     
     // Validate and fix bond mode
     const validatedMode = validateBondMode(config.mode);
     if (validatedMode !== config.mode) {
-        console.warn(`[generateBondNetplanConfig] Bond mode changed from '${config.mode}' to '${validatedMode}'`);
+        NetworkLogger.warning(`[generateBondNetplanConfig] Bond mode changed from '${config.mode}' to '${validatedMode}'`);
         config.mode = validatedMode;
     }
     
@@ -1502,8 +1313,22 @@ function generateBondNetplanConfig(config) {
     if (config.configType === 'static') {
         // Handle multiple IP addresses
         const ipAddresses = config.ipAddresses || (config.ip ? [config.ip] : []);
+        NetworkLogger.info(`Static IP configuration: ${ipAddresses.length} addresses: ${JSON.stringify(ipAddresses)}`);
+        
         if (ipAddresses.length > 0) {
             bondConfig.addresses = ipAddresses;
+            NetworkLogger.info(`Added addresses to bond config: ${JSON.stringify(bondConfig.addresses)}`);
+        }
+        
+        // Add DNS configuration if provided
+        if (config.dns && config.dns.trim()) {
+            const dnsServers = config.dns.split(',').map(dns => dns.trim()).filter(dns => dns);
+            if (dnsServers.length > 0) {
+                bondConfig.nameservers = {
+                    addresses: dnsServers
+                };
+                NetworkLogger.info(`Added DNS servers: ${JSON.stringify(dnsServers)}`);
+            }
         }
         
         // Only add gateway if explicitly provided and user wants to set default route
@@ -1512,7 +1337,7 @@ function generateBondNetplanConfig(config) {
             
             if (config.setDefaultRoute) {
                 // User explicitly wants this bond to be the default route
-                console.log('BondManager: Setting bond as default route');
+                NetworkLogger.info(' Setting bond as default route');
                 bondConfig.gateway4 = config.gateway;
                 bondConfig.routes = [
                     {
@@ -1522,12 +1347,13 @@ function generateBondNetplanConfig(config) {
                 ];
             } else {
                 // Just set gateway for this interface without making it default
-                console.log('BondManager: Setting gateway without default route');
+                NetworkLogger.info(' Setting gateway without default route');
                 bondConfig.gateway4 = config.gateway;
             }
         }
     } else if (config.configType === 'dhcp') {
         bondConfig.dhcp4 = true;
+        NetworkLogger.info('Bond configured for DHCP');
     }
     
     // Convert to YAML string manually (simple implementation)
@@ -1567,6 +1393,17 @@ function generateBondNetplanConfig(config) {
         });
     }
     
+    // Add nameservers (DNS) if any
+    if (bondConfig.nameservers) {
+        yamlContent += `      nameservers:
+        addresses:
+`;
+        bondConfig.nameservers.addresses.forEach(dns => {
+            yamlContent += `          - ${dns}
+`;
+        });
+    }
+    
     // Add routes if any (when user explicitly wants default route)
     if (bondConfig.routes) {
         yamlContent += `      routes:
@@ -1590,12 +1427,12 @@ function generateBondNetplanConfig(config) {
 `;
     }
     
-    console.log('BondManager: Generated Netplan YAML:', yamlContent);
+    NetworkLogger.info(' Generated Netplan YAML:', yamlContent);
     return yamlContent;
 }
 
 function updateBond(bondName) {
-    console.log(`BondManager: Updating bond ${bondName}...`);
+    NetworkLogger.info(`BondManager: Updating bond ${bondName}...`);
     NetworkLogger.info(`Updating bond ${bondName}...`);
     
     // Find and set loading state on update button
@@ -1615,18 +1452,18 @@ function updateBond(bondName) {
         upDelay: document.getElementById('edit-up-delay')?.value || null
     };
     
-    console.log('BondManager: Update form data:', formData);
+    NetworkLogger.info(' Update form data:', formData);
     
     // Update bond configuration using real system calls
     updateRealBond(formData)
         .then(() => {
-            console.log('BondManager: Bond updated successfully');
+            NetworkLogger.info(' Bond updated successfully');
             NetworkLogger.success(`Bond ${bondName} updated successfully`);
             NetworkManager.closeModal();
-            BondManager.loadBonds();
+            NetworkManager.loadBonds();
         })
         .catch((error) => {
-            console.error('BondManager: Failed to update bond:', error);
+            NetworkLogger.error(' Failed to update bond:', error);
             NetworkLogger.error(`Failed to update bond ${bondName}: ${error.message}`);
             NetworkManager.showError(`Failed to update bond: ${error.message}`);
         })
@@ -1639,7 +1476,7 @@ function updateBond(bondName) {
 
 // Update real bond configuration
 async function updateRealBond(config) {
-    console.log('BondManager: Updating real bond configuration:', config);
+    NetworkLogger.info(' Updating real bond configuration:', config);
     
     if (!cockpit || !cockpit.spawn || !cockpit.file) {
         throw new Error('Cockpit API not available');
@@ -1648,7 +1485,7 @@ async function updateRealBond(config) {
     try {
         // Read existing configuration
         const configFile = `/etc/netplan/90-xavs-${config.name}.yaml`;
-        console.log(`BondManager: Reading existing config from ${configFile}`);
+        NetworkLogger.info(`BondManager: Reading existing config from ${configFile}`);
         
         let existingConfig;
         try {
@@ -1661,7 +1498,7 @@ async function updateRealBond(config) {
         // For simplicity, we'll regenerate the configuration with updated values
         // In a production environment, you might want to use a YAML parser
         
-        const bond = BondManager.bonds.find(b => b.name === config.name);
+        const bond = NetworkManager.bonds.find(b => b.name === config.name);
         if (!bond) {
             throw new Error(`Bond ${config.name} not found in current configuration`);
         }
@@ -1683,40 +1520,40 @@ async function updateRealBond(config) {
         
         // Generate updated Netplan configuration
         const newNetplanConfig = generateBondNetplanConfig(updatedConfig);
-        console.log('BondManager: Generated updated Netplan config:', newNetplanConfig);
+        NetworkLogger.info(' Generated updated Netplan config:', newNetplanConfig);
         
         // Write updated configuration
         await cockpit.file(configFile, { superuser: 'require' }).replace(newNetplanConfig);
-        console.log('BondManager: Updated configuration written');
+        NetworkLogger.info(' Updated configuration written');
         
         // Apply changes
         await cockpit.spawn(['netplan', 'apply'], { superuser: 'require' });
-        console.log('BondManager: Configuration applied successfully');
+        NetworkLogger.info(' Configuration applied successfully');
         
     } catch (error) {
-        console.error('BondManager: Error updating bond:', error);
+        NetworkLogger.error(' Error updating bond:', error);
         throw error;
     }
 }
 
 function toggleBond(bondName, currentStatus) {
-    console.log(`BondManager: Toggling bond ${bondName} from ${currentStatus}`);
+    NetworkLogger.info(`BondManager: Toggling bond ${bondName} from ${currentStatus}`);
     
     const newStatus = currentStatus === 'up' ? 'down' : 'up';
     const action = newStatus === 'up' ? 'enable' : 'disable';
     
     if (confirm(`Are you sure you want to ${action} bond ${bondName}?`)) {
-        console.log(`BondManager: User confirmed ${action} for bond ${bondName}`);
+        NetworkLogger.info(`BondManager: User confirmed ${action} for bond ${bondName}`);
         
         // Use real system command to toggle bond
         toggleRealBond(bondName, newStatus)
             .then(() => {
-                console.log(`BondManager: Bond ${bondName} ${action}d successfully`);
+                NetworkLogger.info(`BondManager: Bond ${bondName} ${action}d successfully`);
                 NetworkManager.showSuccess(`Bond ${bondName} ${action}d successfully`);
-                BondManager.loadBonds();
+                NetworkManager.loadBonds();
             })
             .catch((error) => {
-                console.error(`BondManager: Failed to ${action} bond:`, error);
+                NetworkLogger.error(`BondManager: Failed to ${action} bond:`, error);
                 NetworkManager.showError(`Failed to ${action} bond: ${error.message}`);
             });
     }
@@ -1724,7 +1561,7 @@ function toggleBond(bondName, currentStatus) {
 
 // Toggle real bond interface
 async function toggleRealBond(bondName, targetStatus) {
-    console.log(`BondManager: Setting bond ${bondName} to ${targetStatus}`);
+    NetworkLogger.info(`BondManager: Setting bond ${bondName} to ${targetStatus}`);
     
     if (!cockpit || !cockpit.spawn) {
         throw new Error('Cockpit API not available');
@@ -1732,32 +1569,32 @@ async function toggleRealBond(bondName, targetStatus) {
     
     try {
         const command = targetStatus === 'up' ? 'up' : 'down';
-        console.log(`BondManager: Running: ip link set ${bondName} ${command}`);
+        NetworkLogger.info(`BondManager: Running: ip link set ${bondName} ${command}`);
         
         await cockpit.spawn(['ip', 'link', 'set', bondName, command], { superuser: 'require' });
-        console.log(`BondManager: Bond ${bondName} set to ${targetStatus} successfully`);
+        NetworkLogger.info(`BondManager: Bond ${bondName} set to ${targetStatus} successfully`);
         
     } catch (error) {
-        console.error(`BondManager: Error toggling bond ${bondName}:`, error);
+        NetworkLogger.error(`BondManager: Error toggling bond ${bondName}:`, error);
         throw new Error(`Failed to set bond ${bondName} to ${targetStatus}: ${error.message}`);
     }
 }
 
 function deleteBond(bondName) {
-    console.log(`BondManager: Delete bond ${bondName} requested`);
+    NetworkLogger.info(`BondManager: Delete bond ${bondName} requested`);
     
     if (confirm(`Are you sure you want to delete bond ${bondName}? This will remove the bond interface and its configuration. This action cannot be undone.`)) {
-        console.log(`BondManager: User confirmed deletion of bond ${bondName}`);
+        NetworkLogger.info(`BondManager: User confirmed deletion of bond ${bondName}`);
         
         // Use real system commands to delete bond
         deleteRealBond(bondName)
             .then(() => {
-                console.log(`BondManager: Bond ${bondName} deleted successfully`);
+                NetworkLogger.info(`BondManager: Bond ${bondName} deleted successfully`);
                 NetworkManager.showSuccess(`Bond ${bondName} deleted successfully`);
-                BondManager.loadBonds();
+                NetworkManager.loadBonds();
             })
             .catch((error) => {
-                console.error(`BondManager: Failed to delete bond:`, error);
+                NetworkLogger.error(`BondManager: Failed to delete bond:`, error);
                 NetworkManager.showError(`Failed to delete bond: ${error.message}`);
             });
     }
@@ -1765,7 +1602,7 @@ function deleteBond(bondName) {
 
 // Delete real bond interface and configuration
 async function deleteRealBond(bondName) {
-    console.log(`BondManager: Deleting real bond ${bondName}`);
+    NetworkLogger.info(`BondManager: Deleting real bond ${bondName}`);
     
     if (!cockpit || !cockpit.spawn || !cockpit.file) {
         throw new Error('Cockpit API not available');
@@ -1773,11 +1610,11 @@ async function deleteRealBond(bondName) {
     
     try {
         // First, bring the bond down
-        console.log(`BondManager: Bringing bond ${bondName} down...`);
+        NetworkLogger.info(`BondManager: Bringing bond ${bondName} down...`);
         try {
             await cockpit.spawn(['ip', 'link', 'set', bondName, 'down'], { superuser: 'require' });
         } catch (downError) {
-            console.warn(`BondManager: Could not bring bond down (may already be down):`, downError);
+            NetworkLogger.warning(`BondManager: Could not bring bond down (may already be down):`, downError);
         }
         
         // Remove slave interfaces from the bond first
@@ -1797,61 +1634,61 @@ async function deleteRealBond(bondName) {
             // Remove each slave
             for (const slave of slaves) {
                 try {
-                    console.log(`BondManager: Removing slave ${slave} from bond ${bondName}`);
+                    NetworkLogger.info(`BondManager: Removing slave ${slave} from bond ${bondName}`);
                     await cockpit.spawn(['ip', 'link', 'set', slave, 'nomaster'], { superuser: 'require' });
                 } catch (slaveError) {
-                    console.warn(`BondManager: Could not remove slave ${slave}:`, slaveError);
+                    NetworkLogger.warning(`BondManager: Could not remove slave ${slave}:`, slaveError);
                 }
             }
         } catch (slaveError) {
-            console.warn(`BondManager: Could not get bond slave info:`, slaveError);
+            NetworkLogger.warning(`BondManager: Could not get bond slave info:`, slaveError);
         }
         
         // Explicitly delete the bond interface
-        console.log(`BondManager: Deleting bond interface ${bondName}...`);
+        NetworkLogger.info(`BondManager: Deleting bond interface ${bondName}...`);
         try {
             await cockpit.spawn(['ip', 'link', 'delete', bondName], { superuser: 'require' });
-            console.log(`BondManager: Bond interface ${bondName} deleted`);
+            NetworkLogger.info(`BondManager: Bond interface ${bondName} deleted`);
         } catch (deleteError) {
-            console.warn(`BondManager: Could not delete bond interface (may not exist):`, deleteError);
+            NetworkLogger.warning(`BondManager: Could not delete bond interface (may not exist):`, deleteError);
         }
         
         // Remove the XAVS configuration file
         const configFile = `/etc/netplan/90-xavs-${bondName}.yaml`;
-        console.log(`BondManager: Removing configuration file ${configFile}`);
+        NetworkLogger.info(`BondManager: Removing configuration file ${configFile}`);
         
         try {
             await cockpit.spawn(['rm', configFile], { superuser: 'require' });
-            console.log('BondManager: Configuration file removed');
+            NetworkLogger.info(' Configuration file removed');
         } catch (rmError) {
-            console.warn('BondManager: Configuration file may not exist or could not be removed:', rmError);
+            NetworkLogger.warning(' Configuration file may not exist or could not be removed:', rmError);
         }
         
         // Apply Netplan to clean up any remaining configuration
-        console.log('BondManager: Applying Netplan to clean up...');
+        NetworkLogger.info(' Applying Netplan to clean up...');
         try {
             await cockpit.spawn(['netplan', 'apply'], { superuser: 'require' });
-            console.log('BondManager: Netplan applied');
+            NetworkLogger.info(' Netplan applied');
         } catch (netplanError) {
-            console.warn('BondManager: Netplan apply failed:', netplanError);
+            NetworkLogger.warning(' Netplan apply failed:', netplanError);
         }
         
         // Verify bond is gone
         try {
             await cockpit.spawn(['ip', 'link', 'show', bondName], { superuser: 'try' });
-            console.warn(`BondManager: Bond ${bondName} still exists after deletion attempt`);
+            NetworkLogger.warning(`BondManager: Bond ${bondName} still exists after deletion attempt`);
         } catch (verifyError) {
-            console.log(`BondManager: Bond ${bondName} successfully removed from system`);
+            NetworkLogger.info(`BondManager: Bond ${bondName} successfully removed from system`);
         }
         
     } catch (error) {
-        console.error(`BondManager: Error deleting bond ${bondName}:`, error);
+        NetworkLogger.error(`BondManager: Error deleting bond ${bondName}:`, error);
         throw new Error(`Failed to delete bond ${bondName}: ${error.message}`);
     }
 }
 
 function addSlaveToBond(bondName) {
-    console.log(`BondManager: Adding slave to bond ${bondName}`);
+    NetworkLogger.info(`BondManager: Adding slave to bond ${bondName}`);
     
     const newSlave = document.getElementById('new-slave').value;
     if (!newSlave) {
@@ -1859,25 +1696,25 @@ function addSlaveToBond(bondName) {
         return;
     }
     
-    console.log(`BondManager: Adding interface ${newSlave} to bond ${bondName}`);
+    NetworkLogger.info(`BondManager: Adding interface ${newSlave} to bond ${bondName}`);
     
     // Add slave using real system commands
     addRealSlaveToBond(bondName, newSlave)
         .then(() => {
-            console.log(`BondManager: Interface ${newSlave} added to bond ${bondName} successfully`);
+            NetworkLogger.info(`BondManager: Interface ${newSlave} added to bond ${bondName} successfully`);
             NetworkManager.showSuccess(`Interface ${newSlave} added to bond ${bondName}`);
             NetworkManager.closeModal();
             BondManager.loadBonds();
         })
         .catch((error) => {
-            console.error('BondManager: Failed to add slave to bond:', error);
+            NetworkLogger.error(' Failed to add slave to bond:', error);
             NetworkManager.showError(`Failed to add slave to bond: ${error.message}`);
         });
 }
 
 // Add real slave interface to bond
 async function addRealSlaveToBond(bondName, slaveInterface) {
-    console.log(`BondManager: Adding real slave ${slaveInterface} to bond ${bondName}`);
+    NetworkLogger.info(`BondManager: Adding real slave ${slaveInterface} to bond ${bondName}`);
     
     if (!cockpit || !cockpit.spawn) {
         throw new Error('Cockpit API not available');
@@ -1889,28 +1726,28 @@ async function addRealSlaveToBond(bondName, slaveInterface) {
     
     try {
         // First, ensure the slave interface is down
-        console.log(`BondManager: Bringing slave interface ${slaveInterface} down...`);
+        NetworkLogger.info(`BondManager: Bringing slave interface ${slaveInterface} down...`);
         await cockpit.spawn(['ip', 'link', 'set', slaveInterface, 'down'], { superuser: 'require' });
         
         // Add slave to bond via sysfs using cockpit.file for safety
-        console.log(`BondManager: Adding ${slaveInterface} to bond ${bondName} via sysfs...`);
+        NetworkLogger.info(`BondManager: Adding ${slaveInterface} to bond ${bondName} via sysfs...`);
         const slavePath = `/sys/class/net/${bondName}/bonding/slaves`;
         await cockpit.file(slavePath, { superuser: 'require' }).replace(`+${slaveInterface}`);
         
         // Bring the slave interface up
-        console.log(`BondManager: Bringing slave interface ${slaveInterface} up...`);
+        NetworkLogger.info(`BondManager: Bringing slave interface ${slaveInterface} up...`);
         await cockpit.spawn(['ip', 'link', 'set', slaveInterface, 'up'], { superuser: 'require' });
         
-        console.log(`BondManager: Slave ${slaveInterface} added to bond ${bondName} successfully`);
+        NetworkLogger.info(`BondManager: Slave ${slaveInterface} added to bond ${bondName} successfully`);
         
     } catch (error) {
-        console.error(`BondManager: Error adding slave ${slaveInterface} to bond ${bondName}:`, error);
+        NetworkLogger.error(`BondManager: Error adding slave ${slaveInterface} to bond ${bondName}:`, error);
         throw new Error(`Failed to add ${slaveInterface} to bond ${bondName}: ${error.message}`);
     }
 }
 
 function removeBondSlave(bondName) {
-    console.log(`BondManager: Remove slave from bond ${bondName} requested`);
+    NetworkLogger.info(`BondManager: Remove slave from bond ${bondName} requested`);
     
     const bond = BondManager.bonds.find(b => b.name === bondName);
     if (!bond || bond.slaves.length <= 2) {
@@ -1923,18 +1760,18 @@ function removeBondSlave(bondName) {
     const slaveToRemove = bond.slaves[bond.slaves.length - 1];
     
     if (confirm(`Remove ${slaveToRemove} from bond ${bondName}?`)) {
-        console.log(`BondManager: User confirmed removal of ${slaveToRemove} from bond ${bondName}`);
+        NetworkLogger.info(`BondManager: User confirmed removal of ${slaveToRemove} from bond ${bondName}`);
         
         // Remove slave using real system commands
         removeRealSlaveFromBond(bondName, slaveToRemove)
             .then(() => {
-                console.log(`BondManager: Slave ${slaveToRemove} removed from bond ${bondName} successfully`);
+                NetworkLogger.info(`BondManager: Slave ${slaveToRemove} removed from bond ${bondName} successfully`);
                 NetworkManager.showSuccess(`Slave interface ${slaveToRemove} removed from bond ${bondName}`);
                 NetworkManager.closeModal();
                 BondManager.loadBonds();
             })
             .catch((error) => {
-                console.error('BondManager: Failed to remove slave from bond:', error);
+                NetworkLogger.error(' Failed to remove slave from bond:', error);
                 NetworkManager.showError(`Failed to remove slave from bond: ${error.message}`);
             });
     }
@@ -1942,7 +1779,7 @@ function removeBondSlave(bondName) {
 
 // Remove real slave interface from bond
 async function removeRealSlaveFromBond(bondName, slaveInterface) {
-    console.log(`BondManager: Removing real slave ${slaveInterface} from bond ${bondName}`);
+    NetworkLogger.info(`BondManager: Removing real slave ${slaveInterface} from bond ${bondName}`);
     
     if (!cockpit || !cockpit.spawn) {
         throw new Error('Cockpit API not available');
@@ -1954,62 +1791,30 @@ async function removeRealSlaveFromBond(bondName, slaveInterface) {
     
     try {
         // Remove slave from bond via sysfs using cockpit.file for safety
-        console.log(`BondManager: Removing ${slaveInterface} from bond ${bondName} via sysfs...`);
+        NetworkLogger.info(`BondManager: Removing ${slaveInterface} from bond ${bondName} via sysfs...`);
         const slavePath = `/sys/class/net/${bondName}/bonding/slaves`;
         await cockpit.file(slavePath, { superuser: 'require' }).replace(`-${slaveInterface}`);
         
         // Bring the former slave interface down
-        console.log(`BondManager: Bringing former slave interface ${slaveInterface} down...`);
+        NetworkLogger.info(`BondManager: Bringing former slave interface ${slaveInterface} down...`);
         await cockpit.spawn(['ip', 'link', 'set', slaveInterface, 'down'], { superuser: 'require' });
         
-        console.log(`BondManager: Slave ${slaveInterface} removed from bond ${bondName} successfully`);
+        NetworkLogger.info(`BondManager: Slave ${slaveInterface} removed from bond ${bondName} successfully`);
         
     } catch (error) {
-        console.error(`BondManager: Error removing slave ${slaveInterface} from bond ${bondName}:`, error);
+        NetworkLogger.error(`BondManager: Error removing slave ${slaveInterface} from bond ${bondName}:`, error);
         throw new Error(`Failed to remove ${slaveInterface} from bond ${bondName}: ${error.message}`);
     }
 }
 
 function refreshBonds() {
-    BondManager.loadBonds();
+    NetworkManager.loadBonds();
 }
 
-// Debug Netplan configuration with detailed output
-async function debugNetplanConfiguration(section = 'bonds') {
-    console.log(`BondManager: Running netplan debug for ${section}...`);
-    
-    try {
-        // Run netplan --debug try to test current configuration
-        const result = await cockpit.spawn(['netplan', '--debug', 'try'], { 
-            superuser: 'try',
-            err: 'out'
-        });
-        
-        console.log('Netplan Debug Output:', result);
-        
-        // Show a user-friendly notification
-        if (typeof NetworkManager !== 'undefined' && NetworkManager.showSuccess) {
-            NetworkManager.showSuccess('Netplan debug completed successfully. Check browser console for detailed output.');
-        }
-        
-    } catch (error) {
-        console.error('Netplan Debug Error:', error);
-        
-        // Show error to user
-        if (typeof NetworkManager !== 'undefined' && NetworkManager.showError) {
-            NetworkManager.showError(`Netplan debug failed: ${error.message || error}`);
-        }
-    }
-}
-
-// Update the main NetworkManager to use BondManager
-NetworkManager.loadBonds = function() {
-    BondManager.loadBonds();
-};
-
-// Bond Multiple IP Address Management Functions
+// Initialize IP address counter for bond management
 let bondIpAddressCounter = 0;
 
+// Debug Netplan configuration with detailed output
 function addBondIpAddress() {
     bondIpAddressCounter++;
     const container = document.getElementById('bond-ip-addresses-container');
@@ -2021,7 +1826,7 @@ function addBondIpAddress() {
     newEntry.innerHTML = `
         <div style="display: flex; gap: 8px; align-items: flex-end; margin-top: 8px;">
             <div style="flex: 1;">
-                <input type="text" id="bond-ip-${bondIpAddressCounter}" class="form-control bond-ip-address-input" placeholder="192.168.1.101/24" data-validate="cidr">
+                <input type="text" id="bond-ip-${bondIpAddressCounter}" class="form-control bond-ip-address-input" placeholder="192.168.1.101 (default /24)" data-validate="cidr">
             </div>
             <button type="button" class="btn btn-sm btn-outline-danger remove-bond-ip-btn" onclick="removeBondIpAddress(${bondIpAddressCounter})">
                 <i class="fas fa-minus"></i>
@@ -2065,7 +1870,13 @@ function collectBondIpAddresses() {
     
     ipInputs.forEach(input => {
         if (input.value.trim()) {
-            ipAddresses.push(input.value.trim());
+            const ip = input.value.trim();
+            // Add /24 as default CIDR if not provided
+            if (!ip.includes('/') && /^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) {
+                ipAddresses.push(ip + '/24');
+            } else {
+                ipAddresses.push(ip);
+            }
         }
     });
     
@@ -2073,11 +1884,11 @@ function collectBondIpAddresses() {
 }
 
 // Debug: Ensure functions are globally available
-console.log('Bond Manager loaded. Functions available:', {
+NetworkLogger.info('Bond Manager loaded. Functions available:', {
     addBond: typeof addBond,
     editBond: typeof editBond,
     updateBond: typeof updateBond,
-    BondManager: typeof BondManager,
+    NetworkManager: typeof NetworkManager,
     addBondIpAddress: typeof addBondIpAddress,
     removeBondIpAddress: typeof removeBondIpAddress,
     addEditIpAddress: typeof addEditIpAddress,
@@ -2096,3 +1907,8 @@ window.removeEditIpAddress = removeEditIpAddress;
 window.collectEditIpAddresses = collectEditIpAddresses;
 window.updateBondRemoveButtonVisibility = updateBondRemoveButtonVisibility;
 window.collectBondIpAddresses = collectBondIpAddresses;
+window.populateEditBondIpAddresses = populateEditBondIpAddresses;
+window.updateEditBondRemoveButtonVisibility = updateEditBondRemoveButtonVisibility;
+
+// Provide backward compatibility - BondManager is actually NetworkManager
+window.BondManager = NetworkManager;

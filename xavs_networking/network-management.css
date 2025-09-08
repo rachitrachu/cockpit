@@ -779,6 +779,44 @@ input:checked + .toggle-slider:before {
     background: #e9ecef;
 }
 
+/* Toggle Pill Style for better visibility */
+.toggle-pill {
+    display: flex;
+    border: 1px solid #ddd;
+    border-radius: 25px;
+    background: #f8f9fa;
+    overflow: hidden;
+    margin-bottom: 16px;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.toggle-pill .toggle-seg {
+    flex: 1;
+    padding: 12px 20px;
+    text-align: center;
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    color: #495057;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    border-radius: 25px;
+    margin: 2px;
+}
+
+.toggle-pill .toggle-seg.active {
+    background: var(--color-brand);
+    color: white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+    transform: translateY(-1px);
+}
+
+.toggle-pill .toggle-seg:hover:not(.active) {
+    background: #e9ecef;
+    color: #343a40;
+}
+
 /* Alert Styles */
 .alert {
     padding: 12px 16px;
@@ -1461,6 +1499,43 @@ input:checked + .toggle-slider:before {
     justify-content: center;
 }
 
+/* IP address entry styling for VLAN edit form */
+.ip-address-entry {
+    margin-bottom: 8px;
+}
+
+.ip-address-entry .ip-entry-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.ip-address-entry .ip-entry-row > div:first-child {
+    flex: 1;
+}
+
+.ip-address-entry .remove-edit-ip-btn,
+.ip-address-entry .remove-ip-btn {
+    flex-shrink: 0;
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+/* Ensure form controls have consistent height */
+.ip-address-entry .form-control,
+.edit-ip-address-input,
+.ip-address-input {
+    height: 38px;
+    line-height: 1.5;
+    padding: 6px 12px;
+}
+
 /* Logs Section Styles */
 .logs-container {
     background: var(--surface);
@@ -1640,4 +1715,108 @@ input:checked + .toggle-slider:before {
     --terminal-text: #e6e6e6;
     --surface-dark: #1a1a1a;
     --surface-darker: #0d0d0d;
+}
+
+/* Bond-specific styling improvements */
+.bond-card {
+    min-height: 180px;
+    max-width: 350px;
+}
+
+.bond-card .interface-header {
+    margin-bottom: 12px;
+}
+
+.bond-card .interface-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--brand);
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+}
+
+.bond-card .interface-details {
+    margin-bottom: 16px;
+}
+
+.bond-card .detail-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    min-height: 20px;
+}
+
+.bond-card .detail-label {
+    font-weight: 500;
+    color: var(--muted);
+    font-size: 13px;
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+
+.bond-card .detail-value {
+    color: var(--text);
+    font-size: 13px;
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+}
+
+.bond-card .interface-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.bond-card .interface-actions .btn {
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 6px;
+}
+
+/* Improved create bond button styling */
+.create-bond-button {
+    padding: 10px 16px !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    border-radius: 6px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    min-width: 120px !important;
+    justify-content: center !important;
+    white-space: nowrap !important;
+}
+
+.create-bond-button i {
+    font-size: 14px !important;
+}
+
+/* Empty state styling for bonds */
+.empty-state .create-bond-button {
+    margin-top: 16px;
+}
+
+/* Interface grid responsive improvements */
+.interface-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+}
+
+@media (max-width: 768px) {
+    .interface-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .bond-card {
+        max-width: none;
+    }
 }
