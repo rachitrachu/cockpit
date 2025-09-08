@@ -201,32 +201,3 @@ export function getInterfaceOwnership(interfaceName, yamlInfo) {
 }
 
 export default XAVSYAMLParser;
-
-export function getInterfaceOwnership(interfaceName, yamlInfo) {
-  // Check if interface is defined in baseline
-  const isInBaseline = checkInterfaceInConfig(interfaceName, yamlInfo.baseline);
-  const isInXavs = checkInterfaceInConfig(interfaceName, yamlInfo.xavs);
-  
-  if (isInBaseline && isInXavs) {
-    return "overlay"; // XAVS overlay on baseline interface
-  } else if (isInBaseline) {
-    return "baseline";
-  } else if (isInXavs) {
-    return "xavs";
-  } else {
-    return "unmanaged";
-  }
-}
-
-function checkInterfaceInConfig(interfaceName, config) {
-  const sections = ['ethernets', 'vlans', 'bonds', 'bridges', 'wifis'];
-  
-  for (const section of sections) {
-    if (config[section] && config[section][interfaceName]) {
-      return true;
-    }
-  }
-  
-  return false;
-}
-// Note: getInterfaceOwnership and checkInterfaceInConfig are already defined above
