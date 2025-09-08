@@ -19,27 +19,27 @@ function waitForReady() {
     let domReady = document.readyState === 'complete' || document.readyState === 'interactive';
     let cockpitReady = typeof cockpit !== 'undefined';
 
-    console.log('Wait check - DOM ready:', domReady, 'Cockpit ready:', cockpitReady);
+    // Checking initialization state
 
     if (domReady && cockpitReady) {
       const hasTableBody = !!document.querySelector('#table-interfaces tbody');
       const hasStatusEl = !!document.querySelector('#status');
 
-      console.log('DOM elements check - table:', hasTableBody, 'status:', hasStatusEl);
+      // Checking for required DOM elements
 
       if (hasTableBody && hasStatusEl) {
         resolve();
       } else {
         setTimeout(() => {
-          console.log('DOM elements retry check...');
+          // Retrying DOM element check
           resolve();
         }, 1000);
       }
     } else {
       if (!domReady) {
-        console.log('Waiting for DOM ready event...');
+        // Waiting for DOM ready event
         document.addEventListener('DOMContentLoaded', () => {
-          console.log('DOM ready event fired');
+          // DOM ready event fired
           if (typeof cockpit !== 'undefined') {
             setTimeout(resolve, 100);
           }
@@ -47,7 +47,7 @@ function waitForReady() {
       }
 
       if (!cockpitReady) {
-        console.log('Waiting for Cockpit API...');
+        // Waiting for Cockpit API
         const checkCockpit = () => {
           if (typeof cockpit !== 'undefined') {
             setTimeout(resolve, 100);
@@ -59,7 +59,7 @@ function waitForReady() {
       }
 
       setTimeout(() => {
-        console.log('Fallback timeout reached, proceeding...');
+        // Fallback timeout reached, proceeding
         resolve();
       }, 5000);
     }
