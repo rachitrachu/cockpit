@@ -1,0 +1,1413 @@
+/* XAVS Network Management - Custom Styles */
+
+/* Extending the existing XAVS theme */
+.tab-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--border);
+}
+
+.tab-header h2 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+/* Interface Management Styles */
+.interface-controls {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 20px;
+}
+
+.interface-list {
+    display: grid;
+    gap: 16px;
+}
+
+.interface-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.interface-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.interface-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.interface-name {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.interface-type {
+    padding: 4px 8px;
+    border-radius: 16px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.interface-type.ethernet {
+    background: #e3f2fd;
+    color: #1976d2;
+}
+
+.interface-type.wifi {
+    background: #f3e5f5;
+    color: #7b1fa2;
+}
+
+.interface-type.virtual {
+    background: #e8f5e8;
+    color: #388e3c;
+}
+
+.interface-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.interface-detail {
+    display: flex;
+    flex-direction: column;
+}
+
+.detail-label {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.detail-value {
+    font-size: 14px;
+    color: var(--text);
+    font-weight: 600;
+}
+
+.interface-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 12px;
+    border-radius: 16px;
+}
+
+/* VLAN Styles */
+.vlan-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.vlan-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.vlan-id {
+    background: var(--brand);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.vlan-config {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 16px;
+}
+
+/* Bridge Styles */
+.bridge-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.bridge-topology {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 16px;
+}
+
+.bridge-interfaces {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.bridge-interface {
+    background: var(--brand);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 16px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* Bond Styles */
+.bond-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.bond-mode {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 16px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.bond-mode.active-backup {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.bond-mode.lacp {
+    background: #d4edda;
+    color: #155724;
+}
+
+.bond-slaves {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.bond-slave {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    padding: 6px 12px;
+    border-radius: 16px;
+    font-size: 12px;
+}
+
+.bond-slave.primary {
+    background: var(--brand);
+    color: white;
+    border-color: var(--brand);
+}
+
+/* Route Styles */
+.route-table {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.route-table table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.route-table th,
+.route-table td {
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+.route-table th {
+    background: var(--surface-2);
+    font-weight: 600;
+    color: var(--text);
+}
+
+.route-table tr:last-child td {
+    border-bottom: none;
+}
+
+/* DNS Styles */
+.dns-servers {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.dns-server-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.dns-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.response-time {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+/* Monitoring Styles */
+.monitoring-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    margin-bottom: 24px;
+}
+
+.metric-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.metric-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.metric-icon {
+    font-size: 20px;
+    color: var(--brand);
+}
+
+.metric-value {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1;
+}
+
+.metric-unit {
+    font-size: 14px;
+    color: var(--muted);
+    margin-left: 4px;
+}
+
+.metric-trend {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 8px;
+    font-size: 12px;
+}
+
+.trend-up {
+    color: #dc3545;
+}
+
+.trend-down {
+    color: #28a745;
+}
+
+/* Configuration Management Styles */
+.config-files {
+    display: grid;
+    gap: 16px;
+}
+
+.config-file {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.config-file-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.config-filename {
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.config-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.config-preview {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    max-height: 200px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+}
+
+/* Modal Styles */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: var(--surface);
+    border-radius: 12px;
+    max-width: 600px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.modal-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background-color 0.2s ease;
+}
+
+.modal-close:hover {
+    background: var(--surface-2);
+}
+
+.modal-body {
+    padding: 20px 24px;
+}
+
+.modal-footer {
+    padding: 16px 24px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+/* Form Grid Layout */
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 16px;
+}
+
+.form-group {
+    margin-bottom: 16px;
+}
+
+.form-group.full-width {
+    grid-column: 1 / -1;
+}
+
+/* Toggle Switches */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 48px;
+    height: 24px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #ccc;
+    transition: 0.3s;
+    border-radius: 24px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+
+input:checked + .toggle-slider {
+    background: var(--brand);
+}
+
+input:checked + .toggle-slider:before {
+    transform: translateX(24px);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .app {
+        padding: 16px;
+    }
+    
+    .nav-tabs {
+        flex-wrap: wrap;
+    }
+    
+    .tab-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+    
+    .interface-details {
+        grid-template-columns: 1fr;
+    }
+    
+    .monitoring-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .dns-servers {
+        grid-template-columns: 1fr;
+    }
+    
+    .modal-content {
+        margin: 20px;
+        width: calc(100% - 40px);
+    }
+}
+
+/* Loading States */
+.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    color: var(--muted);
+}
+
+.loading i {
+    animation: spin 1s linear infinite;
+    margin-right: 8px;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Error States */
+.error-message {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #dc2626;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin: 16px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.success-message {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    color: #16a34a;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin: 16px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Search and Filter Styles */
+.search-box {
+    position: relative;
+    margin-bottom: 16px;
+}
+
+.search-box input {
+    padding-left: 40px;
+}
+
+.search-box i {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+}
+
+/* Log section improvements */
+.log-section {
+    margin-top: 32px;
+}
+
+.log-section h3 {
+    margin-bottom: 16px;
+    color: var(--text);
+}
+
+.quick-actions {
+    margin-top: 24px;
+}
+
+.quick-actions h3 {
+    margin-bottom: 16px;
+    color: var(--text);
+}
+
+/* Interface Details and Actions */
+.interface-item {
+    display: flex;
+    align-items: center;
+    padding: 16px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    transition: all 0.2s ease;
+}
+
+.interface-item:hover {
+    border-color: var(--color-brand);
+    box-shadow: 0 2px 8px rgba(0, 123, 255, 0.1);
+}
+
+.interface-icon {
+    font-size: 24px;
+    margin-right: 16px;
+    color: var(--color-brand);
+    min-width: 40px;
+}
+
+.interface-info {
+    flex: 1;
+}
+
+.interface-name {
+    font-weight: 600;
+    font-size: 16px;
+    margin-bottom: 4px;
+}
+
+.interface-details {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 4px;
+}
+
+.interface-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+}
+
+.status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.status-indicator.up {
+    background-color: #28a745;
+}
+
+.status-indicator.down {
+    background-color: #dc3545;
+}
+
+.status-indicator.unknown {
+    background-color: #ffc107;
+}
+
+.interface-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: 16px;
+}
+
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 12px;
+    border-radius: 4px;
+}
+
+/* Configuration Preview */
+.config-preview {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    padding: 16px;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    white-space: pre-line;
+    color: #495057;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+/* Toggle Segments for Configuration Types */
+.toggle-segment {
+    display: flex;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: #f8f9fa;
+    overflow: hidden;
+    margin-bottom: 16px;
+}
+
+.toggle-seg {
+    flex: 1;
+    padding: 10px 16px;
+    text-align: center;
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    color: #666;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.toggle-seg.active {
+    background: var(--color-brand);
+    color: white;
+}
+
+.toggle-seg:hover:not(.active) {
+    background: #e9ecef;
+}
+
+/* Alert Styles */
+.alert {
+    padding: 12px 16px;
+    border-radius: 6px;
+    border-left: 4px solid;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.alert i {
+    margin-top: 2px;
+}
+
+.alert-info {
+    background: #d1ecf1;
+    border-color: #17a2b8;
+    color: #0c5460;
+}
+
+.alert-warning {
+    background: #fff3cd;
+    border-color: #ffc107;
+    color: #856404;
+}
+
+.alert-danger {
+    background: #f8d7da;
+    border-color: #dc3545;
+    color: #721c24;
+}
+
+.alert-success {
+    background: #d4edda;
+    border-color: #28a745;
+    color: #155724;
+}
+
+/* Form Improvements */
+.form-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.form-col {
+    flex: 1;
+}
+
+.form-group.inline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.form-group.inline label {
+    margin-bottom: 0;
+    font-size: 14px;
+}
+
+/* Interface Type Badges */
+.interface-type {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.interface-type.physical {
+    background: #e3f2fd;
+    color: #1976d2;
+}
+
+.interface-type.virtual {
+    background: #f3e5f5;
+    color: #7b1fa2;
+}
+
+.interface-type.bridge {
+    background: #e8f5e8;
+    color: #388e3c;
+}
+
+.interface-type.bond {
+    background: #fff3e0;
+    color: #f57c00;
+}
+
+.interface-type.vlan {
+    background: #fce4ec;
+    color: #c2185b;
+}
+
+/* System vs User Interface Indicators */
+.interface-source {
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: 500;
+}
+
+.interface-source.system {
+    background: #f5f5f5;
+    color: #666;
+}
+
+.interface-source.user {
+    background: #e8f5e8;
+    color: #2e7d32;
+}
+
+/* Responsive Design for Interface Management */
+@media (max-width: 768px) {
+    .interface-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .interface-actions {
+        margin-left: 0;
+        margin-top: 12px;
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .form-row {
+        flex-direction: column;
+        gap: 0;
+    }
+    
+    .toggle-segment {
+        flex-direction: column;
+    }
+}
+
+/* Loading and Empty States */
+.loading {
+    text-align: center;
+    padding: 40px;
+    color: #666;
+}
+
+.loading i {
+    font-size: 24px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #666;
+}
+
+.empty-state i {
+    font-size: 48px;
+    color: #ddd;
+    margin-bottom: 16px;
+}
+
+.empty-state h3 {
+    margin-bottom: 8px;
+    color: #333;
+}
+
+.empty-state p {
+    font-size: 14px;
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+/* Enhanced Interface Selection for Bond Manager */
+.interface-selection-container {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    background: var(--surface-variant);
+}
+
+.selected-interfaces {
+    margin-bottom: 16px;
+    min-height: 40px;
+    padding: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.selected-interfaces:empty::before {
+    content: "No interfaces selected. Click on interfaces below to add them.";
+    color: var(--muted);
+    font-style: italic;
+    font-size: 14px;
+}
+
+.selected-interface-tag {
+    background: var(--brand);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    animation: slideIn 0.2s ease;
+}
+
+.selected-interface-tag .remove-interface {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s ease;
+}
+
+.selected-interface-tag .remove-interface:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.available-interfaces {
+    margin-top: 12px;
+}
+
+.interface-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.interface-card {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: relative;
+}
+
+.interface-card:hover {
+    background: var(--surface-variant);
+    border-color: var(--brand-light);
+    transform: translateY(-1px);
+}
+
+.interface-card.selected {
+    background: var(--brand-light);
+    border-color: var(--brand);
+    color: var(--brand-text);
+}
+
+.interface-card.selected .interface-status {
+    color: var(--brand);
+    font-weight: 600;
+}
+
+.interface-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.interface-name {
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.interface-status {
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.interface-checkbox {
+    display: flex;
+    align-items: center;
+}
+
+.interface-checkbox input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--brand);
+}
+
+/* Animation for selected interface tags */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Responsive design for smaller screens */
+@media (max-width: 768px) {
+    .interface-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .interface-card {
+        padding: 16px;
+    }
+}
+
+/* Routes table styles */
+.routes-table {
+    background: var(--surface);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    border: 1px solid var(--border);
+}
+
+.routes-header {
+    display: grid;
+    grid-template-columns: 2fr 1.5fr 1fr 0.8fr 1fr;
+    gap: 16px;
+    padding: 16px;
+    background: var(--surface-light);
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.route-row {
+    display: grid;
+    grid-template-columns: 2fr 1.5fr 1fr 0.8fr 1fr;
+    gap: 16px;
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+    transition: background-color 0.2s ease;
+}
+
+.route-row:hover {
+    background: var(--surface-light);
+}
+
+.route-row:last-child {
+    border-bottom: none;
+}
+
+.route-column {
+    display: flex;
+    align-items: center;
+    min-height: 24px;
+}
+
+.route-destination {
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    font-size: 14px;
+    color: var(--text);
+    background: var(--surface-light);
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.route-gateway {
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    font-size: 14px;
+    color: var(--text);
+}
+
+.route-interface {
+    font-weight: 500;
+    color: var(--brand);
+}
+
+.route-metric {
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    font-size: 14px;
+    color: var(--text-muted);
+}
+
+.route-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.route-actions .btn {
+    padding: 6px 8px;
+    min-width: auto;
+}
+
+.route-actions .btn i {
+    font-size: 12px;
+}
+
+/* Interface table styles */
+.interfaces-table {
+    background: var(--surface);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    border: 1px solid var(--border);
+}
+
+.interfaces-header {
+    display: grid;
+    grid-template-columns: 2fr 0.8fr 1fr 1.5fr 1.2fr 1fr;
+    gap: 16px;
+    padding: 16px;
+    background: var(--surface-light);
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.interface-row {
+    display: grid;
+    grid-template-columns: 2fr 0.8fr 1fr 1.5fr 1.2fr 1fr;
+    gap: 16px;
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+    transition: background-color 0.2s ease;
+}
+
+.interface-row:hover {
+    background: var(--surface-light);
+}
+
+.interface-row:last-child {
+    border-bottom: none;
+}
+
+.interface-column {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 24px;
+}
+
+.interface-name-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.interface-name {
+    font-weight: 500;
+    color: var(--text);
+}
+
+.system-badge {
+    background: #17a2b8;
+    color: white;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+}
+
+.config-indicator {
+    color: var(--brand);
+    font-size: 12px;
+}
+
+.interface-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.interface-type {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+}
+
+.interface-type.ethernet {
+    background: #e3f2fd;
+    color: #1976d2;
+}
+
+.interface-type.wifi {
+    background: #f3e5f5;
+    color: #7b1fa2;
+}
+
+.interface-type.bond {
+    background: #fff3e0;
+    color: #f57c00;
+}
+
+.interface-type.bridge {
+    background: #e8f5e8;
+    color: #388e3c;
+}
+
+.interface-type.vlan {
+    background: #fce4ec;
+    color: #c2185b;
+}
+
+.interface-type.virtual {
+    background: #f5f5f5;
+    color: #616161;
+}
+
+.status-badge {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.status-badge.status-up {
+    background: #e8f5e8;
+    color: #388e3c;
+}
+
+.status-badge.status-down {
+    background: #ffebee;
+    color: #d32f2f;
+}
+
+.speed-info {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+}
+
+.ip-address {
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    font-size: 14px;
+    color: var(--text);
+    margin-bottom: 4px;
+}
+
+.traffic-info {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+}
+
+.config-type {
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 4px;
+}
+
+.config-file {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.interface-actions {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.interface-actions .btn {
+    padding: 4px 6px;
+    min-width: auto;
+    font-size: 11px;
+}
+
+.interface-actions .btn i {
+    font-size: 10px;
+}
+
+.btn-xs {
+    padding: 4px 6px;
+    font-size: 11px;
+    line-height: 1.2;
+}
+
+/* Live validation styles */
+.form-group.has-error input,
+.form-group.has-error select,
+.form-group.has-error textarea {
+    border-color: #dc3545;
+    box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
+}
+
+.form-group.has-success input,
+.form-group.has-success select,
+.form-group.has-success textarea {
+    border-color: #28a745;
+    box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25);
+}
+
+.validation-message {
+    margin-top: 4px;
+    font-size: 12px;
+    color: #dc3545;
+}
+
+.validation-message.success {
+    color: #28a745;
+}
+
+/* Modal error styles */
+.modal-error {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+    padding: 12px 16px;
+    border-radius: 4px;
+    margin-bottom: 16px;
+}
+
+.modal-success {
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+    padding: 12px 16px;
+    border-radius: 4px;
+    margin-bottom: 16px;
+}

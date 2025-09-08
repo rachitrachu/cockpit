@@ -1,0 +1,19 @@
+{
+    "version": 0,
+    "requires": {
+        "cockpit": "0"
+    },
+    "tools": {
+        "xavs-networking": {
+            "label": "XAVS Network Management",
+            "path": "index.html"
+        }
+    },
+    "content-security-policy": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' ws: wss:; font-src 'self' https://cdnjs.cloudflare.com/; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com/",
+    "menu": {
+        "index": {
+            "label": "Network Management",
+            "order": 30
+        }
+    }
+}

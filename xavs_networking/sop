@@ -1,0 +1,2867 @@
+# Network Management Infrastructure SOP
+## Using systemd-networkd with Netplan
+
+---
+
+**Document Version:** 1.0  
+**Date:** September 8, 2025  
+**Prepared for:** Network Infrastructure Team  
+**Backend:** systemd-networkd (NOT NetworkManager)
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Prerequisites](#prerequisites)
+3. [System Setup and Validation](#system-setup-and-validation)
+4. [Configuration Standards](#configuration-standards)
+5. [Configuration Lifecycle Management](#configuration-lifecycle-management)
+6. [Creating Network Configurations](#creating-network-configurations)
+7. [Editing Network Configurations](#editing-network-configurations)
+8. [Managing Network Configurations](#managing-network-configurations)
+9. [Deleting Network Configurations](#deleting-network-configurations)
+10. [Implementation Procedures](#implementation-procedures)
+11. [Common Network Scenarios](#common-network-scenarios)
+12. [Security Guidelines](#security-guidelines)
+13. [Monitoring and Troubleshooting](#monitoring-and-troubleshooting)
+14. [Change Management](#change-management)
+15. [Emergency Procedures](#emergency-procedures)
+16. [Documentation and Compliance](#documentation-and-compliance)
+17. [Appendices](#appendices)
+
+---
+
+## 1. Overview
+
+### 1.1 Purpose
+This SOP establishes standardized procedures for implementing and managing network infrastructure using systemd-networkd as the backend through Netplan configuration management.
+
+### 1.2 Scope
+- Physical server network configuration
+- Virtual machine networking
+- Container host networking
+- Network security implementation
+- Performance optimization
+- Disaster recovery procedures
+
+### 1.3 Key Principles
+- **Declarative Configuration**: All network settings defined in YAML
+- **Version Control**: All configurations tracked in Git
+- **Testing First**: Mandatory testing before production deployment
+- **Rollback Ready**: All changes must have rollback procedures
+- **Documentation**: Comprehensive change documentation required
+
+---
+
+## 2. Prerequisites
+
+### 2.1 System Requirements
+- Ubuntu 18.04+ or compatible systemd-based distribution
+- systemd-networkd enabled and running
+- Netplan installed (version 0.99+)
+- Git for configuration management
+- Root or sudo access
+
+### 2.2 Team Skills Required
+- YAML syntax proficiency
+- Linux networking fundamentals
+- systemd service management
+- Git version control
+- Network troubleshooting
+
+### 2.3 Tools and Dependencies
+```bash
+# Required packages
+sudo apt update
+sudo apt install netplan.io systemd-networkd git vim curl iproute2
+
+# Optional but recommended
+sudo apt install bridge-utils vlan tcpdump wireshark-common
+```
+
+---
+
+## 3. System Setup and Validation
+
+### 3.1 Initial System Configuration
+
+#### 3.1.1 Disable NetworkManager (CRITICAL)
+```bash
+# Stop and disable NetworkManager
+sudo systemctl stop NetworkManager
+sudo systemctl disable NetworkManager
+sudo systemctl mask NetworkManager
+
+# Verify NetworkManager is disabled
+sudo systemctl status NetworkManager
+```
+
+#### 3.1.2 Enable systemd-networkd
+```bash
+# Enable and start systemd-networkd
+sudo systemctl enable systemd-networkd
+sudo systemctl start systemd-networkd
+
+# Enable systemd-resolved for DNS
+sudo systemctl enable systemd-resolved
+sudo systemctl start systemd-resolved
+
+# Create DNS symlink
+sudo ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+```
+
+#### 3.1.3 Validate Netplan Configuration
+```bash
+# Check current renderer
+sudo netplan get renderer
+
+# Should output: networkd
+# If not, see Section 3.2 for fixing
+```
+
+### 3.2 Force networkd Renderer
+
+#### 3.2.1 Global Renderer Configuration
+Create `/etc/netplan/01-renderer.yaml`:
+```yaml
+network:
+  version: 2
+  renderer: networkd
+```
+
+#### 3.2.2 Validation Commands
+```bash
+# Apply configuration
+sudo netplan apply
+
+# Verify networkd is managing interfaces
+sudo networkctl status
+
+# Check systemd-networkd status
+sudo systemctl status systemd-networkd
+```
+
+---
+
+## 4. Configuration Standards
+
+### 4.1 File Naming Convention
+- `01-renderer.yaml` - Global renderer setting
+- `10-management.yaml` - Management interfaces
+- `20-production.yaml` - Production interfaces  
+- `30-storage.yaml` - Storage network interfaces
+- `40-backup.yaml` - Backup network interfaces
+- `50-vlan.yaml` - VLAN configurations
+- `60-bridge.yaml` - Bridge configurations
+- `70-bond.yaml` - Bond/aggregation configurations
+- `80-tunnel.yaml` - Tunnel configurations
+- `90-custom.yaml` - Custom/temporary configurations
+
+### 4.2 YAML Structure Standards
+
+#### 4.2.1 Required Headers
+```yaml
+# Network Configuration - [Purpose]
+# Environment: [Production/Staging/Development]
+# Created: [Date]
+# Author: [Name]
+# Last Modified: [Date]
+# Change Request: [Ticket Number]
+
+network:
+  version: 2
+  renderer: networkd
+```
+
+#### 4.2.2 Interface Naming Standards
+- Physical interfaces: Use consistent naming (eth0, eno1, etc.)
+- Virtual interfaces: Descriptive names (br-mgmt, bond-prod, vlan-100)
+- Match by MAC address for critical interfaces
+
+#### 4.2.3 IP Address Management
+- Use CIDR notation for all addresses
+- Document IP ranges in comments
+- Reserve .1-.10 for infrastructure
+- Use consistent subnetting schemes
+
+### 4.3 Configuration Templates
+
+#### 4.3.1 Basic Static Interface
+```yaml
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    eth0:
+      addresses:
+        - 192.168.1.100/24
+      nameservers:
+        addresses: [8.8.8.8, 1.1.1.1]
+        search: [company.local]
+      routes:
+        - to: default
+          via: 192.168.1.1
+      optional: false
+```
+
+#### 4.3.2 DHCP Interface with Overrides
+```yaml
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    eth0:
+      dhcp4: true
+      dhcp6: false
+      dhcp4-overrides:
+        use-dns: true
+        use-routes: true
+        send-hostname: true
+        route-metric: 100
+      optional: false
+```
+
+#### 4.3.3 Bonded Interface
+```yaml
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    eth0:
+      dhcp4: false
+    eth1:
+      dhcp4: false
+  bonds:
+    bond0:
+      interfaces: [eth0, eth1]
+      addresses: [192.168.1.100/24]
+      parameters:
+        mode: active-backup
+        primary: eth0
+        mii-monitor-interval: 100
+        up-delay: 200
+        down-delay: 200
+      routes:
+        - to: default
+          via: 192.168.1.1
+```
+
+---
+
+## 5. Configuration Lifecycle Management
+
+### 5.1 Configuration Lifecycle Overview
+
+The configuration lifecycle consists of four main phases:
+1. **CREATE**: Initial configuration development and validation
+2. **EDIT**: Modification of existing configurations
+3. **MANAGE**: Ongoing maintenance, monitoring, and optimization
+4. **DELETE**: Safe removal of configurations and cleanup
+
+### 5.2 Configuration State Management
+
+#### 5.2.1 Configuration States
+- **Draft**: Under development, not deployed
+- **Testing**: Deployed in test environment
+- **Staging**: Deployed in staging environment
+- **Production**: Active in production environment
+- **Deprecated**: Marked for removal
+- **Archived**: Removed but retained for reference
+
+#### 5.2.2 State Transition Rules
+```
+Draft → Testing → Staging → Production
+   ↓        ↓        ↓         ↓
+Archived ← Deprecated ← Active ← Active
+```
+
+### 5.3 Configuration Naming and Versioning
+
+#### 5.3.1 File Naming Convention
+```
+[Priority]-[Component]-[Version].yaml
+
+Examples:
+10-management-v1.yaml
+20-production-v2.yaml
+50-vlan-dmz-v1.yaml
+```
+
+#### 5.3.2 Version Control Strategy
+- Use semantic versioning (v1.0.0)
+- Tag releases in Git
+- Maintain changelog for each configuration
+- Archive old versions
+
+---
+
+## 6. Creating Network Configurations
+
+### 6.1 Pre-Creation Planning
+
+#### 6.1.1 Requirements Gathering Checklist
+- [ ] Network topology requirements
+- [ ] IP addressing scheme
+- [ ] VLAN requirements
+- [ ] Security requirements
+- [ ] Performance requirements
+- [ ] High availability requirements
+- [ ] Backup and recovery requirements
+
+#### 6.1.2 Design Documentation Template
+```markdown
+# Network Configuration Design Document
+
+## Configuration Details
+- **Name**: [Configuration Name]
+- **Purpose**: [Primary Function]
+- **Environment**: [Production/Staging/Development]
+- **Priority**: [10-90]
+
+## Network Requirements
+- **Interfaces**: [List of interfaces]
+- **IP Ranges**: [CIDR blocks]
+- **VLANs**: [VLAN IDs and purposes]
+- **Routing**: [Static routes required]
+
+## Dependencies
+- **Hardware**: [Network cards, switches]
+- **Software**: [Required packages]
+- **Other Configs**: [Related configurations]
+
+## Security Considerations
+- **Access Control**: [Security zones]
+- **Encryption**: [Required encryption]
+- **Monitoring**: [Logging requirements]
+```
+
+### 6.2 Step-by-Step Configuration Creation
+
+#### 6.2.1 Environment Setup
+```bash
+# 1. Create working directory
+mkdir -p ~/netplan-configs/new-config
+cd ~/netplan-configs/new-config
+
+# 2. Create configuration from template
+cp /usr/local/share/netplan-templates/base-template.yaml new-config.yaml
+
+# 3. Set proper permissions
+chmod 600 new-config.yaml
+```
+
+#### 6.2.2 Basic Configuration Creation Process
+
+**Step 1: Create Base Configuration**
+```bash
+# Create new configuration file
+sudo vim /etc/netplan/20-new-server.yaml
+```
+
+**Step 2: Start with Basic Template**
+```yaml
+# Network Configuration - New Server Setup
+# Environment: Production
+# Created: 2025-09-08
+# Author: [Your Name]
+# Purpose: Primary network interface for new web server
+
+network:
+  version: 2
+  renderer: networkd
+  
+  ethernets:
+    # Primary interface - Production network
+    eth0:
+      # Match by MAC for consistency
+      match:
+        macaddress: "aa:bb:cc:dd:ee:ff"
+      addresses:
+        - 10.1.1.100/24
+      nameservers:
+        addresses: [10.1.1.1, 10.1.1.2]
+        search: [company.local]
+      routes:
+        - to: default
+          via: 10.1.1.1
+          metric: 100
+      # Network optimizations
+      mtu: 9000
+      optional: false
+```
+
+**Step 3: Validate Syntax**
+```bash
+# Check YAML syntax
+sudo netplan --debug generate
+
+# Verify no conflicts with existing configs
+sudo netplan get all
+```
+
+**Step 4: Test Configuration**
+```bash
+# Test in safe mode (30 second timeout)
+sudo netplan try --timeout 30
+
+# If successful, apply permanently
+sudo netplan apply
+```
+
+### 6.3 Advanced Configuration Creation
+
+#### 6.3.1 Complex Multi-Interface Configuration
+```yaml
+# File: /etc/netplan/30-multi-interface.yaml
+# Complex server with multiple networks
+
+network:
+  version: 2
+  renderer: networkd
+  
+  ethernets:
+    # Management interface
+    mgmt0:
+      match:
+        macaddress: "aa:bb:cc:dd:ee:01"
+      set-name: mgmt0
+      addresses:
+        - 192.168.100.100/24
+      nameservers:
+        addresses: [192.168.100.1]
+      routes:
+        - to: 192.168.100.0/24
+          via: 192.168.100.1
+          metric: 50
+    
+    # Production interfaces (for bonding)
+    prod0:
+      match:
+        macaddress: "aa:bb:cc:dd:ee:02"
+      dhcp4: false
+    prod1:
+      match:
+        macaddress: "aa:bb:cc:dd:ee:03"
+      dhcp4: false
+    
+    # Storage interface
+    storage0:
+      match:
+        macaddress: "aa:bb:cc:dd:ee:04"
+      addresses:
+        - 172.16.1.100/24
+      mtu: 9000
+  
+  bonds:
+    # Production bond
+    bond-prod:
+      interfaces: [prod0, prod1]
+      addresses:
+        - 10.1.1.100/24
+      parameters:
+        mode: 802.3ad
+        lacp-rate: fast
+        mii-monitor-interval: 100
+        transmit-hash-policy: layer3+4
+      routes:
+        - to: default
+          via: 10.1.1.1
+          metric: 100
+  
+  vlans:
+    # DMZ VLAN on management interface
+    vlan-dmz:
+      id: 200
+      link: mgmt0
+      addresses:
+        - 10.200.1.100/24
+```
+
+#### 6.3.2 Configuration with Advanced Features
+```yaml
+# File: /etc/netplan/40-advanced.yaml
+# Advanced configuration with security and performance tuning
+
+network:
+  version: 2
+  renderer: networkd
+  
+  ethernets:
+    eth0:
+      match:
+        macaddress: "aa:bb:cc:dd:ee:ff"
+      # Advanced addressing with labels
+      addresses:
+        - "10.1.1.100/24":
+            lifetime: forever
+            label: "primary"
+        - "10.1.1.101/24":
+            lifetime: forever
+            label: "secondary"
+      
+      # DNS configuration
+      nameservers:
+        addresses: [10.1.1.1, 10.1.1.2]
+        search: [company.local, backup.local]
+      
+      # Advanced routing
+      routes:
+        - to: default
+          via: 10.1.1.1
+          metric: 100
+          mtu: 1500
+        - to: 10.0.0.0/8
+          via: 10.1.1.254
+          metric: 200
+          table: 100
+      
+      # Routing policy
+      routing-policy:
+        - from: 10.1.1.100
+          table: 100
+          priority: 1000
+        - to: 192.168.0.0/16
+          table: 200
+          priority: 2000
+      
+      # Performance tuning
+      mtu: 9000
+      ipv6-mtu: 9000
+      
+      # DHCP overrides for secondary config
+      dhcp4-overrides:
+        use-dns: false
+        use-routes: false
+        route-metric: 500
+      
+      # Hardware optimizations
+      receive-checksum-offload: true
+      transmit-checksum-offload: true
+      tcp-segmentation-offload: true
+      generic-segmentation-offload: true
+      
+      # Security settings
+      accept-ra: false
+      ipv6-privacy: true
+      optional: false
+```
+
+### 6.4 Configuration Validation and Testing
+
+#### 6.4.1 Comprehensive Validation Script
+```bash
+#!/bin/bash
+# File: /usr/local/bin/validate-new-config.sh
+
+CONFIG_FILE="$1"
+TEST_DURATION="30"
+
+if [ -z "$CONFIG_FILE" ]; then
+    echo "Usage: $0 <config-file>"
+    exit 1
+fi
+
+echo "Validating configuration: $CONFIG_FILE"
+
+# Step 1: Syntax validation
+echo "Step 1: Syntax validation..."
+if ! sudo netplan --debug generate; then
+    echo "ERROR: Syntax validation failed"
+    exit 1
+fi
+
+# Step 2: Check for conflicts
+echo "Step 2: Checking for conflicts..."
+sudo netplan get all > /tmp/current-config.yaml
+if grep -q "ERROR\|WARNING" /tmp/current-config.yaml; then
+    echo "WARNING: Potential conflicts detected"
+    cat /tmp/current-config.yaml | grep -E "ERROR|WARNING"
+fi
+
+# Step 3: Backup current state
+echo "Step 3: Creating backup..."
+BACKUP_DIR="/backup/netplan/$(date +%Y%m%d_%H%M%S)"
+sudo mkdir -p "$BACKUP_DIR"
+sudo cp /etc/netplan/*.yaml "$BACKUP_DIR/"
+
+# Step 4: Test application
+echo "Step 4: Testing configuration..."
+if sudo netplan try --timeout $TEST_DURATION; then
+    echo "SUCCESS: Configuration validated and tested"
+    echo "Backup created at: $BACKUP_DIR"
+else
+    echo "ERROR: Configuration test failed"
+    exit 1
+fi
+
+echo "Validation completed successfully"
+```
+
+---
+
+## 7. Editing Network Configurations
+
+### 7.1 Safe Editing Procedures
+
+#### 7.1.1 Pre-Edit Checklist
+- [ ] Create configuration backup
+- [ ] Document reason for change
+- [ ] Verify change window availability
+- [ ] Ensure rollback plan exists
+- [ ] Test in non-production environment
+
+#### 7.1.2 Edit Process Workflow
+```
+1. Backup → 2. Edit → 3. Validate → 4. Test → 5. Apply → 6. Verify
+    ↓                                                         ↓
+8. Document ← 7. Monitor ← 6. Verify ← 5. Apply ← 4. Test ← 3. Validate
+```
+
+### 7.2 Configuration Editing Methods
+
+#### 7.2.1 Direct File Editing
+```bash
+# Method 1: Direct YAML editing
+# Create backup first
+sudo cp /etc/netplan/20-production.yaml /backup/netplan/20-production.yaml.$(date +%Y%m%d_%H%M%S)
+
+# Edit with validation
+sudo vim /etc/netplan/20-production.yaml
+
+# Validate changes
+sudo netplan --debug generate
+
+# Test changes
+sudo netplan try --timeout 60
+```
+
+#### 7.2.2 Using netplan set Command
+```bash
+# Method 2: Using netplan set for simple changes
+# Add new IP address
+sudo netplan set ethernets.eth0.addresses="[10.1.1.100/24, 10.1.1.101/24]"
+
+# Change DHCP setting
+sudo netplan set ethernets.eth0.dhcp4=false
+
+# Add route
+sudo netplan set ethernets.eth0.routes="[{to: default, via: 10.1.1.1}]"
+
+# Apply changes
+sudo netplan apply
+```
+
+#### 7.2.3 Using netplan get and set for Complex Edits
+```bash
+# Method 3: Extract, modify, and reapply
+# Get current configuration
+sudo netplan get ethernets.eth0 > /tmp/eth0-config.yaml
+
+# Edit the extracted configuration
+vim /tmp/eth0-config.yaml
+
+# Apply modified configuration
+sudo netplan set --origin-hint=modified "$(cat /tmp/eth0-config.yaml)"
+```
+
+### 7.3 Common Editing Scenarios
+
+#### 7.3.1 Adding New IP Address
+```bash
+# Current configuration check
+sudo netplan get ethernets.eth0.addresses
+
+# Method 1: Direct edit
+sudo vim /etc/netplan/20-production.yaml
+# Add new address to addresses array:
+# addresses:
+#   - 10.1.1.100/24
+#   - 10.1.1.101/24
+
+# Method 2: Using netplan set
+sudo netplan set ethernets.eth0.addresses="[10.1.1.100/24, 10.1.1.101/24]"
+
+# Apply and verify
+sudo netplan apply
+ip addr show eth0
+```
+
+#### 7.3.2 Modifying VLAN Configuration
+```yaml
+# Before: Simple VLAN
+vlans:
+  vlan100:
+    id: 100
+    link: eth0
+    dhcp4: true
+
+# After: VLAN with static IP
+vlans:
+  vlan100:
+    id: 100
+    link: eth0
+    addresses:
+      - 10.100.1.100/24
+    nameservers:
+      addresses: [10.100.1.1]
+    routes:
+      - to: 10.100.0.0/16
+        via: 10.100.1.1
+```
+
+#### 7.3.3 Updating Bond Configuration
+```bash
+# Adding interface to existing bond
+# Current configuration
+sudo netplan get bonds.bond0.interfaces
+
+# Edit to add new interface
+sudo vim /etc/netplan/70-bond.yaml
+
+# Before:
+# interfaces: [eth0, eth1]
+
+# After:
+# interfaces: [eth0, eth1, eth2]
+
+# Update bond parameters
+# parameters:
+#   mode: 802.3ad
+#   lacp-rate: fast
+#   min-links: 2  # Changed from 1 to 2
+```
+
+### 7.4 Advanced Editing Operations
+
+#### 7.4.1 Splitting Configuration Files
+```bash
+# Split large configuration into multiple files
+# Original: /etc/netplan/50-server.yaml (contains everything)
+
+# Step 1: Extract management interface
+sudo netplan get ethernets.mgmt0 > /tmp/mgmt-config.yaml
+cat > /etc/netplan/10-management.yaml << EOF
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+$(cat /tmp/mgmt-config.yaml | sed 's/^/    /')
+EOF
+
+# Step 2: Extract production interfaces
+sudo netplan get bonds.bond-prod > /tmp/prod-config.yaml
+cat > /etc/netplan/20-production.yaml << EOF
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    prod0:
+      dhcp4: false
+    prod1:
+      dhcp4: false
+  bonds:
+$(cat /tmp/prod-config.yaml | sed 's/^/    /')
+EOF
+
+# Step 3: Remove old configuration
+sudo rm /etc/netplan/50-server.yaml
+
+# Step 4: Validate new structure
+sudo netplan generate
+sudo netplan apply
+```
+
+#### 7.4.2 Merging Configuration Files
+```bash
+# Merge multiple configurations into one
+# Combine management and production configs
+
+# Step 1: Get all configurations
+sudo netplan get all > /tmp/merged-config.yaml
+
+# Step 2: Create new unified file
+sudo vim /etc/netplan/50-unified.yaml
+# Copy content from /tmp/merged-config.yaml
+
+# Step 3: Remove old files
+sudo rm /etc/netplan/10-management.yaml
+sudo rm /etc/netplan/20-production.yaml
+
+# Step 4: Validate
+sudo netplan generate
+sudo netplan apply
+```
+
+### 7.5 Edit Validation and Testing
+
+#### 7.5.1 Incremental Testing Process
+```bash
+#!/bin/bash
+# File: /usr/local/bin/test-edit.sh
+
+CONFIG_FILE="$1"
+BACKUP_DIR="/backup/netplan/$(date +%Y%m%d_%H%M%S)"
+
+echo "Testing configuration edit: $CONFIG_FILE"
+
+# Create backup
+sudo mkdir -p "$BACKUP_DIR"
+sudo cp /etc/netplan/*.yaml "$BACKUP_DIR/"
+
+# Validate syntax
+echo "Validating syntax..."
+if ! sudo netplan --debug generate; then
+    echo "ERROR: Syntax error detected"
+    exit 1
+fi
+
+# Check for interface conflicts
+echo "Checking for conflicts..."
+if ! sudo netplan get all > /dev/null; then
+    echo "ERROR: Configuration conflicts detected"
+    exit 1
+fi
+
+# Test connectivity before applying
+echo "Testing current connectivity..."
+if ! ping -c 3 $(ip route | grep default | awk '{print $3}' | head -n1); then
+    echo "WARNING: Current connectivity issues detected"
+fi
+
+# Apply with timeout
+echo "Applying configuration with 30-second timeout..."
+if sudo netplan try --timeout 30; then
+    echo "SUCCESS: Configuration applied and tested"
+    echo "Backup available at: $BACKUP_DIR"
+else
+    echo "ERROR: Configuration test failed, reverted automatically"
+    exit 1
+fi
+
+# Post-apply connectivity test
+echo "Verifying post-change connectivity..."
+sleep 5
+if ping -c 3 $(ip route | grep default | awk '{print $3}' | head -n1); then
+    echo "SUCCESS: Connectivity verified"
+else
+    echo "WARNING: Connectivity issues after change"
+fi
+```
+
+---
+
+## 8. Managing Network Configurations
+
+### 8.1 Configuration Management Overview
+
+#### 8.1.1 Management Responsibilities
+- **Monitoring**: Continuous monitoring of configuration status
+- **Maintenance**: Regular updates and optimizations
+- **Documentation**: Keeping records current
+- **Compliance**: Ensuring adherence to standards
+- **Performance**: Optimizing for efficiency
+
+#### 8.1.2 Management Tools and Commands
+
+**Configuration Status Commands**
+```bash
+# View all current configurations
+sudo netplan get all
+
+# View specific interface configuration
+sudo netplan get ethernets.eth0
+
+# Check configuration files
+ls -la /etc/netplan/
+
+# View generated configurations
+ls -la /run/systemd/network/
+
+# Check networkd status
+sudo networkctl status
+sudo networkctl list
+```
+
+### 8.2 Configuration Monitoring
+
+#### 8.2.1 Automated Monitoring Script
+```bash
+#!/bin/bash
+# File: /usr/local/bin/monitor-netplan.sh
+
+LOG_FILE="/var/log/netplan-monitor.log"
+EMAIL_ALERT="admin@company.com"
+
+log_message() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
+}
+
+# Check netplan configuration consistency
+check_config_consistency() {
+    if ! sudo netplan generate >/dev/null 2>&1; then
+        log_message "ERROR: Netplan configuration syntax error detected"
+        return 1
+    fi
+    return 0
+}
+
+# Check interface status
+check_interface_status() {
+    local failed_interfaces=()
+    
+    while IFS= read -r interface; do
+        if ! networkctl status "$interface" | grep -q "State: routable\|State: carrier"; then
+            failed_interfaces+=("$interface")
+        fi
+    done < <(networkctl list --no-legend | awk '{print $2}' | grep -v lo)
+    
+    if [ ${#failed_interfaces[@]} -gt 0 ]; then
+        log_message "WARNING: Failed interfaces: ${failed_interfaces[*]}"
+        return 1
+    fi
+    return 0
+}
+
+# Check connectivity
+check_connectivity() {
+    local gateway=$(ip route | grep default | awk '{print $3}' | head -n1)
+    
+    if ! ping -c 3 -W 5 "$gateway" >/dev/null 2>&1; then
+        log_message "ERROR: Cannot reach default gateway $gateway"
+        return 1
+    fi
+    
+    if ! ping -c 3 -W 5 8.8.8.8 >/dev/null 2>&1; then
+        log_message "ERROR: Cannot reach external DNS (8.8.8.8)"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Main monitoring loop
+main() {
+    log_message "Starting network monitoring check"
+    
+    local errors=0
+    
+    if ! check_config_consistency; then
+        ((errors++))
+    fi
+    
+    if ! check_interface_status; then
+        ((errors++))
+    fi
+    
+    if ! check_connectivity; then
+        ((errors++))
+    fi
+    
+    if [ $errors -gt 0 ]; then
+        log_message "Monitoring check completed with $errors errors"
+        # Send alert email
+        mail -s "Network Configuration Alert" "$EMAIL_ALERT" < "$LOG_FILE"
+        exit 1
+    else
+        log_message "Monitoring check completed successfully"
+        exit 0
+    fi
+}
+
+main "$@"
+```
+
+#### 8.2.2 Configuration Drift Detection
+```bash
+#!/bin/bash
+# File: /usr/local/bin/detect-config-drift.sh
+
+BASELINE_DIR="/etc/netplan-baseline"
+CURRENT_DIR="/etc/netplan"
+DRIFT_LOG="/var/log/config-drift.log"
+
+# Create baseline if it doesn't exist
+if [ ! -d "$BASELINE_DIR" ]; then
+    echo "Creating configuration baseline..."
+    sudo mkdir -p "$BASELINE_DIR"
+    sudo cp "$CURRENT_DIR"/*.yaml "$BASELINE_DIR"/
+    echo "Baseline created at $(date)" >> "$DRIFT_LOG"
+    exit 0
+fi
+
+# Compare current with baseline
+echo "Checking for configuration drift..."
+drift_detected=false
+
+for config_file in "$CURRENT_DIR"/*.yaml; do
+    filename=$(basename "$config_file")
+    baseline_file="$BASELINE_DIR/$filename"
+    
+    if [ ! -f "$baseline_file" ]; then
+        echo "NEW FILE: $filename" >> "$DRIFT_LOG"
+        drift_detected=true
+    elif ! diff -q "$config_file" "$baseline_file" >/dev/null; then
+        echo "CHANGED: $filename at $(date)" >> "$DRIFT_LOG"
+        diff "$baseline_file" "$config_file" >> "$DRIFT_LOG"
+        drift_detected=true
+    fi
+done
+
+# Check for deleted files
+for baseline_file in "$BASELINE_DIR"/*.yaml; do
+    filename=$(basename "$baseline_file")
+    current_file="$CURRENT_DIR/$filename"
+    
+    if [ ! -f "$current_file" ]; then
+        echo "DELETED: $filename at $(date)" >> "$DRIFT_LOG"
+        drift_detected=true
+    fi
+done
+
+if [ "$drift_detected" = true ]; then
+    echo "Configuration drift detected. Check $DRIFT_LOG for details."
+    exit 1
+else
+    echo "No configuration drift detected."
+    exit 0
+fi
+```
+
+### 8.3 Configuration Optimization
+
+#### 8.3.1 Performance Optimization Guidelines
+
+**Network Interface Optimization**
+```yaml
+# Optimized interface configuration
+ethernets:
+  eth0:
+    match:
+      macaddress: "aa:bb:cc:dd:ee:ff"
+    addresses:
+      - 10.1.1.100/24
+    mtu: 9000                           # Jumbo frames for better performance
+    
+    # Hardware offload optimizations
+    receive-checksum-offload: true
+    transmit-checksum-offload: true
+    tcp-segmentation-offload: true
+    tcp6-segmentation-offload: true
+    generic-segmentation-offload: true
+    generic-receive-offload: true
+    large-receive-offload: true
+    
+    # DHCP optimizations
+    dhcp4-overrides:
+      route-metric: 100                 # Lower metric for preferred interface
+      use-mtu: true                     # Use DHCP-provided MTU
+    
+    optional: false                     # Critical interface
+```
+
+**Bond Optimization**
+```yaml
+# High-performance bond configuration
+bonds:
+  bond0:
+    interfaces: [eth0, eth1, eth2, eth3]
+    parameters:
+      mode: 802.3ad                     # LACP for maximum throughput
+      lacp-rate: fast                   # Fast LACP for quick failover
+      transmit-hash-policy: layer3+4    # Optimal load distribution
+      mii-monitor-interval: 100         # Fast link monitoring
+      min-links: 2                      # Minimum links for operation
+      up-delay: 200                     # Quick link up
+      down-delay: 200                   # Quick link down detection
+```
+
+#### 8.3.2 Security Optimization
+```yaml
+# Security-hardened configuration
+ethernets:
+  eth0:
+    match:
+      macaddress: "aa:bb:cc:dd:ee:ff"
+    addresses:
+      - 10.1.1.100/24
+    
+    # Security settings
+    accept-ra: false                    # Disable router advertisements
+    ipv6-privacy: true                  # Enable IPv6 privacy extensions
+    
+    # Secure DNS
+    nameservers:
+      addresses: [1.1.1.1, 9.9.9.9]    # Use secure DNS providers
+    
+    # Disable IPv6 if not needed
+    link-local: [ipv4]
+```
+
+### 8.4 Configuration Maintenance
+
+#### 8.4.1 Regular Maintenance Tasks
+
+**Weekly Tasks**
+```bash
+#!/bin/bash
+# File: /usr/local/bin/weekly-netplan-maintenance.sh
+
+echo "Starting weekly netplan maintenance..."
+
+# 1. Configuration validation
+echo "Validating all configurations..."
+sudo netplan generate
+
+# 2. Check for unused configurations
+echo "Checking for unused configurations..."
+for config in /etc/netplan/*.yaml; do
+    if ! grep -q "$(basename "$config" .yaml)" /run/systemd/network/*; then
+        echo "Potentially unused: $config"
+    fi
+done
+
+# 3. Clean up old backups (keep last 30 days)
+echo "Cleaning old backups..."
+find /backup/netplan -type d -mtime +30 -exec rm -rf {} \;
+
+# 4. Update documentation
+echo "Updating configuration documentation..."
+sudo netplan get all > /documentation/current-network-config.yaml
+
+# 5. Performance metrics collection
+echo "Collecting performance metrics..."
+for interface in $(networkctl list --no-legend | awk '{print $2}' | grep -v lo); do
+    echo "Interface: $interface"
+    cat /sys/class/net/$interface/statistics/rx_bytes
+    cat /sys/class/net/$interface/statistics/tx_bytes
+done > /var/log/network-performance-$(date +%Y%m%d).log
+
+echo "Weekly maintenance completed."
+```
+
+**Monthly Tasks**
+```bash
+#!/bin/bash
+# File: /usr/local/bin/monthly-netplan-maintenance.sh
+
+echo "Starting monthly netplan maintenance..."
+
+# 1. Security audit
+echo "Performing security audit..."
+# Check for insecure configurations
+grep -r "dhcp4.*true" /etc/netplan/ | grep -v "#"
+grep -r "accept-ra.*true" /etc/netplan/ | grep -v "#"
+
+# 2. Performance review
+echo "Reviewing performance configurations..."
+# Check MTU settings
+grep -r "mtu" /etc/netplan/
+
+# 3. Update baseline configurations
+echo "Updating configuration baseline..."
+cp /etc/netplan/*.yaml /etc/netplan-baseline/
+
+# 4. Generate compliance report
+echo "Generating compliance report..."
+{
+    echo "Network Configuration Compliance Report - $(date)"
+    echo "=================================================="
+    echo
+    echo "Active Configurations:"
+    ls -la /etc/netplan/
+    echo
+    echo "Interface Status:"
+    networkctl status
+    echo
+    echo "Routing Table:"
+    ip route show
+} > /reports/network-compliance-$(date +%Y%m).txt
+
+echo "Monthly maintenance completed."
+```
+
+---
+
+## 9. Deleting Network Configurations
+
+### 9.1 Safe Deletion Procedures
+
+#### 9.1.1 Pre-Deletion Assessment
+- [ ] Identify all dependent configurations
+- [ ] Check for active connections using the configuration
+- [ ] Verify alternative connectivity paths exist
+- [ ] Create complete backup
+- [ ] Plan rollback procedure
+- [ ] Schedule maintenance window
+
+#### 9.1.2 Deletion Impact Analysis
+```bash
+#!/bin/bash
+# File: /usr/local/bin/analyze-deletion-impact.sh
+
+CONFIG_FILE="$1"
+TEMP_DIR="/tmp/netplan-analysis"
+
+if [ -z "$CONFIG_FILE" ]; then
+    echo "Usage: $0 <config-file-to-delete>"
+    exit 1
+fi
+
+echo "Analyzing deletion impact for: $CONFIG_FILE"
+
+# Create temporary analysis directory
+mkdir -p "$TEMP_DIR"
+
+# Extract interfaces from config to be deleted
+grep -E "^\s+[a-zA-Z0-9_-]+:" "$CONFIG_FILE" | sed 's/://g' | awk '{print $1}' > "$TEMP_DIR/interfaces-to-delete.txt"
+
+echo "Interfaces that will be removed:"
+cat "$TEMP_DIR/interfaces-to-delete.txt"
+
+# Check for dependencies
+echo -e "\nChecking for dependencies..."
+for interface in $(cat "$TEMP_DIR/interfaces-to-delete.txt"); do
+    echo "Checking dependencies for: $interface"
+    
+    # Check if interface is used in other configs
+    grep -r "$interface" /etc/netplan/ --exclude="$(basename "$CONFIG_FILE")" && echo "  WARNING: Interface referenced in other configs"
+    
+    # Check if interface has active connections
+    netstat -i | grep "$interface" && echo "  WARNING: Interface has active connections"
+    
+    # Check if interface is in routing table
+    ip route | grep "$interface" && echo "  WARNING: Interface has active routes"
+done
+
+# Check current traffic
+echo -e "\nCurrent interface statistics:"
+for interface in $(cat "$TEMP_DIR/interfaces-to-delete.txt"); do
+    if [ -f "/sys/class/net/$interface/statistics/rx_bytes" ]; then
+        echo "$interface: RX=$(cat /sys/class/net/$interface/statistics/rx_bytes) TX=$(cat /sys/class/net/$interface/statistics/tx_bytes)"
+    fi
+done
+
+# Cleanup
+rm -rf "$TEMP_DIR"
+
+echo -e "\nImpact analysis completed."
+```
+
+### 9.2 Deletion Methods
+
+#### 9.2.1 Complete Configuration File Deletion
+```bash
+#!/bin/bash
+# File: /usr/local/bin/delete-config-file.sh
+
+CONFIG_FILE="$1"
+BACKUP_DIR="/backup/netplan/deletion-$(date +%Y%m%d_%H%M%S)"
+
+if [ -z "$CONFIG_FILE" ]; then
+    echo "Usage: $0 <config-file-path>"
+    exit 1
+fi
+
+echo "Deleting configuration file: $CONFIG_FILE"
+
+# Step 1: Create backup
+echo "Creating backup..."
+sudo mkdir -p "$BACKUP_DIR"
+sudo cp /etc/netplan/*.yaml "$BACKUP_DIR/"
+sudo cp "$CONFIG_FILE" "$BACKUP_DIR/deleted-$(basename "$CONFIG_FILE")"
+
+# Step 2: Analyze impact
+echo "Analyzing impact..."
+/usr/local/bin/analyze-deletion-impact.sh "$CONFIG_FILE"
+
+# Step 3: Confirm deletion
+read -p "Continue with deletion? (yes/no): " confirm
+if [ "$confirm" != "yes" ]; then
+    echo "Deletion cancelled."
+    exit 0
+fi
+
+# Step 4: Remove configuration file
+echo "Removing configuration file..."
+sudo rm "$CONFIG_FILE"
+
+# Step 5: Validate remaining configuration
+echo "Validating remaining configuration..."
+if ! sudo netplan generate; then
+    echo "ERROR: Remaining configuration invalid, restoring backup..."
+    sudo cp "$BACKUP_DIR/$(basename "$CONFIG_FILE")" "$CONFIG_FILE"
+    exit 1
+fi
+
+# Step 6: Apply changes
+echo "Applying configuration changes..."
+sudo netplan apply
+
+# Step 7: Verify system state
+echo "Verifying system state..."
+sleep 5
+if ping -c 3 $(ip route | grep default | awk '{print $3}' | head -n1); then
+    echo "SUCCESS: Configuration deleted and connectivity verified"
+    echo "Backup available at: $BACKUP_DIR"
+else
+    echo "WARNING: Connectivity issues detected after deletion"
+fi
+```
+
+#### 9.2.2 Selective Interface Deletion
+```bash
+#!/bin/bash
+# File: /usr/local/bin/delete-interface.sh
+
+INTERFACE_NAME="$1"
+CONFIG_FILE="$2"
+
+if [ -z "$INTERFACE_NAME" ] || [ -z "$CONFIG_FILE" ]; then
+    echo "Usage: $0 <interface-name> <config-file>"
+    exit 1
+fi
+
+echo "Deleting interface $INTERFACE_NAME from $CONFIG_FILE"
+
+# Create backup
+BACKUP_FILE="${CONFIG_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+sudo cp "$CONFIG_FILE" "$BACKUP_FILE"
+
+# Remove interface section
+sudo sed -i "/^\s*${INTERFACE_NAME}:/,/^\s*[a-zA-Z0-9_-]*:/{/^\s*[a-zA-Z0-9_-]*:/!d;}" "$CONFIG_FILE"
+
+# Remove empty sections
+sudo sed -i '/^\s*ethernets:\s*$/,/^\s*[a-zA-Z]*:/{/^\s*[a-zA-Z]*:/!d;}' "$CONFIG_FILE"
+
+# Validate and apply
+if sudo netplan generate; then
+    sudo netplan apply
+    echo "Interface $INTERFACE_NAME deleted successfully"
+    echo "Backup saved as: $BACKUP_FILE"
+else
+    echo "ERROR: Configuration validation failed, restoring backup"
+    sudo mv "$BACKUP_FILE" "$CONFIG_FILE"
+    exit 1
+fi
+```
+
+#### 9.2.3 VLAN Deletion
+```bash
+#!/bin/bash
+# File: /usr/local/bin/delete-vlan.sh
+
+VLAN_NAME="$1"
+
+if [ -z "$VLAN_NAME" ]; then
+    echo "Usage: $0 <vlan-name>"
+    exit 1
+fi
+
+echo "Deleting VLAN: $VLAN_NAME"
+
+# Find config file containing the VLAN
+CONFIG_FILE=$(grep -l "^\s*${VLAN_NAME}:" /etc/netplan/*.yaml)
+
+if [ -z "$CONFIG_FILE" ]; then
+    echo "ERROR: VLAN $VLAN_NAME not found in any configuration"
+    exit 1
+fi
+
+echo "Found VLAN in: $CONFIG_FILE"
+
+# Create backup
+BACKUP_FILE="${CONFIG_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+sudo cp "$CONFIG_FILE" "$BACKUP_FILE"
+
+# Check if VLAN interface exists and has traffic
+if ip link show "$VLAN_NAME" >/dev/null 2>&1; then
+    echo "Current VLAN statistics:"
+    cat "/sys/class/net/$VLAN_NAME/statistics/rx_bytes" 2>/dev/null
+    cat "/sys/class/net/$VLAN_NAME/statistics/tx_bytes" 2>/dev/null
+    
+    read -p "VLAN interface is active. Continue? (yes/no): " confirm
+    if [ "$confirm" != "yes" ]; then
+        echo "Deletion cancelled."
+        exit 0
+    fi
+fi
+
+# Remove VLAN configuration
+sudo sed -i "/^\s*${VLAN_NAME}:/,/^\s*[a-zA-Z0-9_-]*:/{/^\s*[a-zA-Z0-9_-]*:/!d;}" "$CONFIG_FILE"
+
+# Validate and apply
+if sudo netplan generate; then
+    sudo netplan apply
+    echo "VLAN $VLAN_NAME deleted successfully"
+    echo "Backup saved as: $BACKUP_FILE"
+    
+    # Verify VLAN interface is gone
+    sleep 2
+    if ! ip link show "$VLAN_NAME" >/dev/null 2>&1; then
+        echo "VLAN interface removed from system"
+    else
+        echo "WARNING: VLAN interface still exists in system"
+    fi
+else
+    echo "ERROR: Configuration validation failed, restoring backup"
+    sudo mv "$BACKUP_FILE" "$CONFIG_FILE"
+    exit 1
+fi
+```
+
+### 9.3 Cleanup and Verification
+
+#### 9.3.1 Post-Deletion Cleanup
+```bash
+#!/bin/bash
+# File: /usr/local/bin/post-deletion-cleanup.sh
+
+echo "Performing post-deletion cleanup..."
+
+# 1. Remove orphaned systemd-networkd files
+echo "Cleaning up systemd-networkd files..."
+for netfile in /run/systemd/network/*.network; do
+    if [ -f "$netfile" ]; then
+        # Check if corresponding netplan config exists
+        interface_name=$(basename "$netfile" .network)
+        if ! grep -r "$interface_name" /etc/netplan/ >/dev/null 2>&1; then
+            echo "Removing orphaned file: $netfile"
+            sudo rm "$netfile"
+        fi
+    fi
+done
+
+# 2. Restart networkd to apply cleanup
+echo "Restarting systemd-networkd..."
+sudo systemctl restart systemd-networkd
+
+# 3. Clean up routing tables
+echo "Cleaning up routing tables..."
+# Remove routes for deleted interfaces
+for route in $(ip route show | grep "linkdown" | awk '{print $1}'); do
+    echo "Removing stale route: $route"
+    sudo ip route del "$route" 2>/dev/null || true
+done
+
+# 4. Update documentation
+echo "Updating network documentation..."
+sudo netplan get all > /documentation/network-config-after-deletion-$(date +%Y%m%d).yaml
+
+# 5. Verify system state
+echo "Verifying system state..."
+networkctl status
+echo "Post-deletion cleanup completed."
+```
+
+#### 9.3.2 Verification Checklist
+```bash
+#!/bin/bash
+# File: /usr/local/bin/verify-deletion.sh
+
+echo "Verifying configuration deletion..."
+
+# 1. Check configuration syntax
+echo "1. Checking configuration syntax..."
+if sudo netplan generate; then
+    echo "   ✓ Configuration syntax valid"
+else
+    echo "   ✗ Configuration syntax errors detected"
+    exit 1
+fi
+
+# 2. Check for orphaned references
+echo "2. Checking for orphaned references..."
+orphaned_refs=0
+for config in /etc/netplan/*.yaml; do
+    # Look for interface references that don't have definitions
+    grep -o '\b[a-zA-Z0-9_-]\+:' "$config" | sed 's/://' | while read interface; do
+        if ! grep -q "^\s*${interface}:" "$config"; then
+            echo "   ⚠ Potential orphaned reference: $interface in $config"
+            ((orphaned_refs++))
+        fi
+    done
+done
+
+if [ $orphaned_refs -eq 0 ]; then
+    echo "   ✓ No orphaned references found"
+fi
+
+# 3. Check interface status
+echo "3. Checking interface status..."
+failed_interfaces=()
+while IFS= read -r interface; do
+    if ! networkctl status "$interface" | grep -q "State: routable\|State: carrier\|State: off"; then
+        failed_interfaces+=("$interface")
+    fi
+done < <(networkctl list --no-legend | awk '{print $2}' | grep -v lo)
+
+if [ ${#failed_interfaces[@]} -eq 0 ]; then
+    echo "   ✓ All interfaces in expected state"
+else
+    echo "   ⚠ Interfaces with issues: ${failed_interfaces[*]}"
+fi
+
+# 4. Check connectivity
+echo "4. Checking connectivity..."
+gateway=$(ip route | grep default | awk '{print $3}' | head -n1)
+if ping -c 3 -W 5 "$gateway" >/dev/null 2>&1; then
+    echo "   ✓ Gateway connectivity OK"
+else
+    echo "   ✗ Gateway connectivity failed"
+fi
+
+if ping -c 3 -W 5 8.8.8.8 >/dev/null 2>&1; then
+    echo "   ✓ External connectivity OK"
+else
+    echo "   ✗ External connectivity failed"
+fi
+
+# 5. Check DNS resolution
+echo "5. Checking DNS resolution..."
+if nslookup google.com >/dev/null 2>&1; then
+    echo "   ✓ DNS resolution OK"
+else
+    echo "   ✗ DNS resolution failed"
+fi
+
+echo "Verification completed."
+```
+
+---
+
+## 10. Implementation Procedures
+
+### 5.1 Pre-Implementation Checklist
+
+- [ ] Configuration peer reviewed
+- [ ] Backup of current configuration created
+- [ ] Test environment validation completed
+- [ ] Change window scheduled
+- [ ] Rollback procedure documented
+- [ ] Emergency contact list updated
+
+### 5.2 Configuration Deployment Process
+
+#### 5.2.1 Preparation Phase
+```bash
+# 1. Create configuration backup
+sudo mkdir -p /backup/netplan/$(date +%Y%m%d_%H%M%S)
+sudo cp -r /etc/netplan/* /backup/netplan/$(date +%Y%m%d_%H%M%S)/
+
+# 2. Validate current state
+sudo netplan get all > /tmp/current-config.yaml
+sudo networkctl status > /tmp/current-status.txt
+```
+
+#### 5.2.2 Configuration Testing
+```bash
+# 1. Syntax validation
+sudo netplan generate
+
+# 2. Configuration validation (dry-run)
+sudo netplan --debug generate
+
+# 3. Test configuration (if available)
+sudo netplan try --timeout 30
+```
+
+#### 5.2.3 Production Deployment
+```bash
+# 1. Apply configuration
+sudo netplan apply
+
+# 2. Verify interface status
+sudo networkctl status
+
+# 3. Test connectivity
+ping -c 4 8.8.8.8
+ping -c 4 gateway_ip
+
+# 4. Verify DNS resolution
+nslookup google.com
+```
+
+### 5.3 Post-Implementation Validation
+
+#### 5.3.1 Network Connectivity Tests
+```bash
+# Basic connectivity
+ping -c 4 default_gateway
+ping -c 4 8.8.8.8
+ping -c 4 internal_dns_server
+
+# DNS resolution
+nslookup company.local
+host -t MX company.local
+
+# Route verification
+ip route show
+ip -6 route show
+```
+
+#### 5.3.2 Service Status Verification
+```bash
+# systemd-networkd status
+sudo systemctl status systemd-networkd
+
+# systemd-resolved status  
+sudo systemctl status systemd-resolved
+
+# Interface status
+sudo networkctl status
+sudo networkctl list
+```
+
+---
+
+## 11. Common Network Scenarios
+
+### 6.1 Server Network Configuration
+
+#### 6.1.1 Single Interface Server
+```yaml
+# File: /etc/netplan/10-server-single.yaml
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    eno1:
+      match:
+        macaddress: "aa:bb:cc:dd:ee:ff"
+      addresses:
+        - 10.0.1.100/24
+      nameservers:
+        addresses: [10.0.1.1, 10.0.1.2]
+        search: [company.local]
+      routes:
+        - to: default
+          via: 10.0.1.1
+          metric: 100
+      optional: false
+```
+
+#### 6.1.2 Multi-Interface Server
+```yaml
+# File: /etc/netplan/20-server-multi.yaml
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    # Management interface
+    eno1:
+      match:
+        macaddress: "aa:bb:cc:dd:ee:01"
+      addresses:
+        - 192.168.100.100/24
+      nameservers:
+        addresses: [192.168.100.1]
+      routes:
+        - to: default
+          via: 192.168.100.1
+          metric: 100
+    # Production interface  
+    eno2:
+      match:
+        macaddress: "aa:bb:cc:dd:ee:02"
+      addresses:
+        - 10.1.1.100/24
+      routes:
+        - to: 10.1.0.0/16
+          via: 10.1.1.1
+          metric: 200
+    # Storage interface
+    eno3:
+      match:
+        macaddress: "aa:bb:cc:dd:ee:03"
+      addresses:
+        - 172.16.1.100/24
+```
+
+### 6.2 VLAN Configuration
+
+#### 6.2.1 Multiple VLANs on Single Interface
+```yaml
+# File: /etc/netplan/50-vlans.yaml
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    eth0:
+      dhcp4: false
+      dhcp6: false
+  vlans:
+    vlan100:
+      id: 100
+      link: eth0
+      addresses:
+        - 10.100.1.100/24
+      nameservers:
+        addresses: [10.100.1.1]
+    vlan200:
+      id: 200  
+      link: eth0
+      addresses:
+        - 10.200.1.100/24
+    vlan300:
+      id: 300
+      link: eth0
+      dhcp4: true
+```
+
+### 6.3 Bridge Configuration
+
+#### 6.3.1 Virtual Machine Host Bridge
+```yaml
+# File: /etc/netplan/60-vm-bridge.yaml
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    eth0:
+      dhcp4: false
+    eth1:
+      dhcp4: false
+  bridges:
+    br-vm:
+      interfaces: [eth0]
+      addresses:
+        - 192.168.1.100/24
+      nameservers:
+        addresses: [192.168.1.1]
+      routes:
+        - to: default
+          via: 192.168.1.1
+      parameters:
+        stp: true
+        forward-delay: 4s
+```
+
+### 6.4 High Availability Configuration
+
+#### 6.4.1 Active-Backup Bond
+```yaml
+# File: /etc/netplan/70-ha-bond.yaml
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    eth0:
+      dhcp4: false
+    eth1:
+      dhcp4: false
+  bonds:
+    bond0:
+      interfaces: [eth0, eth1]
+      addresses:
+        - 192.168.1.100/24
+      nameservers:
+        addresses: [192.168.1.1, 192.168.1.2]
+      routes:
+        - to: default
+          via: 192.168.1.1
+      parameters:
+        mode: active-backup
+        primary: eth0
+        mii-monitor-interval: 100
+        up-delay: 200
+        down-delay: 200
+        fail-over-mac-policy: active
+```
+
+#### 6.4.2 LACP Bond (802.3ad)
+```yaml
+# File: /etc/netplan/70-lacp-bond.yaml
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    eth0:
+      dhcp4: false
+    eth1:
+      dhcp4: false
+  bonds:
+    bond0:
+      interfaces: [eth0, eth1]
+      addresses:
+        - 192.168.1.100/24
+      parameters:
+        mode: 802.3ad
+        lacp-rate: fast
+        mii-monitor-interval: 100
+        transmit-hash-policy: layer3+4
+        min-links: 1
+```
+
+---
+
+## 12. Security Guidelines
+
+### 7.1 Network Security Best Practices
+
+#### 7.1.1 Interface Security
+- Always specify explicit interface matching (MAC addresses)
+- Disable unused interfaces
+- Use separate networks for management traffic
+- Implement proper firewall rules
+
+#### 7.1.2 Configuration File Security
+```bash
+# Set proper permissions on netplan files
+sudo chmod 600 /etc/netplan/*.yaml
+sudo chown root:root /etc/netplan/*.yaml
+
+# Verify permissions
+ls -la /etc/netplan/
+```
+
+#### 7.1.3 DNS Security
+```yaml
+# Use secure DNS servers
+nameservers:
+  addresses: 
+    - 1.1.1.1      # Cloudflare
+    - 8.8.8.8      # Google
+    - 9.9.9.9      # Quad9
+  search: [company.local]
+```
+
+### 7.2 Access Control
+
+#### 7.2.1 Management Network Isolation
+```yaml
+# Separate management interface
+ethernets:
+  mgmt0:
+    match:
+      macaddress: "aa:bb:cc:dd:ee:ff"
+    addresses:
+      - 192.168.100.100/24
+    nameservers:
+      addresses: [192.168.100.1]
+    routes:
+      - to: 192.168.100.0/24
+        via: 192.168.100.1
+        metric: 50
+```
+
+### 7.3 Monitoring and Logging
+
+#### 7.3.1 Enable systemd-networkd Debugging
+```bash
+# Enable debug logging
+sudo mkdir -p /etc/systemd/system/systemd-networkd.service.d
+sudo tee /etc/systemd/system/systemd-networkd.service.d/debug.conf << EOF
+[Service]
+Environment=SYSTEMD_LOG_LEVEL=debug
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl restart systemd-networkd
+```
+
+---
+
+## 13. Monitoring and Troubleshooting
+
+### 8.1 System Monitoring
+
+#### 8.1.1 Essential Monitoring Commands
+```bash
+# Interface status
+sudo networkctl status
+sudo networkctl list
+
+# System routing
+ip route show
+ip -6 route show
+
+# DNS resolution
+systemd-resolve --status
+systemd-resolve --statistics
+
+# Service status
+sudo systemctl status systemd-networkd
+sudo systemctl status systemd-resolved
+```
+
+#### 8.1.2 Log Analysis
+```bash
+# networkd logs
+sudo journalctl -u systemd-networkd -f
+
+# resolved logs  
+sudo journalctl -u systemd-resolved -f
+
+# All network-related logs
+sudo journalctl -t systemd-networkd -t systemd-resolved --since "1 hour ago"
+```
+
+### 8.2 Common Issues and Solutions
+
+#### 8.2.1 Interface Not Coming Up
+```bash
+# Check interface status
+sudo networkctl status interface_name
+
+# Check for configuration errors
+sudo netplan --debug generate
+
+# Restart networkd
+sudo systemctl restart systemd-networkd
+
+# Force interface reconfiguration
+sudo networkctl reload
+sudo networkctl reconfigure interface_name
+```
+
+#### 8.2.2 DNS Resolution Issues
+```bash
+# Check resolved status
+systemd-resolve --status
+
+# Test DNS resolution
+systemd-resolve google.com
+
+# Restart systemd-resolved
+sudo systemctl restart systemd-resolved
+
+# Verify DNS configuration
+cat /etc/systemd/resolved.conf
+```
+
+#### 8.2.3 Routing Issues
+```bash
+# Check routing table
+ip route show table all
+
+# Add temporary route
+sudo ip route add 10.0.0.0/8 via 192.168.1.1
+
+# Flush route cache
+sudo ip route flush cache
+```
+
+### 8.3 Performance Monitoring
+
+#### 8.3.1 Network Interface Statistics
+```bash
+# Interface statistics
+cat /proc/net/dev
+
+# Detailed interface info
+sudo ethtool eth0
+
+# Monitor traffic
+sudo iftop -i eth0
+sudo nethogs
+```
+
+#### 8.3.2 Connection Monitoring
+```bash
+# Active connections
+ss -tuln
+
+# Network neighbors
+ip neighbor show
+
+# ARP table
+arp -a
+```
+
+---
+
+## 14. Change Management
+
+### 9.1 Change Request Process
+
+#### 9.1.1 Pre-Change Requirements
+1. **Documentation**: Complete configuration documentation
+2. **Testing**: Successful testing in non-production environment
+3. **Approval**: Manager and senior engineer approval
+4. **Scheduling**: Maintenance window coordination
+5. **Rollback Plan**: Detailed rollback procedures
+
+#### 9.1.2 Change Documentation Template
+```markdown
+## Network Change Request
+
+**Change ID**: NCR-YYYY-NNNN
+**Date**: YYYY-MM-DD
+**Engineer**: Name
+**Reviewer**: Name
+**Environment**: Production/Staging/Development
+
+### Description
+Brief description of the change
+
+### Justification
+Business reason for the change
+
+### Impact Assessment
+- Systems affected: [List]
+- Downtime expected: [Duration]
+- Risk level: Low/Medium/High
+
+### Implementation Plan
+1. Step 1
+2. Step 2
+3. Step 3
+
+### Testing Performed
+- [ ] Syntax validation
+- [ ] Lab testing
+- [ ] Staging environment testing
+
+### Rollback Plan
+1. Rollback step 1
+2. Rollback step 2
+3. Rollback step 3
+
+### Success Criteria
+- [ ] Criterion 1
+- [ ] Criterion 2
+- [ ] Criterion 3
+```
+
+### 9.2 Version Control
+
+#### 9.2.1 Git Repository Structure
+```
+netplan-configs/
+├── environments/
+│   ├── production/
+│   ├── staging/
+│   └── development/
+├── templates/
+├── scripts/
+└── documentation/
+```
+
+#### 9.2.2 Git Workflow
+```bash
+# Clone repository
+git clone https://git.company.com/network/netplan-configs.git
+
+# Create feature branch
+git checkout -b feature/new-server-config
+
+# Make changes and commit
+git add .
+git commit -m "Add configuration for new web server"
+
+# Push and create pull request
+git push origin feature/new-server-config
+```
+
+---
+
+## 15. Emergency Procedures
+
+### 10.1 Network Outage Response
+
+#### 10.1.1 Immediate Response (0-5 minutes)
+```bash
+# 1. Assess current state
+sudo networkctl status
+sudo systemctl status systemd-networkd
+
+# 2. Check recent changes
+sudo journalctl -u systemd-networkd --since "30 minutes ago"
+
+# 3. Quick connectivity test
+ping -c 3 default_gateway
+```
+
+#### 10.1.2 Investigation Phase (5-15 minutes)
+```bash
+# 1. Check configuration syntax
+sudo netplan --debug generate
+
+# 2. Review recent configurations
+ls -la /etc/netplan/
+sudo netplan get all
+
+# 3. Check for hardware issues
+sudo dmesg | grep -i network
+sudo ethtool eth0
+```
+
+#### 10.1.3 Recovery Actions
+```bash
+# Option 1: Restart networkd
+sudo systemctl restart systemd-networkd
+
+# Option 2: Reload configuration
+sudo netplan apply
+
+# Option 3: Rollback to previous configuration
+sudo cp /backup/netplan/YYYYMMDD_HHMMSS/* /etc/netplan/
+sudo netplan apply
+
+# Option 4: Emergency network configuration
+sudo ip addr add 192.168.1.100/24 dev eth0
+sudo ip route add default via 192.168.1.1
+```
+
+### 10.2 Rollback Procedures
+
+#### 10.2.1 Automated Rollback Script
+```bash
+#!/bin/bash
+# File: /usr/local/bin/netplan-rollback.sh
+
+BACKUP_DIR="/backup/netplan"
+LATEST_BACKUP=$(ls -t $BACKUP_DIR | head -n1)
+
+echo "Rolling back to: $LATEST_BACKUP"
+
+# Backup current config
+mkdir -p $BACKUP_DIR/emergency-$(date +%Y%m%d_%H%M%S)
+cp -r /etc/netplan/* $BACKUP_DIR/emergency-$(date +%Y%m%d_%H%M%S)/
+
+# Restore previous config
+cp -r $BACKUP_DIR/$LATEST_BACKUP/* /etc/netplan/
+
+# Apply configuration
+netplan apply
+
+echo "Rollback completed"
+```
+
+### 10.3 Emergency Contacts
+
+#### 10.3.1 Escalation Matrix
+1. **Level 1**: Network Engineer (On-call)
+2. **Level 2**: Senior Network Engineer
+3. **Level 3**: Network Manager
+4. **Level 4**: IT Director
+
+#### 10.3.2 Emergency Communication
+- Primary: Company chat system
+- Secondary: Phone/SMS
+- Emergency: Direct phone escalation
+
+---
+
+## 16. Documentation and Compliance
+
+### 11.1 Configuration Documentation
+
+#### 11.1.1 Required Documentation
+- Network topology diagrams
+- IP address management spreadsheets
+- VLAN assignments
+- Security zone mappings
+- Change history logs
+
+#### 11.1.2 Configuration Comments
+```yaml
+# Always include descriptive comments
+network:
+  version: 2
+  renderer: networkd
+  
+  # Management network - VLAN 100
+  # Used for: Server management, monitoring, backups
+  # Security zone: Management
+  vlans:
+    mgmt:
+      id: 100
+      link: eth0
+      addresses:
+        - 10.100.1.50/24  # Static assignment from IPAM
+```
+
+### 11.2 Compliance Requirements
+
+#### 11.2.1 Audit Trail
+- All changes must be logged
+- Configuration backups retained for 12 months
+- Change approvals documented
+- Security reviews completed
+
+#### 11.2.2 Security Compliance
+- Regular security assessments
+- Vulnerability scanning
+- Access control reviews
+- Configuration validation
+
+---
+
+## 17. Appendices
+
+### Appendix A: networkd-specific Features
+
+#### A.1 systemd-networkd Advantages
+- Native systemd integration
+- Robust service management
+- Efficient resource usage
+- Container-friendly
+- Predictable behavior
+
+#### A.2 networkd Limitations
+- No native Wi-Fi support (requires wpa_supplicant)
+- Limited GUI tools
+- Less third-party integration
+- Fewer dynamic features than NetworkManager
+
+### Appendix B: Validation Scripts
+
+#### B.1 Configuration Validation Script
+```bash
+#!/bin/bash
+# File: /usr/local/bin/validate-netplan.sh
+
+echo "Validating Netplan configuration..."
+
+# Check syntax
+if ! sudo netplan generate; then
+    echo "ERROR: Configuration syntax error"
+    exit 1
+fi
+
+# Check for required renderer
+if [ "$(sudo netplan get renderer)" != "networkd" ]; then
+    echo "ERROR: Renderer is not set to networkd"
+    exit 1
+fi
+
+# Check systemd-networkd status
+if ! sudo systemctl is-active --quiet systemd-networkd; then
+    echo "ERROR: systemd-networkd is not running"
+    exit 1
+fi
+
+echo "Configuration validation passed"
+```
+
+#### B.2 Network Connectivity Test Script
+```bash
+#!/bin/bash
+# File: /usr/local/bin/test-connectivity.sh
+
+# Test basic connectivity
+test_connectivity() {
+    local host=$1
+    local description=$2
+    
+    if ping -c 3 -W 5 $host > /dev/null 2>&1; then
+        echo "✓ $description ($host) - OK"
+    else
+        echo "✗ $description ($host) - FAILED"
+        return 1
+    fi
+}
+
+echo "Testing network connectivity..."
+
+# Test default gateway
+GATEWAY=$(ip route | grep default | awk '{print $3}' | head -n1)
+test_connectivity $GATEWAY "Default Gateway"
+
+# Test DNS servers
+test_connectivity 8.8.8.8 "Google DNS"
+test_connectivity 1.1.1.1 "Cloudflare DNS"
+
+# Test DNS resolution
+if nslookup google.com > /dev/null 2>&1; then
+    echo "✓ DNS Resolution - OK"
+else
+    echo "✗ DNS Resolution - FAILED"
+fi
+
+echo "Connectivity test completed"
+```
+
+### Appendix C: Troubleshooting Flowchart
+
+```
+Network Issue Detected
+         |
+         v
+Check systemd-networkd status
+         |
+    [Running?] ─── No ──→ Start service
+         |                    |
+        Yes                   v
+         |              Apply config
+         v
+Check netplan syntax
+         |
+    [Valid?] ─── No ──→ Fix syntax errors
+         |                    |
+        Yes                   v
+         |              Validate & apply
+         v
+Check interface status
+         |
+   [Up/Running?] ─── No ──→ Check hardware
+         |                    |
+        Yes                   v
+         |              Check cables/ports
+         v
+Check routing table
+         |
+   [Correct routes?] ─── No ──→ Fix routing config
+         |                         |
+        Yes                        v
+         |                   Apply changes
+         v
+Check DNS resolution
+         |
+   [Working?] ─── No ──→ Fix DNS config
+         |                    |
+        Yes                   v
+         |              Restart resolved
+         v
+Escalate to Level 2
+```
+
+### Appendix D: Reference Links
+
+#### D.1 Official Documentation
+- [Netplan Documentation](https://netplan.readthedocs.io/)
+- [systemd-networkd Manual](https://www.freedesktop.org/software/systemd/man/systemd-networkd.html)
+- [systemd-resolved Manual](https://www.freedesktop.org/software/systemd/man/systemd-resolved.html)
+
+#### D.2 Command Quick Reference
+```bash
+# Essential commands for daily operations
+sudo netplan generate          # Generate configuration
+sudo netplan apply            # Apply configuration  
+sudo netplan try             # Test configuration with rollback
+sudo netplan get all         # Show current configuration
+sudo networkctl status       # Show interface status
+sudo networkctl list         # List all interfaces
+sudo systemctl status systemd-networkd  # Check service status
+sudo journalctl -u systemd-networkd -f  # Follow logs
+```
+
+### Appendix E: Configuration Management Scripts
+
+#### E.1 Master Configuration Management Script
+```bash
+#!/bin/bash
+# File: /usr/local/bin/netplan-manager.sh
+# Comprehensive configuration management tool
+
+SCRIPT_DIR="/usr/local/bin"
+CONFIG_DIR="/etc/netplan"
+BACKUP_DIR="/backup/netplan"
+LOG_FILE="/var/log/netplan-manager.log"
+
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
+}
+
+show_usage() {
+    cat << EOF
+Usage: $0 <command> [options]
+
+Commands:
+  create <name>           Create new configuration from template
+  edit <file>             Safely edit existing configuration
+  delete <file>           Delete configuration with safety checks
+  validate [file]         Validate configuration(s)
+  backup                  Create configuration backup
+  restore <backup_id>     Restore from backup
+  monitor                 Run monitoring checks
+  optimize <file>         Apply optimization recommendations
+  status                  Show system status
+  help                    Show this help message
+
+Examples:
+  $0 create web-server
+  $0 edit /etc/netplan/20-production.yaml
+  $0 delete /etc/netplan/30-old-config.yaml
+  $0 validate
+  $0 backup
+  $0 restore 20250908_143022
+EOF
+}
+
+create_config() {
+    local name="$1"
+    if [ -z "$name" ]; then
+        echo "Error: Configuration name required"
+        return 1
+    fi
+    
+    local config_file="$CONFIG_DIR/20-${name}.yaml"
+    
+    if [ -f "$config_file" ]; then
+        echo "Error: Configuration already exists: $config_file"
+        return 1
+    fi
+    
+    log "Creating new configuration: $name"
+    
+    cat > "$config_file" << EOF
+# Network Configuration - $name
+# Environment: Production
+# Created: $(date)
+# Author: $USER
+# Purpose: [Describe the purpose]
+
+network:
+  version: 2
+  renderer: networkd
+  
+  ethernets:
+    # Define your interfaces here
+    eth0:
+      match:
+        macaddress: "aa:bb:cc:dd:ee:ff"
+      addresses:
+        - 192.168.1.100/24
+      nameservers:
+        addresses: [192.168.1.1]
+      routes:
+        - to: default
+          via: 192.168.1.1
+      optional: false
+EOF
+    
+    chmod 600 "$config_file"
+    log "Configuration created: $config_file"
+    echo "Configuration created: $config_file"
+    echo "Please edit the file to match your requirements"
+}
+
+safe_edit() {
+    local config_file="$1"
+    if [ ! -f "$config_file" ]; then
+        echo "Error: Configuration file not found: $config_file"
+        return 1
+    fi
+    
+    # Create backup before editing
+    local backup_id="$(date +%Y%m%d_%H%M%S)"
+    local backup_path="$BACKUP_DIR/edit-backup-$backup_id"
+    mkdir -p "$backup_path"
+    cp "$config_file" "$backup_path/"
+    
+    log "Starting safe edit of $config_file (backup: $backup_id)"
+    
+    # Edit the file
+    ${EDITOR:-vim} "$config_file"
+    
+    # Validate after editing
+    if sudo netplan generate; then
+        echo "Configuration validated successfully"
+        read -p "Test configuration now? (y/n): " test_config
+        if [ "$test_config" = "y" ]; then
+            sudo netplan try --timeout 30
+        fi
+    else
+        echo "Configuration validation failed!"
+        read -p "Restore backup? (y/n): " restore_backup
+        if [ "$restore_backup" = "y" ]; then
+            cp "$backup_path/$(basename "$config_file")" "$config_file"
+            echo "Configuration restored from backup"
+        fi
+    fi
+}
+
+delete_config() {
+    local config_file="$1"
+    if [ ! -f "$config_file" ]; then
+        echo "Error: Configuration file not found: $config_file"
+        return 1
+    fi
+    
+    echo "Analyzing deletion impact..."
+    "$SCRIPT_DIR/analyze-deletion-impact.sh" "$config_file"
+    
+    read -p "Continue with deletion? (yes/no): " confirm
+    if [ "$confirm" = "yes" ]; then
+        "$SCRIPT_DIR/delete-config-file.sh" "$config_file"
+    else
+        echo "Deletion cancelled"
+    fi
+}
+
+validate_configs() {
+    local config_file="$1"
+    
+    if [ -n "$config_file" ]; then
+        # Validate specific file
+        if [ ! -f "$config_file" ]; then
+            echo "Error: File not found: $config_file"
+            return 1
+        fi
+        echo "Validating: $config_file"
+    else
+        # Validate all configurations
+        echo "Validating all configurations..."
+    fi
+    
+    if sudo netplan generate; then
+        echo "✓ All configurations valid"
+        sudo netplan get all > /tmp/merged-config.yaml
+        echo "Merged configuration saved to /tmp/merged-config.yaml"
+    else
+        echo "✗ Configuration validation failed"
+        return 1
+    fi
+}
+
+create_backup() {
+    local backup_id="$(date +%Y%m%d_%H%M%S)"
+    local backup_path="$BACKUP_DIR/$backup_id"
+    
+    mkdir -p "$backup_path"
+    cp "$CONFIG_DIR"/*.yaml "$backup_path/" 2>/dev/null || true
+    
+    # Save system state
+    networkctl status > "$backup_path/networkctl-status.txt"
+    ip route show > "$backup_path/routes.txt"
+    ip addr show > "$backup_path/addresses.txt"
+    
+    log "Backup created: $backup_id"
+    echo "Backup created: $backup_path"
+    echo "Backup ID: $backup_id"
+}
+
+restore_backup() {
+    local backup_id="$1"
+    if [ -z "$backup_id" ]; then
+        echo "Available backups:"
+        ls -1 "$BACKUP_DIR" | tail -10
+        return 1
+    fi
+    
+    local backup_path="$BACKUP_DIR/$backup_id"
+    if [ ! -d "$backup_path" ]; then
+        echo "Error: Backup not found: $backup_id"
+        return 1
+    fi
+    
+    echo "Restoring backup: $backup_id"
+    read -p "This will replace current configuration. Continue? (yes/no): " confirm
+    if [ "$confirm" = "yes" ]; then
+        # Create current backup before restoring
+        create_backup
+        
+        # Restore files
+        cp "$backup_path"/*.yaml "$CONFIG_DIR/"
+        
+        # Apply configuration
+        sudo netplan apply
+        
+        log "Configuration restored from backup: $backup_id"
+        echo "Configuration restored successfully"
+    else
+        echo "Restore cancelled"
+    fi
+}
+
+run_monitor() {
+    echo "Running system monitoring..."
+    "$SCRIPT_DIR/monitor-netplan.sh"
+    "$SCRIPT_DIR/detect-config-drift.sh"
+}
+
+show_status() {
+    echo "Network Configuration Status"
+    echo "============================"
+    echo
+    echo "Configuration Files:"
+    ls -la "$CONFIG_DIR"
+    echo
+    echo "Interface Status:"
+    networkctl status
+    echo
+    echo "Recent Log Entries:"
+    journalctl -u systemd-networkd --since "1 hour ago" --no-pager | tail -10
+}
+
+# Main execution
+case "$1" in
+    create)
+        create_config "$2"
+        ;;
+    edit)
+        safe_edit "$2"
+        ;;
+    delete)
+        delete_config "$2"
+        ;;
+    validate)
+        validate_configs "$2"
+        ;;
+    backup)
+        create_backup
+        ;;
+    restore)
+        restore_backup "$2"
+        ;;
+    monitor)
+        run_monitor
+        ;;
+    status)
+        show_status
+        ;;
+    help|--help|-h)
+        show_usage
+        ;;
+    *)
+        echo "Error: Unknown command '$1'"
+        show_usage
+        exit 1
+        ;;
+esac
+```
+
+#### E.2 Installation Script for All Tools
+```bash
+#!/bin/bash
+# File: /usr/local/bin/install-netplan-tools.sh
+# Install all netplan management tools
+
+SCRIPT_DIR="/usr/local/bin"
+TEMPLATE_DIR="/usr/local/share/netplan-templates"
+LOG_DIR="/var/log"
+
+echo "Installing Netplan Management Tools..."
+
+# Create directories
+sudo mkdir -p "$SCRIPT_DIR"
+sudo mkdir -p "$TEMPLATE_DIR"
+sudo mkdir -p "/backup/netplan"
+sudo mkdir -p "/etc/netplan-baseline"
+sudo mkdir -p "/documentation"
+sudo mkdir -p "/reports"
+
+# Install main management script
+sudo cp netplan-manager.sh "$SCRIPT_DIR/"
+sudo chmod +x "$SCRIPT_DIR/netplan-manager.sh"
+
+# Install utility scripts
+for script in \
+    validate-new-config.sh \
+    test-edit.sh \
+    analyze-deletion-impact.sh \
+    delete-config-file.sh \
+    delete-interface.sh \
+    delete-vlan.sh \
+    post-deletion-cleanup.sh \
+    verify-deletion.sh \
+    monitor-netplan.sh \
+    detect-config-drift.sh \
+    weekly-netplan-maintenance.sh \
+    monthly-netplan-maintenance.sh; do
+    
+    if [ -f "$script" ]; then
+        sudo cp "$script" "$SCRIPT_DIR/"
+        sudo chmod +x "$SCRIPT_DIR/$script"
+        echo "Installed: $script"
+    fi
+done
+
+# Create configuration templates
+sudo tee "$TEMPLATE_DIR/base-template.yaml" > /dev/null << 'EOF'
+# Network Configuration Template
+# Environment: [Production/Staging/Development]
+# Created: [Date]
+# Author: [Name]
+# Purpose: [Description]
+
+network:
+  version: 2
+  renderer: networkd
+  
+  ethernets:
+    eth0:
+      match:
+        macaddress: "aa:bb:cc:dd:ee:ff"
+      addresses:
+        - 192.168.1.100/24
+      nameservers:
+        addresses: [192.168.1.1]
+      routes:
+        - to: default
+          via: 192.168.1.1
+      optional: false
+EOF
+
+# Create cron jobs for maintenance
+sudo tee "/etc/cron.d/netplan-maintenance" > /dev/null << 'EOF'
+# Netplan maintenance tasks
+0 2 * * 0 root /usr/local/bin/weekly-netplan-maintenance.sh
+0 3 1 * * root /usr/local/bin/monthly-netplan-maintenance.sh
+*/15 * * * * root /usr/local/bin/monitor-netplan.sh
+EOF
+
+# Create log rotation
+sudo tee "/etc/logrotate.d/netplan-manager" > /dev/null << 'EOF'
+/var/log/netplan-manager.log {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    missingok
+    notifempty
+}
+
+/var/log/config-drift.log {
+    weekly
+    rotate 12
+    compress
+    delaycompress
+    missingok
+    notifempty
+}
+EOF
+
+# Set up bash completion
+sudo tee "/etc/bash_completion.d/netplan-manager" > /dev/null << 'EOF'
+_netplan_manager() {
+    local cur prev opts
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    opts="create edit delete validate backup restore monitor status help"
+    
+    if [[ ${cur} == -* ]] ; then
+        COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
+        return 0
+    fi
+    
+    case "${prev}" in
+        edit|delete)
+            COMPREPLY=( $(compgen -f -- ${cur}) )
+            return 0
+            ;;
+        restore)
+            COMPREPLY=( $(compgen -W "$(ls /backup/netplan/ 2>/dev/null)" -- ${cur}) )
+            return 0
+            ;;
+        *)
+            COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
+            return 0
+            ;;
+    esac
+}
+complete -F _netplan_manager netplan-manager.sh
+EOF
+
+echo "Installation completed!"
+echo
+echo "Available tools:"
+echo "  netplan-manager.sh - Main management interface"
+echo "  All utility scripts installed in $SCRIPT_DIR"
+echo "  Templates available in $TEMPLATE_DIR"
+echo "  Cron jobs configured for automated maintenance"
+echo
+echo "Usage: netplan-manager.sh help"
+```
+
+### Appendix F: Troubleshooting Decision Tree
+
+```
+Network Issue Detected
+         |
+         v
+Is systemd-networkd running?
+         |
+    No ──┴── Start: sudo systemctl start systemd-networkd
+         |   └── If fails: Check logs, reinstall package
+         |
+        Yes
+         |
+         v
+Is configuration syntax valid?
+         |
+    No ──┴── Run: sudo netplan --debug generate
+         |   └── Fix syntax errors in YAML files
+         |
+        Yes
+         |
+         v
+Are interfaces up?
+         |
+    No ──┴── Check: sudo networkctl status
+         |   ├── Hardware issue: Check cables, ports
+         |   ├── Driver issue: Check dmesg, update drivers
+         |   └── Config issue: Verify interface matching
+         |
+        Yes
+         |
+         v
+Is routing correct?
+         |
+    No ──┴── Check: ip route show
+         |   ├── Missing default route: Add via netplan
+         |   ├── Wrong metric: Adjust route priorities
+         |   └── Interface mismatch: Fix routing config
+         |
+        Yes
+         |
+         v
+Is DNS working?
+         |
+    No ──┴── Check: systemd-resolve --status
+         |   ├── No DNS servers: Add to nameservers
+         |   ├── Wrong DNS config: Fix resolved.conf
+         |   └── DNS server down: Use alternative DNS
+         |
+        Yes
+         |
+         v
+Check application-specific issues
+         |
+         └── Review application logs and network requirements
+```
+
+### Appendix G: Emergency Response Flowchart
+
+```
+NETWORK EMERGENCY DETECTED
+         |
+         v
+Assess Severity
+    |        |
+Critical   Non-Critical
+    |          |
+    v          v
+Immediate   Schedule
+Response    Maintenance
+    |          |
+    v          └── Follow normal procedures
+Page On-Call
+    |
+    v
+Try Quick Fixes:
+├── Restart networkd
+├── Reload configuration  
+├── Check hardware
+└── Basic connectivity
+    |
+    v
+Quick Fix Successful?
+    |        |
+   Yes      No
+    |        |
+    v        v
+Monitor   Escalate
+    |        |
+    v        v
+Document  Emergency
+           Rollback
+              |
+              v
+           Restore
+           Service
+              |
+              v
+           Post-Incident
+           Review
+```
+
+---
+
+**End of Document**
+
+*This SOP should be reviewed and updated quarterly or when significant infrastructure changes occur.*
