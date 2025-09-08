@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XAVS Networking Demo - Complete Implementation</title>
+    <link rel="stylesheet" href="css/xavs-modal.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 2rem;
+            background: #f8fafc;
+            color: #1f2937;
+        }
+        
+        .demo-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .demo-header {
+            text-align: center;
+            margin-bottom: 3rem;
+            padding: 2rem;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .demo-header h1 {
+            margin: 0 0 0.5rem;
+            color: #1f2937;
+            font-size: 2.5rem;
+        }
+        
+        .demo-header p {
+            margin: 0;
+            color: #6b7280;
+            font-size: 1.125rem;
+        }
+        
+        .demo-section {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .demo-section h2 {
+            margin: 0 0 1.5rem;
+            color: #1f2937;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .demo-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .demo-output {
+            background: #1f2937;
+            color: #f9fafb;
+            padding: 1.5rem;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 0.875rem;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-left: 0.5rem;
+        }
+        
+        .status-success {
+            background: #dcfce7;
+            color: #166534;
+        }
+        
+        .status-info {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+        
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+        
+        .feature-card {
+            padding: 1.5rem;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            background: #f9fafb;
+        }
+        
+        .feature-card h3 {
+            margin: 0 0 0.75rem;
+            color: #1f2937;
+            font-size: 1.125rem;
+        }
+        
+        .feature-list {
+            margin: 0;
+            padding-left: 1.25rem;
+            color: #4b5563;
+        }
+        
+        .feature-list li {
+            margin-bottom: 0.25rem;
+        }
+    </style>
+</head>
+<body>
+
+<div class="demo-container">
+    
+    <!-- **Header** -->
+    <div class="demo-header">
+        <h1>🌐 XAVS Networking Demo</h1>
+        <p>Complete implementation with JSON Schema-driven modals, validators, and YAML processing</p>
+        <span class="status-badge status-success">Production Ready</span>
+        <span class="status-badge status-info">Netplan 2024.1</span>
+    </div>
+
+    <!-- **1. Modal Demonstrations** -->
+    <div class="demo-section">
+        <h2>🎨 Modal Forms</h2>
+        <p>Click any button to open a schema-driven modal form with validation:</p>
+        
+        <div class="demo-buttons">
+            <button class="xavs-btn xavs-btn-primary" data-schema="overlayBaselineEthernet">
+                🔧 Baseline Overlay
+            </button>
+            <button class="xavs-btn xavs-btn-primary" data-schema="vlan">
+                🏷️ Create VLAN
+            </button>
+            <button class="xavs-btn xavs-btn-primary" data-schema="bond">
+                🔗 Create Bond
+            </button>
+            <button class="xavs-btn xavs-btn-primary" data-schema="bridge">
+                🌉 Create Bridge
+            </button>
+        </div>
+    </div>
+
+    <!-- **2. Generated Output** -->
+    <div class="demo-section">
+        <h2>📝 Generated Configuration</h2>
+        <p>Modal form results are processed into Netplan YAML:</p>
+        <div id="demo-output" class="demo-output">Click a modal button above to see generated YAML configuration...</div>
+    </div>
+
+    <!-- **3. Validation Demos** -->
+    <div class="demo-section">
+        <h2>✅ Validation Examples</h2>
+        <p>Test the validation system with various inputs:</p>
+        
+        <div class="demo-buttons">
+            <button class="xavs-btn xavs-btn-secondary" onclick="testValidation('valid')">
+                ✅ Valid Config
+            </button>
+            <button class="xavs-btn xavs-btn-secondary" onclick="testValidation('invalid-ip')">
+                ❌ Invalid IP
+            </button>
+            <button class="xavs-btn xavs-btn-secondary" onclick="testValidation('invalid-vlan')">
+                ❌ Invalid VLAN ID
+            </button>
+            <button class="xavs-btn xavs-btn-secondary" onclick="testValidation('dns-conflict')">
+                ⚠️ DNS Conflict
+            </button>
+        </div>
+        
+        <div id="validation-output" class="demo-output" style="margin-top: 1rem;">Click a validation test button to see results...</div>
+    </div>
+
+    <!-- **4. Features Overview** -->
+    <div class="demo-section">
+        <h2>🚀 Implementation Features</h2>
+        
+        <div class="feature-grid">
+            <div class="feature-card">
+                <h3>🎯 JSON Schema Forms</h3>
+                <ul class="feature-list">
+                    <li>Declarative form definitions</li>
+                    <li>Automatic validation</li>
+                    <li>Type-aware inputs</li>
+                    <li>Dynamic array management</li>
+                    <li>Responsive design</li>
+                </ul>
+            </div>
+            
+            <div class="feature-card">
+                <h3>🛡️ Safety Guardrails</h3>
+                <ul class="feature-list">
+                    <li>Never edit baseline files</li>
+                    <li>Overlay-only modifications</li>
+                    <li>Whitelist-based field access</li>
+                    <li>Management interface protection</li>
+                    <li>Atomic operations</li>
+                </ul>
+            </div>
+            
+            <div class="feature-card">
+                <h3>🔍 Network Intelligence</h3>
+                <ul class="feature-list">
+                    <li>Interface ownership mapping</li>
+                    <li>Spare NIC detection</li>
+                    <li>Baseline vs. XAVS classification</li>
+                    <li>Dependency tracking</li>
+                    <li>Configuration validation</li>
+                </ul>
+            </div>
+            
+            <div class="feature-card">
+                <h3>⚙️ YAML Processing</h3>
+                <ul class="feature-list">
+                    <li>Netplan-aware parsing</li>
+                    <li>Safe overlay merging</li>
+                    <li>Key normalization</li>
+                    <li>Diff generation</li>
+                    <li>Production formatting</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- **Scripts** -->
+<script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+<script src="js/validators.js"></script>
+<script src="js/modal-renderer.js"></script>
+
+<script>
+    // **Demo Application**
+    
+    async function initializeDemo() {
+        try {
+            console.log('🚀 Initializing XAVS Networking Demo...');
+            
+            // Load modal schemas
+            await XAVSModalRenderer.loadSchemas();
+            
+            // Bind modal buttons
+            document.querySelectorAll('[data-schema]').forEach(button => {
+                button.addEventListener('click', async (e) => {
+                    const schemaId = e.target.dataset.schema;
+                    console.log(`Opening modal for schema: ${schemaId}`);
+                    
+                    try {
+                        const result = await XAVSModalRenderer.openModal(schemaId, getSampleData(schemaId), {
+                            baselineInterfaces: ['eno1', 'eno2'],
+                            spareInterfaces: ['eno3', 'eno4'],
+                            availableInterfaces: ['eno1', 'eno2', 'eno3', 'eno4', 'bond0', 'vlan10'],
+                            managementInterface: 'eno1'
+                        });
+                        
+                        console.log('Modal result:', result);
+                        
+                        // Display generated YAML
+                        await displayGeneratedYAML(schemaId, result);
+                        
+                    } catch (error) {
+                        if (error.message !== 'Modal cancelled') {
+                            console.error('Modal error:', error);
+                            document.getElementById('demo-output').textContent = `Error: ${error.message}`;
+                        }
+                    }
+                });
+            });
+            
+            console.log('✅ Demo initialized successfully');
+            
+        } catch (error) {
+            console.error('❌ Failed to initialize demo:', error);
+            document.getElementById('demo-output').textContent = `Initialization error: ${error.message}`;
+        }
+    }
+    
+    function getSampleData(schemaId) {
+        const samples = {
+            overlayBaselineEthernet: {
+                name: 'eno1',
+                mtu: 1500,
+                'dhcp4-overrides': {
+                    'route-metric': 80,
+                    'use-dns': false
+                },
+                nameservers: {
+                    addresses: ['8.8.8.8', '8.8.4.4']
+                }
+            },
+            vlan: {
+                name: 'vlan15',
+                id: 15,
+                link: 'eno1',
+                dhcp4: true
+            },
+            bond: {
+                name: 'bond0',
+                interfaces: ['eno3', 'eno4'],
+                mode: 'active-backup',
+                dhcp4: true
+            },
+            bridge: {
+                name: 'br0',
+                interfaces: ['bond0'],
+                dhcp4: true
+            }
+        };
+        
+        return samples[schemaId] || {};
+    }
+    
+    async function displayGeneratedYAML(schemaId, config) {
+        try {
+            // Normalize configuration
+            const normalized = XAVSYAMLParser ? XAVSYAMLParser.normalizeConfiguration(config) : config;
+            
+            // Generate Netplan structure
+            const interfaceType = getInterfaceType(schemaId);
+            const netplanConfig = {
+                network: {
+                    version: 2,
+                    renderer: 'networkd',
+                    [interfaceType]: {
+                        [normalized.name]: normalized
+                    }
+                }
+            };
+            
+            // Remove name from the interface config (it's the key)
+            delete netplanConfig.network[interfaceType][normalized.name].name;
+            
+            // Generate YAML
+            const yamlOutput = jsyaml.dump(netplanConfig, {
+                indent: 2,
+                lineWidth: 80,
+                quotingType: '"',
+                forceQuotes: false,
+                sortKeys: false
+            });
+            
+            const output = `# Generated YAML for ${schemaId}\n# Interface: ${normalized.name}\n\n${yamlOutput}`;
+            document.getElementById('demo-output').textContent = output;
+            
+        } catch (error) {
+            document.getElementById('demo-output').textContent = `YAML generation error: ${error.message}`;
+        }
+    }
+    
+    function getInterfaceType(schemaId) {
+        const typeMap = {
+            overlayBaselineEthernet: 'ethernets',
+            vlan: 'vlans',
+            bond: 'bonds',
+            bridge: 'bridges'
+        };
+        
+        return typeMap[schemaId] || 'ethernets';
+    }
+    
+    function testValidation(testType) {
+        const testConfigs = {
+            'valid': {
+                name: 'eno1',
+                'dhcp4-overrides': { 'route-metric': 100 },
+                nameservers: { addresses: ['8.8.8.8'] }
+            },
+            'invalid-ip': {
+                name: 'eno1',
+                nameservers: { addresses: ['invalid.ip.address'] }
+            },
+            'invalid-vlan': {
+                name: 'vlan999999',
+                id: 5000,
+                link: 'eno1'
+            },
+            'dns-conflict': {
+                name: 'eno1',
+                'dhcp4-overrides': { 'use-dns': true },
+                nameservers: { addresses: ['8.8.8.8'] }
+            }
+        };
+        
+        const config = testConfigs[testType];
+        const context = {
+            baselineInterfaces: ['eno1', 'eno2'],
+            spareInterfaces: ['eno3', 'eno4'],
+            managementInterface: 'eno1'
+        };
+        
+        if (typeof XAVSValidators !== 'undefined') {
+            const result = XAVSValidators.validateConfiguration(config, context);
+            
+            let output = `# Validation Test: ${testType}\n\nConfiguration:\n${JSON.stringify(config, null, 2)}\n\nValidation Result:\n`;
+            output += `Valid: ${result.valid}\n`;
+            
+            if (result.errors.length > 0) {
+                output += `\nErrors:\n${result.errors.map(e => `  - ${e}`).join('\n')}`;
+            }
+            
+            if (result.warnings.length > 0) {
+                output += `\nWarnings:\n${result.warnings.map(w => `  - ${w}`).join('\n')}`;
+            }
+            
+            document.getElementById('validation-output').textContent = output;
+        } else {
+            document.getElementById('validation-output').textContent = 'XAVSValidators not available';
+        }
+    }
+    
+    // Initialize when DOM is ready
+    document.addEventListener('DOMContentLoaded', initializeDemo);
+</script>
+
+</body>
+</html>

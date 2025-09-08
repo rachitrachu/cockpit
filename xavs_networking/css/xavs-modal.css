@@ -1,0 +1,434 @@
+/**
+ * XAVS Networking Styles (2024)
+ * Production-ready styles for modal forms and interface
+ */
+
+/* **1. Base Modal Styles** */
+.xavs-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: modalFadeIn 0.2s ease-out;
+}
+
+.xavs-modal {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  max-width: 600px;
+  width: 90vw;
+  max-height: 80vh;
+  overflow: hidden;
+  animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalSlideIn {
+  from { 
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* **2. Modal Header** */
+.xavs-modal-header {
+  padding: 1.5rem 2rem 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+.xavs-modal-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1f2937;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.xavs-modal-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #6b7280;
+  line-height: 1;
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.xavs-modal-close:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+/* **3. Modal Body** */
+.xavs-modal-body {
+  padding: 2rem;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.xavs-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* **4. Form Field Groups** */
+.xavs-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.xavs-field-label {
+  font-weight: 500;
+  color: #374151;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.xavs-field-label .required {
+  color: #ef4444;
+  font-weight: bold;
+}
+
+.xavs-field-help {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+}
+
+.xavs-field-error {
+  font-size: 0.75rem;
+  color: #ef4444;
+  background: #fef2f2;
+  padding: 0.5rem;
+  border-radius: 4px;
+  border-left: 3px solid #ef4444;
+}
+
+/* **5. Form Inputs** */
+.xavs-input,
+.xavs-select {
+  padding: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+  background: white;
+}
+
+.xavs-input:focus,
+.xavs-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.xavs-input:invalid {
+  border-color: #ef4444;
+}
+
+.xavs-checkbox-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.xavs-checkbox {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #3b82f6;
+}
+
+.xavs-checkbox-label {
+  font-size: 0.875rem;
+  color: #374151;
+  cursor: pointer;
+}
+
+/* **6. Array Fields** */
+.xavs-array-field {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 1rem;
+  background: #f9fafb;
+}
+
+.xavs-array-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.xavs-array-item {
+  display: flex;
+  align-items: end;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+}
+
+.xavs-array-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.xavs-inline-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.xavs-inline-field label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #6b7280;
+}
+
+/* **7. Object Fields** */
+.xavs-object-field {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #f9fafb;
+}
+
+.xavs-fieldset {
+  border: none;
+  padding: 1rem;
+  margin: 0;
+}
+
+.xavs-fieldset legend {
+  font-weight: 500;
+  color: #374151;
+  padding: 0 0.5rem;
+}
+
+/* **8. Buttons** */
+.xavs-btn {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  justify-content: center;
+}
+
+.xavs-btn-primary {
+  background: #3b82f6;
+  color: white;
+}
+
+.xavs-btn-primary:hover {
+  background: #2563eb;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.xavs-btn-secondary {
+  background: #6b7280;
+  color: white;
+}
+
+.xavs-btn-secondary:hover {
+  background: #4b5563;
+}
+
+.xavs-btn-danger {
+  background: #ef4444;
+  color: white;
+}
+
+.xavs-btn-danger:hover {
+  background: #dc2626;
+}
+
+.xavs-btn-sm {
+  padding: 0.5rem 1rem;
+  font-size: 0.75rem;
+}
+
+.xavs-add-item {
+  align-self: flex-start;
+}
+
+.xavs-remove-item {
+  flex-shrink: 0;
+}
+
+/* **9. Modal Footer** */
+.xavs-modal-footer {
+  padding: 1.5rem 2rem;
+  border-top: 1px solid #e5e7eb;
+  background: #f9fafb;
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+}
+
+/* **10. Error Display** */
+.xavs-modal-errors {
+  margin-top: 1rem;
+}
+
+.xavs-alert {
+  padding: 1rem;
+  border-radius: 6px;
+  border-left: 4px solid;
+}
+
+.xavs-alert-danger {
+  background: #fef2f2;
+  border-color: #ef4444;
+  color: #991b1b;
+}
+
+.xavs-alert strong {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.xavs-alert ul {
+  margin: 0;
+  padding-left: 1.5rem;
+}
+
+.xavs-alert li {
+  margin-bottom: 0.25rem;
+}
+
+/* **11. Responsive Design** */
+@media (max-width: 640px) {
+  .xavs-modal {
+    width: 95vw;
+    max-height: 90vh;
+  }
+  
+  .xavs-modal-header,
+  .xavs-modal-body,
+  .xavs-modal-footer {
+    padding: 1rem;
+  }
+  
+  .xavs-array-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  
+  .xavs-modal-footer {
+    flex-direction: column;
+  }
+}
+
+/* **12. Integration with Existing Cockpit Styles** */
+.xavs-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.xavs-btn:disabled:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+/* **13. Dark Mode Support** */
+@media (prefers-color-scheme: dark) {
+  .xavs-modal {
+    background: #1f2937;
+    color: #f9fafb;
+  }
+  
+  .xavs-modal-header {
+    background: linear-gradient(135deg, #374151 0%, #1f2937 100%);
+    border-color: #4b5563;
+  }
+  
+  .xavs-modal-header h3 {
+    color: #f9fafb;
+  }
+  
+  .xavs-modal-close {
+    color: #9ca3af;
+  }
+  
+  .xavs-modal-close:hover {
+    background: #374151;
+    color: #f3f4f6;
+  }
+  
+  .xavs-modal-footer {
+    background: #374151;
+    border-color: #4b5563;
+  }
+  
+  .xavs-input,
+  .xavs-select {
+    background: #374151;
+    border-color: #4b5563;
+    color: #f9fafb;
+  }
+  
+  .xavs-input:focus,
+  .xavs-select:focus {
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.1);
+  }
+  
+  .xavs-array-field,
+  .xavs-object-field {
+    background: #374151;
+    border-color: #4b5563;
+  }
+  
+  .xavs-array-item {
+    background: #1f2937;
+    border-color: #4b5563;
+  }
+  
+  .xavs-field-label {
+    color: #e5e7eb;
+  }
+  
+  .xavs-field-help {
+    color: #9ca3af;
+  }
+}

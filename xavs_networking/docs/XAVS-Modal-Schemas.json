@@ -1,0 +1,192 @@
+{
+  "xavsSchemas": {
+    "overlayBaselineEthernet": {
+      "id": "overlayBaselineEthernet",
+      "title": "Overlay: Baseline Ethernet",
+      "description": "Safe overlay for baseline-owned NICs (scalars + additive lists only).",
+      "type": "object",
+      "required": ["name"],
+      "x-meta": { "mode": "overlay", "icon": "eth", "submitText": "Save & Try" },
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$", "title": "Interface" },
+        "mtu": { "type": "integer", "minimum": 576, "maximum": 9216, "title": "MTU", "default": 1500 },
+        "optional": { "type": "boolean", "title": "Optional at boot", "default": false },
+        "dhcp4-overrides": {
+          "type": "object",
+          "title": "DHCPv4 Overrides",
+          "properties": {
+            "route-metric": { "type": "integer", "minimum": 0, "maximum": 4294967295, "default": 80, "title": "Route Metric (prefer lower)" },
+            "use-dns": { "type": "boolean", "default": false, "title": "Accept DNS from DHCP" },
+            "use-routes": { "type": "boolean", "default": true, "title": "Accept Routes from DHCP" },
+            "send-hostname": { "type": "boolean", "default": true, "title": "Send Hostname" }
+          },
+          "additionalProperties": false
+        },
+        "nameservers": {
+          "type": "object",
+          "title": "Static DNS (active only if use-dns=false)",
+          "properties": {
+            "addresses": { "type": "array", "items": { "type": "string" }, "title": "DNS Servers", "default": [] },
+            "search": { "type": "array", "items": { "type": "string" }, "title": "Search Domains", "default": [] }
+          },
+          "additionalProperties": false
+        },
+        "routes_additive": {
+          "type": "array",
+          "title": "Add Static Routes",
+          "items": {
+            "type": "object",
+            "required": ["to", "via"],
+            "properties": {
+              "to": { "type": "string", "title": "Destination (CIDR or 'default')" },
+              "via": { "type": "string", "title": "Gateway IP" },
+              "metric": { "type": "integer", "minimum": 0, "maximum": 4294967295, "title": "Metric (optional)" },
+              "on-link": { "type": "boolean", "title": "On-link", "default": false }
+            },
+            "additionalProperties": false
+          },
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    },
+    "vlan": {
+      "id": "vlan",
+      "title": "VLAN Interface",
+      "type": "object",
+      "required": ["name", "id", "link"],
+      "x-meta": { "mode": "create", "icon": "vlan", "submitText": "Create & Try" },
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$", "title": "VLAN Interface Name", "examples": ["eno1.15", "vlan15"] },
+        "id": { "type": "integer", "minimum": 1, "maximum": 4094, "title": "VLAN ID" },
+        "link": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$", "title": "Parent Interface" },
+        "dhcp4": { "type": "boolean", "title": "Use DHCPv4", "default": false },
+        "addresses": { "type": "array", "items": { "type": "string" }, "title": "Static Addresses (CIDR)", "default": [] },
+        "nameservers": {
+          "type": "object",
+          "title": "DNS",
+          "properties": {
+            "addresses": { "type": "array", "items": { "type": "string" }, "default": [] },
+            "search": { "type": "array", "items": { "type": "string" }, "default": [] }
+          },
+          "additionalProperties": false
+        },
+        "routes": {
+          "type": "array",
+          "title": "Static Routes",
+          "items": {
+            "type": "object",
+            "required": ["to", "via"],
+            "properties": {
+              "to": { "type": "string", "title": "Destination (CIDR or 'default')" },
+              "via": { "type": "string", "title": "Gateway IP" },
+              "metric": { "type": "integer", "minimum": 0, "maximum": 4294967295, "title": "Metric (optional)" },
+              "on-link": { "type": "boolean", "title": "On-link", "default": false }
+            },
+            "additionalProperties": false
+          },
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    },
+    "bond": {
+      "id": "bond",
+      "title": "Bond Interface",
+      "type": "object",
+      "required": ["name", "interfaces", "mode"],
+      "x-meta": { "mode": "create", "icon": "bond", "submitText": "Create & Try" },
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$", "title": "Bond Name", "default": "bond0" },
+        "interfaces": { "type": "array", "minItems": 2, "items": { "type": "string" }, "title": "Member Interfaces (Spare NICs only)" },
+        "mode": { "type": "string", "enum": ["active-backup", "802.3ad", "balance-rr", "balance-xor", "broadcast", "balance-tlb", "balance-alb"], "title": "Mode", "default": "active-backup" },
+        "parameters": {
+          "type": "object",
+          "title": "Parameters",
+          "properties": {
+            "primary": { "type": "string", "title": "Primary (active-backup)" },
+            "lacp-rate": { "type": "string", "enum": ["slow", "fast"], "title": "LACP Rate (802.3ad)" },
+            "mii-monitor-interval": { "type": "integer", "minimum": 0, "maximum": 10000, "title": "MII Monitor (ms)", "default": 100 }
+          },
+          "additionalProperties": true
+        },
+        "dhcp4": { "type": "boolean", "title": "Use DHCPv4", "default": true },
+        "addresses": { "type": "array", "items": { "type": "string" }, "title": "Static Addresses (CIDR)", "default": [] },
+        "nameservers": {
+          "type": "object",
+          "title": "DNS",
+          "properties": {
+            "addresses": { "type": "array", "items": { "type": "string" }, "default": [] },
+            "search": { "type": "array", "items": { "type": "string" }, "default": [] }
+          },
+          "additionalProperties": false
+        },
+        "routes": {
+          "type": "array",
+          "title": "Static Routes",
+          "items": {
+            "type": "object",
+            "required": ["to", "via"],
+            "properties": {
+              "to": { "type": "string", "title": "Destination (CIDR or 'default')" },
+              "via": { "type": "string", "title": "Gateway IP" },
+              "metric": { "type": "integer", "minimum": 0, "maximum": 4294967295, "title": "Metric (optional)" },
+              "on-link": { "type": "boolean", "title": "On-link", "default": false }
+            },
+            "additionalProperties": false
+          },
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    },
+    "bridge": {
+      "id": "bridge",
+      "title": "Bridge Interface",
+      "type": "object",
+      "required": ["name", "interfaces"],
+      "x-meta": { "mode": "create", "icon": "bridge", "submitText": "Create & Try" },
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$", "title": "Bridge Name", "default": "br0" },
+        "interfaces": { "type": "array", "minItems": 1, "items": { "type": "string" }, "title": "Member Interfaces (Spare NICs / XAVS VLANs/Bonds)" },
+        "parameters": {
+          "type": "object",
+          "title": "Bridge Parameters",
+          "properties": {
+            "stp": { "type": "boolean", "title": "Enable STP", "default": false },
+            "forward-delay": { "type": "integer", "minimum": 0, "maximum": 60, "title": "Forward Delay (s)", "default": 4 }
+          },
+          "additionalProperties": true
+        },
+        "dhcp4": { "type": "boolean", "title": "Use DHCPv4", "default": true },
+        "addresses": { "type": "array", "items": { "type": "string" }, "title": "Static Addresses (CIDR)", "default": [] },
+        "nameservers": {
+          "type": "object",
+          "title": "DNS",
+          "properties": {
+            "addresses": { "type": "array", "items": { "type": "string" }, "default": [] },
+            "search": { "type": "array", "items": { "type": "string" }, "default": [] }
+          },
+          "additionalProperties": false
+        },
+        "routes": {
+          "type": "array",
+          "title": "Static Routes",
+          "items": {
+            "type": "object",
+            "required": ["to", "via"],
+            "properties": {
+              "to": { "type": "string", "title": "Destination (CIDR or 'default')" },
+              "via": { "type": "string", "title": "Gateway IP" },
+              "metric": { "type": "integer", "minimum": 0, "maximum": 4294967295, "title": "Metric (optional)" },
+              "on-link": { "type": "boolean", "title": "On-link", "default": false }
+            },
+            "additionalProperties": false
+          },
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
