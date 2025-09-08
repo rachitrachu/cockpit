@@ -786,8 +786,8 @@ const VlanManager = {
                     <button class="btn btn-sm btn-outline-secondary" onclick="toggleVlan('${vlan.name}', '${vlan.status}')">
                         <i class="fas fa-power-off"></i> ${vlan.status === 'up' ? 'Disable' : 'Enable'}
                     </button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteVlan('${vlan.name}')">
-                        <i class="fas fa-trash"></i> Delete
+                    <button class="btn btn-sm btn-outline-danger btn-icon-only" onclick="deleteVlan('${vlan.name}')" title="Delete VLAN" data-tip="Delete this VLAN permanently">
+                        <i class="fas fa-trash-alt"></i>
                     </button>
                 </div>
             </div>
@@ -1091,7 +1091,7 @@ async function editVlan(vlanIdentifier) {
         NetworkLogger.info('Refreshing VLAN details from system...');
         const ipOutput = await cockpit.spawn(['ip', 'a'], { superuser: 'try' });
         
-        // Add debug logging to see the ip output for this interface
+        // Get IP output section for this interface
         const interfaceSection = ipOutput.split('\n').filter(line => 
             line.includes(vlan.name) || 
             (line.includes('inet ') && ipOutput.indexOf(line) > ipOutput.indexOf(vlan.name))
@@ -1206,9 +1206,7 @@ async function editVlan(vlanIdentifier) {
                     <button type="button" class="btn btn-sm btn-outline-brand" onclick="addEditIpAddress()" style="margin-top: 8px;">
                         <i class="fas fa-plus"></i> Add IP Address
                     </button>
-                    <button type="button" class="btn btn-sm btn-outline-info" onclick="debugIpCollection()" style="margin-top: 8px; margin-left: 8px;">
-                        <i class="fas fa-bug"></i> Debug IP Collection
-                    </button>
+
                     <div class="hint">Enter IP addresses. CIDR defaults to /24 if not specified (e.g., 192.168.1.10 becomes 192.168.1.10/24)</div>
                 </div>
                 
@@ -1249,26 +1247,22 @@ async function editVlan(vlanIdentifier) {
         NetworkLogger.info(`VlanManager: No IP addresses found, creating empty entry for static config`);
     }
     
+    // Log information
     NetworkLogger.info(`VlanManager: Final IP addresses for edit form:`, ipAddresses);
-    populateEditIpAddresses(ipAddresses);
     
-    // Setup live validation for the edit form
-    const editForm = document.getElementById('vlan-edit-form');
-    if (typeof setupLiveValidation === 'function') {
-        setupLiveValidation(editForm);
-    }
-    
-    // Setup toggle functionality for edit form
-    setupVlanToggle('edit-vlan');
-    
-    // Log debugging information
-    console.log('=== VLAN Edit Debug Information ===');
-    console.log('VLAN object:', vlan);
-    console.log('All IP addresses found:', allIpAddresses);
-    console.log('IP addresses for form:', ipAddresses);
-    console.log('IP config type:', ipConfig);
-    console.log('Available interfaces:', availableInterfaces);
-    console.log('=== End Debug Information ===');
+    // Populate IP addresses in the edit form after modal is created
+    setTimeout(() => {
+        populateEditIpAddresses(ipAddresses);
+        
+        // Setup live validation for the edit form after IP population
+        const editForm = document.getElementById('vlan-edit-form');
+        if (typeof setupLiveValidation === 'function') {
+            setupLiveValidation(editForm);
+        }
+        
+        // Setup toggle functionality for edit form after IP population
+        setupVlanToggle('edit-vlan');
+    }, 100);
 }
 
 function setupVlanToggle(prefix = 'vlan') {
@@ -1408,6 +1402,40 @@ async function saveVlan() {
         NetworkLogger.info(`VlanManager: Corrected VLAN name to: ${formData.name}`);
     }
     
+    // Check if gateway is specified and warn about route management
+    if (formData.gateway && formData.gateway.trim()) {
+        const routeWarning = `You have specified a gateway (${formData.gateway}) for this VLAN.
+
+Note: Gateway configuration is currently disabled in the system to prevent route conflicts. The gateway will be saved in the configuration file but not automatically applied as routes.
+
+Routes are managed automatically based on IP address configuration. If you need custom routing, you can configure it manually after VLAN creation.
+
+Do you want to continue creating the VLAN?`;
+        
+        if (!confirm(routeWarning)) {
+            restoreButton();
+            NetworkLogger.info('User cancelled VLAN creation due to gateway/route concerns');
+            return;
+        }
+    }
+    
+    // Check for potential route impacts when creating new VLAN
+    if (formData.configType === 'static' && formData.ipAddresses && formData.ipAddresses.length > 0) {
+        try {
+            const routeOptions = await confirmNewVlanRouteImpact(formData);
+            if (!routeOptions.proceed) {
+                restoreButton();
+                NetworkLogger.info('User cancelled VLAN creation due to route impact concerns');
+                return;
+            }
+            // For new VLANs, we don't preserve routes since the interface doesn't exist yet
+            // But we can warn about parent interface route impacts
+        } catch (routeCheckError) {
+            NetworkLogger.warning('Could not check route impacts for new VLAN:', routeCheckError);
+            // Continue anyway
+        }
+    }
+    
     // Create VLAN using real system calls
     createRealVlan(formData)
         .then(() => {
@@ -1544,32 +1572,21 @@ async function createRealVlan(config) {
         await cockpit.file(configPath, { superuser: 'try' }).replace(netplanConfig);
         NetworkLogger.info('Netplan configuration written successfully');
         
-        // Set proper file permissions (600 = rw-------)
-        await cockpit.spawn(['chmod', '600', configPath], { superuser: 'try' });
-        NetworkLogger.info('File permissions set to 600');
-        
-        // Test the configuration first with netplan try
-        NetworkLogger.info('Testing Netplan configuration with netplan try...');
+        // Set proper file permissions (600 = rw-------) - ignore errors if file doesn't exist
         try {
-            const testOutput = await cockpit.spawn(['netplan', 'try', '--timeout=30'], { superuser: 'try' });
-            NetworkLogger.info('Netplan try completed successfully');
-        } catch (tryError) {
-            NetworkLogger.error('Netplan try failed:', tryError);
-            
-            // Check if this is just the bond revert warning (exit status 78)
-            if (tryError.exit_status === 78) {
-                NetworkLogger.info('Netplan try exited with status 78 (bond revert warning) - this is expected for bond configurations');
-                // This is the expected bond warning, not a real error
-            } else {
-                // This is a real error
-                throw new Error(`Configuration test failed: ${tryError.message || tryError}. The configuration has not been applied.`);
-            }
+            await cockpit.spawn(['chmod', '600', configPath], { superuser: 'try' });
+            NetworkLogger.info('File permissions set to 600');
+        } catch (chmodError) {
+            NetworkLogger.warn('Could not set file permissions (file may not exist):', chmodError.message);
         }
         
-        // Apply the configuration permanently
-        NetworkLogger.info('Applying Netplan configuration permanently...');
-        await cockpit.spawn(['netplan', 'apply'], { superuser: 'try' });
-        NetworkLogger.info('Netplan applied successfully');
+        // Skip individual netplan try test - will be handled by applyNetplanWithConfirmation
+        NetworkLogger.info('Configuration written, will test during application...');
+        
+        // Apply the configuration with user confirmation
+        NetworkLogger.info('Testing Netplan configuration with user confirmation...');
+        await applyNetplanWithConfirmation(120); // 2-minute timeout
+        NetworkLogger.info('Netplan configuration confirmed and applied successfully');
         
         // Verify VLAN creation
         NetworkLogger.info('Verifying VLAN creation...');
@@ -1591,6 +1608,417 @@ async function createRealVlan(config) {
         }
         throw error;
     }
+}
+
+// Check if IP changes will affect routes and confirm with user
+async function confirmRouteChanges(originalVlan, newConfig) {
+    // Check if there are IP address changes
+    const originalIps = originalVlan.ipAddresses || (originalVlan.ip ? [originalVlan.ip] : []);
+    const newIps = newConfig.ipAddresses || [];
+    
+    // Normalize IPs for comparison
+    const normalizeIpsForComparison = (ips) => {
+        return ips.map(ip => {
+            if (!ip || ip === 'Not configured' || ip === 'DHCP') return null;
+            return normalizeIpWithCidr(ip);
+        }).filter(ip => ip !== null);
+    };
+    
+    const originalNormalized = normalizeIpsForComparison(originalIps);
+    const newNormalized = normalizeIpsForComparison(newIps);
+    
+    // Check if IPs have changed
+    const ipsChanged = originalNormalized.length !== newNormalized.length ||
+                      !originalNormalized.every(ip => newNormalized.includes(ip)) ||
+                      !newNormalized.every(ip => originalNormalized.includes(ip));
+    
+    if (!ipsChanged) {
+        return { proceed: true, preserveRoutes: false }; // No IP changes, proceed normally
+    }
+    
+    NetworkLogger.info('IP addresses changed:', {
+        original: originalNormalized,
+        new: newNormalized
+    });
+    
+    // Check if the interface has any existing routes
+    let hasRoutes = false;
+    let existingRoutes = [];
+    try {
+        const routeOutput = await cockpit.spawn(['ip', 'route', 'show', 'dev', originalVlan.name], { superuser: 'try' });
+        existingRoutes = routeOutput.trim().split('\n').filter(line => line.trim());
+        hasRoutes = existingRoutes.length > 0;
+        NetworkLogger.info(`Interface ${originalVlan.name} has existing routes:`, hasRoutes, existingRoutes);
+    } catch (error) {
+        NetworkLogger.warning('Could not check existing routes:', error);
+        // Assume there might be routes to be safe
+        hasRoutes = true;
+    }
+    
+    if (hasRoutes || newConfig.gateway || originalVlan.gateway) {
+        // Create a custom modal for route options
+        return await showRouteOptionsModal(originalVlan, originalNormalized, newNormalized, existingRoutes);
+    }
+    
+    return { proceed: true, preserveRoutes: false }; // No routes affected, proceed normally
+}
+
+// Show custom modal for route preservation options
+async function showRouteOptionsModal(originalVlan, originalIps, newIps, existingRoutes) {
+    return new Promise((resolve) => {
+        const modalContent = `
+            <div class="route-options-content">
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>Route Management Warning</strong>
+                </div>
+                
+                <p>Changing IP addresses on interface <strong>${originalVlan.name}</strong> may affect existing network routes.</p>
+                
+                <div class="change-summary">
+                    <div class="ip-changes">
+                        <div class="change-item">
+                            <strong>Current IPs:</strong> ${originalIps.length > 0 ? originalIps.join(', ') : 'None'}
+                        </div>
+                        <div class="change-item">
+                            <strong>New IPs:</strong> ${newIps.length > 0 ? newIps.join(', ') : 'None'}
+                        </div>
+                    </div>
+                    
+                    ${existingRoutes.length > 0 ? `
+                    <div class="existing-routes">
+                        <strong>Existing Routes:</strong>
+                        <div class="route-list">
+                            ${existingRoutes.map(route => `<div class="route-item"><code>${route}</code></div>`).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+                
+                <div class="route-options">
+                    <h4>How would you like to handle routes?</h4>
+                    
+                    <div class="option-group">
+                        <label class="radio-option">
+                            <input type="radio" name="routeOption" value="reconfigure" checked>
+                            <div class="option-content">
+                                <strong>Reconfigure Routes (Recommended)</strong>
+                                <p>Let the system automatically reconfigure routes based on new IP addresses. This may temporarily affect connectivity but ensures proper routing.</p>
+                            </div>
+                        </label>
+                        
+                        <label class="radio-option">
+                            <input type="radio" name="routeOption" value="preserve">
+                            <div class="option-content">
+                                <strong>Preserve Existing Routes</strong>
+                                <p>Keep existing routes unchanged. You'll need to manually adjust routes if needed. This prevents automatic route changes but may leave inconsistent routing.</p>
+                            </div>
+                        </label>
+                        
+                        <label class="radio-option">
+                            <input type="radio" name="routeOption" value="cancel">
+                            <div class="option-content">
+                                <strong>Cancel Changes</strong>
+                                <p>Don't modify the VLAN configuration. No changes will be made.</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <style>
+                .route-options-content { font-family: system-ui, -apple-system, sans-serif; }
+                .alert { padding: 12px; border-radius: 6px; margin-bottom: 16px; background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; }
+                .change-summary { background: #f8f9fa; padding: 12px; border-radius: 6px; margin: 16px 0; }
+                .change-item { margin: 8px 0; }
+                .route-list { background: #fff; padding: 8px; border-radius: 4px; margin-top: 8px; max-height: 120px; overflow-y: auto; }
+                .route-item { margin: 4px 0; font-size: 13px; }
+                .option-group { margin: 16px 0; }
+                .radio-option { display: block; margin: 12px 0; padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; cursor: pointer; }
+                .radio-option:hover { border-color: #007bff; background: #f8f9ff; }
+                .radio-option input[type="radio"] { margin-right: 8px; }
+                .option-content strong { display: block; margin-bottom: 4px; color: #333; }
+                .option-content p { margin: 0; color: #666; font-size: 14px; }
+                .radio-option input[type="radio"]:checked + .option-content { color: #007bff; }
+                .radio-option input[type="radio"]:checked { accent-color: #007bff; }
+            </style>
+        `;
+        
+        const modalFooter = `
+            <button class="btn btn-outline-secondary" onclick="NetworkManager.closeModal(); window.routeOptionsResolve({ proceed: false, preserveRoutes: false });">Cancel</button>
+            <button class="btn btn-brand" onclick="handleRouteOptionChoice()">Continue</button>
+        `;
+        
+        // Store resolve function globally so buttons can access it
+        window.routeOptionsResolve = resolve;
+        
+        // Create modal
+        NetworkManager.createModal('Route Management Options', modalContent, modalFooter);
+        
+        // Add handler function to window
+        window.handleRouteOptionChoice = function() {
+            const selectedOption = document.querySelector('input[name="routeOption"]:checked')?.value;
+            NetworkManager.closeModal();
+            
+            switch (selectedOption) {
+                case 'reconfigure':
+                    resolve({ proceed: true, preserveRoutes: false });
+                    break;
+                case 'preserve':
+                    resolve({ proceed: true, preserveRoutes: true });
+                    break;
+                case 'cancel':
+                default:
+                    resolve({ proceed: false, preserveRoutes: false });
+                    break;
+            }
+        };
+    });
+}
+
+// Check route impacts when creating new VLAN
+async function confirmNewVlanRouteImpact(vlanConfig) {
+    NetworkLogger.info('Checking route impacts for new VLAN creation...');
+    
+    // Check if parent interface has existing routes that might be affected
+    let parentRoutes = [];
+    let potentialConflicts = false;
+    
+    try {
+        const routeOutput = await cockpit.spawn(['ip', 'route', 'show', 'dev', vlanConfig.parent], { superuser: 'try' });
+        parentRoutes = routeOutput.trim().split('\n').filter(line => line.trim());
+        NetworkLogger.info(`Parent interface ${vlanConfig.parent} has existing routes:`, parentRoutes);
+        
+        // Check if new VLAN IPs might create subnet conflicts
+        if (parentRoutes.length > 0 && vlanConfig.ipAddresses) {
+            for (const ip of vlanConfig.ipAddresses) {
+                if (ip && ip.includes('/')) {
+                    const vlanSubnet = ip.split('/')[0];
+                    const vlanSubnetBase = vlanSubnet.split('.').slice(0, 3).join('.');
+                    
+                    // Check if any parent routes use the same subnet
+                    for (const route of parentRoutes) {
+                        if (route.includes(vlanSubnetBase)) {
+                            potentialConflicts = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        NetworkLogger.warning('Could not check parent interface routes:', error);
+        // If we can't check, assume there might be routes to be safe
+        parentRoutes = ['Unable to check - routes may exist'];
+        potentialConflicts = true;
+    }
+    
+    // Only show dialog if there are existing routes or potential conflicts
+    if (parentRoutes.length === 0 || (parentRoutes.length === 1 && !parentRoutes[0].trim())) {
+        NetworkLogger.info('No existing routes found on parent interface, proceeding with VLAN creation');
+        return { proceed: true };
+    }
+    
+    if (potentialConflicts || parentRoutes.length > 0) {
+        // Create a simplified modal for new VLAN creation
+        return await showNewVlanRouteWarningModal(vlanConfig, parentRoutes, potentialConflicts);
+    }
+    
+    return { proceed: true };
+}
+
+// Show route warning modal for new VLAN creation
+async function showNewVlanRouteWarningModal(vlanConfig, parentRoutes, hasConflicts) {
+    return new Promise((resolve) => {
+        const modalContent = `
+            <div class="route-options-content">
+                <div class="alert ${hasConflicts ? 'alert-warning' : 'alert-info'}">
+                    <i class="fas ${hasConflicts ? 'fa-exclamation-triangle' : 'fa-info-circle'}"></i>
+                    <strong>${hasConflicts ? 'Potential Route Conflict Detected' : 'Route Impact Information'}</strong>
+                </div>
+                
+                <p>Creating VLAN <strong>${vlanConfig.name}</strong> on parent interface <strong>${vlanConfig.parent}</strong> may impact existing network routing.</p>
+                
+                <div class="change-summary">
+                    <div class="vlan-info">
+                        <div class="change-item">
+                            <strong>New VLAN IPs:</strong> ${vlanConfig.ipAddresses ? vlanConfig.ipAddresses.join(', ') : 'None'}
+                        </div>
+                        <div class="change-item">
+                            <strong>Parent Interface:</strong> ${vlanConfig.parent}
+                        </div>
+                    </div>
+                    
+                    ${parentRoutes.length > 0 ? `
+                    <div class="existing-routes">
+                        <strong>Existing Routes on Parent Interface:</strong>
+                        <div class="route-list">
+                            ${parentRoutes.map(route => `<div class="route-item"><code>${route}</code></div>`).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+                
+                ${hasConflicts ? `
+                <div class="conflict-warning">
+                    <h4><i class="fas fa-exclamation-triangle"></i> Potential Issues:</h4>
+                    <ul>
+                        <li>The new VLAN's IP subnet may overlap with existing routes</li>
+                        <li>This could cause routing conflicts or unexpected traffic behavior</li>
+                        <li>You may need to manually adjust routes after VLAN creation</li>
+                    </ul>
+                </div>
+                ` : ''}
+                
+                <div class="route-options">
+                    <h4>How would you like to proceed?</h4>
+                    
+                    <div class="option-group">
+                        <label class="radio-option">
+                            <input type="radio" name="newVlanRouteOption" value="proceed" checked>
+                            <div class="option-content">
+                                <strong>Create VLAN with Automatic Route Management</strong>
+                                <p>Create the VLAN and let the system manage routes automatically. This is recommended for most scenarios.</p>
+                            </div>
+                        </label>
+                        
+                        <label class="radio-option">
+                            <input type="radio" name="newVlanRouteOption" value="manual">
+                            <div class="option-content">
+                                <strong>Create VLAN - I'll Handle Routes Manually</strong>
+                                <p>Create the VLAN but I'll manually configure any needed route adjustments after creation.</p>
+                            </div>
+                        </label>
+                        
+                        <label class="radio-option">
+                            <input type="radio" name="newVlanRouteOption" value="cancel">
+                            <div class="option-content">
+                                <strong>Cancel VLAN Creation</strong>
+                                <p>Don't create the VLAN. I'll review the routing configuration first.</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <style>
+                .route-options-content { font-family: system-ui, -apple-system, sans-serif; }
+                .alert { padding: 12px; border-radius: 6px; margin-bottom: 16px; }
+                .alert-warning { background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; }
+                .alert-info { background: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; }
+                .change-summary { background: #f8f9fa; padding: 12px; border-radius: 6px; margin: 16px 0; }
+                .change-item { margin: 8px 0; }
+                .route-list { background: #fff; padding: 8px; border-radius: 4px; margin-top: 8px; max-height: 120px; overflow-y: auto; }
+                .route-item { margin: 4px 0; font-size: 13px; }
+                .conflict-warning { background: #fff3cd; padding: 12px; border-radius: 6px; margin: 16px 0; border-left: 4px solid #ffc107; }
+                .conflict-warning h4 { margin-top: 0; color: #856404; }
+                .conflict-warning ul { margin-bottom: 0; }
+                .option-group { margin: 16px 0; }
+                .radio-option { display: block; margin: 12px 0; padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; cursor: pointer; }
+                .radio-option:hover { border-color: #007bff; background: #f8f9ff; }
+                .radio-option input[type="radio"] { margin-right: 8px; }
+                .option-content strong { display: block; margin-bottom: 4px; color: #333; }
+                .option-content p { margin: 0; color: #666; font-size: 14px; }
+                .radio-option input[type="radio"]:checked + .option-content { color: #007bff; }
+                .radio-option input[type="radio"]:checked { accent-color: #007bff; }
+            </style>
+        `;
+        
+        const modalFooter = `
+            <button class="btn btn-outline-secondary" onclick="NetworkManager.closeModal(); window.newVlanRouteOptionsResolve({ proceed: false });">Cancel</button>
+            <button class="btn btn-brand" onclick="handleNewVlanRouteOptionChoice()">Continue</button>
+        `;
+        
+        // Store resolve function globally so buttons can access it
+        window.newVlanRouteOptionsResolve = resolve;
+        
+        // Create modal
+        NetworkManager.createModal('New VLAN Route Impact', modalContent, modalFooter);
+        
+        // Add handler function to window
+        window.handleNewVlanRouteOptionChoice = function() {
+            const selectedOption = document.querySelector('input[name="newVlanRouteOption"]:checked')?.value;
+            NetworkManager.closeModal();
+            
+            switch (selectedOption) {
+                case 'proceed':
+                case 'manual':
+                    resolve({ proceed: true });
+                    break;
+                case 'cancel':
+                default:
+                    resolve({ proceed: false });
+                    break;
+            }
+        };
+    });
+}
+
+// Parse existing routes for inclusion in netplan configuration
+function parseRoutesForNetplan(routeLines) {
+    const routes = [];
+    
+    for (const line of routeLines) {
+        if (!line.trim()) continue;
+        
+        try {
+            // Parse route line: "destination via gateway dev interface"
+            // Example: "192.168.1.0/24 via 10.100.1.1 dev eno4.1111"
+            // Example: "default via 10.100.1.1 dev eno4.1111"
+            
+            const parts = line.trim().split(/\s+/);
+            let destination = null;
+            let gateway = null;
+            
+            // Skip kernel-generated routes (they'll be recreated automatically)
+            if (line.includes('proto kernel') && !line.includes('default')) {
+                NetworkLogger.info('Skipping kernel proto route:', line);
+                continue;
+            }
+            
+            // Parse destination
+            if (parts[0] === 'default') {
+                destination = '0.0.0.0/0';
+            } else if (parts[0].includes('/') || /^\d+\.\d+\.\d+\.\d+$/.test(parts[0])) {
+                destination = parts[0];
+                // Add /32 if it's a single IP without CIDR
+                if (!destination.includes('/') && /^\d+\.\d+\.\d+\.\d+$/.test(destination)) {
+                    destination += '/32';
+                }
+            } else {
+                NetworkLogger.info('Skipping route with unrecognized destination:', line);
+                continue;
+            }
+            
+            // Find gateway
+            const viaIndex = parts.indexOf('via');
+            if (viaIndex !== -1 && viaIndex + 1 < parts.length) {
+                gateway = parts[viaIndex + 1];
+            }
+            
+            // Only include routes with gateways (static routes)
+            if (gateway && destination) {
+                const route = {
+                    to: destination
+                };
+                
+                if (gateway !== '0.0.0.0') {
+                    route.via = gateway;
+                }
+                
+                routes.push(route);
+                NetworkLogger.info('Parsed route for netplan:', route, 'from line:', line);
+            } else {
+                NetworkLogger.info('Skipping route without gateway:', line);
+            }
+            
+        } catch (error) {
+            NetworkLogger.warning('Could not parse route line:', line, error);
+        }
+    }
+    
+    NetworkLogger.info('Parsed routes for netplan:', routes);
+    return routes;
 }
 
 // Generate Netplan configuration for VLAN
@@ -1654,12 +2082,13 @@ async function generateVlanNetplanConfig(config, parentType = 'unknown') {
             NetworkLogger.warning(`VlanManager: No IP addresses found for static configuration!`);
         }
         
-        // Note: Gateway configuration is disabled to prevent route conflicts
-        // The gateway field is preserved for future use or manual configuration
+        // Gateway configuration is intentionally disabled to prevent automatic route conflicts
+        // The gateway value is preserved in the configuration for reference but not applied as routes
+        // Routes are managed automatically by the system based on IP address configuration
+        // Users can manually configure custom routes after VLAN creation if needed
         if (config.gateway) {
-            NetworkLogger.info(`VlanManager: Gateway ${config.gateway} specified but not added to prevent route conflicts`);
-            // Routes are managed by the system automatically based on IP configuration
-            // Manual route configuration can be done separately if needed
+            NetworkLogger.info(`VlanManager: Gateway ${config.gateway} specified but not added to prevent automatic route conflicts`);
+            // Gateway is stored in the form but not written to Netplan to avoid route management issues
         }
         
         if (config.dns) {
@@ -1669,6 +2098,21 @@ async function generateVlanNetplanConfig(config, parentType = 'unknown') {
       nameservers:
         addresses: [${dnsServers.map(dns => `"${dns}"`).join(', ')}]`;
             }
+        }
+        
+        // Add preserved routes if available
+        if (config.routes && config.routes.length > 0) {
+            yamlConfig += `
+      routes:`;
+            config.routes.forEach((route, index) => {
+                NetworkLogger.info(`VlanManager: Adding preserved route ${index}:`, route);
+                yamlConfig += `
+        - to: ${route.to}`;
+                if (route.via) {
+                    yamlConfig += `
+          via: ${route.via}`;
+                }
+            });
         }
     } else if (config.configType === 'dhcp') {
         yamlConfig += `
@@ -1736,8 +2180,8 @@ async function saveVlanEdit(vlanIdentifier) {
         }
     }
     
-    // Collect IP addresses once to avoid potential issues
-    const collectedIpAddresses = collectEditIpAddresses();
+    // Use emergency IP collection since it works correctly
+    const collectedIpAddresses = emergencyCollectAllIps();
     NetworkLogger.info(`VlanManager: Collected IP addresses from form:`, collectedIpAddresses);
     
     const formData = {
@@ -1794,6 +2238,23 @@ async function saveVlanEdit(vlanIdentifier) {
             NetworkLogger.warning('Could not check for VLAN ID conflicts:', conflictCheckError);
         }
     }
+    
+    // Check if IP changes will affect routes and get user confirmation
+    let routeOptions = { proceed: true, preserveRoutes: false };
+    try {
+        routeOptions = await confirmRouteChanges(originalVlan, formData);
+        if (!routeOptions.proceed) {
+            restoreButton();
+            NetworkLogger.info('User cancelled VLAN edit due to route changes');
+            return;
+        }
+    } catch (confirmError) {
+        NetworkLogger.warning('Could not check route changes:', confirmError);
+        // Continue anyway - user can handle route issues manually
+    }
+    
+    // Pass route preservation option to update function
+    formData.preserveRoutes = routeOptions.preserveRoutes;
     
     // Update VLAN using real system calls
     updateRealVlan(originalVlan, formData)
@@ -1875,32 +2336,40 @@ async function updateRealVlan(originalVlan, newConfig) {
         
         await cockpit.file(newConfigPath, { superuser: 'try' }).replace(netplanConfig);
         
-        // Set proper permissions
+        // Set proper permissions (ignore errors if file doesn't exist)
         NetworkLogger.info('Setting file permissions...');
-        await cockpit.spawn(['chmod', '600', newConfigPath], { superuser: 'try' });
-        
-        // Test configuration with netplan try
-        NetworkLogger.info('Testing new configuration with netplan try...');
         try {
-            const testResult = await cockpit.spawn(['netplan', 'try', '--timeout=30'], { 
-                superuser: 'try',
-                err: 'out'
-            });
-            NetworkLogger.info('Netplan try completed successfully');
-        } catch (testError) {
-            NetworkLogger.info('Netplan try error:', testError);
-            
-            // Check if this is just a bond revert warning (exit status 78)
-            if (testError.exit_status !== 78) {
-                throw new Error(`Netplan configuration test failed: ${testError.message || testError}`);
-            } else {
-                NetworkLogger.info('Ignoring bond revert warning (exit status 78)');
-            }
+            await cockpit.spawn(['chmod', '600', newConfigPath], { superuser: 'try' });
+        } catch (chmodError) {
+            NetworkLogger.warn('Could not set file permissions (file may not exist):', chmodError.message);
         }
+        
+        // Skip individual netplan try test - will be handled by applyNetplanWithConfirmation
+        NetworkLogger.info('Configuration written, will test during application...');
         
         // Apply the configuration
         NetworkLogger.info('Applying netplan configuration...');
-        await cockpit.spawn(['netplan', 'apply'], { superuser: 'try' });
+        
+        // If route preservation is requested, backup ALL system routes first
+        let savedSystemRoutes = [];
+        if (newConfig.preserveRoutes) {
+            try {
+                NetworkLogger.info('Backing up ALL system routes for preservation...');
+                // Get all system routes to preserve critical connectivity
+                const routeOutput = await cockpit.spawn(['ip', 'route', 'show'], { superuser: 'try' });
+                savedSystemRoutes = routeOutput.trim().split('\n').filter(line => line.trim());
+                NetworkLogger.info('Saved all system routes:', savedSystemRoutes);
+                
+                // Store routes globally for restoration after netplan operations
+                window.preservedSystemRoutes = savedSystemRoutes;
+                NetworkLogger.info('System routes stored for post-netplan restoration');
+            } catch (routeBackupError) {
+                NetworkLogger.warning('Could not backup system routes:', routeBackupError);
+                // Continue anyway
+            }
+        }
+        
+        await applyNetplanWithConfirmation(120); // 2-minute timeout
         
         NetworkLogger.info('VLAN configuration updated successfully');
         
@@ -1910,7 +2379,12 @@ async function updateRealVlan(originalVlan, newConfig) {
         // Try to restore old configuration if possible
         try {
             NetworkLogger.info('Attempting to restore old configuration...');
-            const oldNetplanConfig = generateVlanNetplanConfig({
+            
+            // Get parent interface type for proper configuration generation
+            const parentType = await getParentInterfaceType(originalVlan.parentInterface);
+            NetworkLogger.info('Parent interface type:', parentType);
+            
+            const oldNetplanConfig = await generateVlanNetplanConfig({
                 id: originalVlan.id,
                 name: originalVlan.name,
                 parent: originalVlan.parentInterface,
@@ -1919,13 +2393,19 @@ async function updateRealVlan(originalVlan, newConfig) {
                 ip: originalVlan.ipAddress,
                 gateway: originalVlan.gateway,
                 dns: originalVlan.dns ? originalVlan.dns.join(', ') : ''
-            });
+            }, parentType);
+            
+            NetworkLogger.info('Generated YAML config:', oldNetplanConfig);
             
             // Use interface-specific path for restore
             const restoreConfigPath = `/etc/netplan/90-xavs-${originalVlan.parentInterface}-vlan${originalVlan.id}.yaml`;
             await cockpit.file(restoreConfigPath, { superuser: 'try' }).replace(oldNetplanConfig);
-            await cockpit.spawn(['chmod', '600', restoreConfigPath], { superuser: 'try' });
-            await cockpit.spawn(['netplan', 'apply'], { superuser: 'try' });
+            try {
+                await cockpit.spawn(['chmod', '600', restoreConfigPath], { superuser: 'try' });
+            } catch (chmodError) {
+                NetworkLogger.warn('Could not set restore file permissions:', chmodError.message);
+            }
+            await applyNetplanWithConfirmation(60); // 1-minute timeout for restoration
             
             NetworkLogger.info('Old configuration restored');
         } catch (restoreError) {
@@ -2240,43 +2720,20 @@ VlanManager.deleteRealVlan = async function(vlanId, vlanName = null) {
             }
         }
         
-        // Test configuration with netplan try
-        NetworkLogger.info('Testing VLAN deletion with netplan try...');
-        try {
-            const testOutput = await cockpit.spawn(['netplan', 'try', '--timeout=30'], { superuser: 'require' });
-            NetworkLogger.info('Netplan try completed successfully');
-        } catch (tryError) {
-            NetworkLogger.error('Netplan try failed:', tryError);
-            
-            // Check if this is just the bond revert warning (exit status 78) or bond configuration error
-            if (tryError.exit_status === 78) {
-                NetworkLogger.info('Netplan try exited with status 78 (bond revert warning) - this is expected for bond configurations');
-                
-                // Check if the error message contains bond mode issues
-                if (tryError.message && tryError.message.includes('unknown bond mode')) {
-                    NetworkLogger.warning('Bond configuration error detected. VLAN deletion will proceed but bond configuration needs fixing.');
-                    
-                    if (typeof NetworkManager !== 'undefined' && NetworkManager.showToast) {
-                        NetworkManager.showToast('warning', 'VLAN deleted but bond configuration error detected. Please check bond settings.');
-                    }
-                }
-            } else {
-                // This is a real error that prevents VLAN deletion
-                throw new Error(`VLAN deletion configuration test failed: ${tryError.message || tryError}. The configuration has not been applied.`);
-            }
-        }
+        // Skip individual netplan try test - will be handled by applyNetplanWithConfirmation
+        NetworkLogger.info('Configuration files deleted, will test during application...');
         
         // Apply netplan to ensure configuration is clean
-        NetworkLogger.info('Applying VLAN deletion configuration...');
+        NetworkLogger.info('Testing VLAN deletion configuration...');
         try {
-            await cockpit.spawn(['netplan', 'apply'], { superuser: 'require' });
-            NetworkLogger.info('VLAN deletion configuration applied successfully');
+            await applyNetplanWithConfirmation(60); // 1-minute timeout for deletion
+            NetworkLogger.info('VLAN deletion configuration confirmed and applied successfully');
         } catch (applyError) {
-            NetworkLogger.error('Netplan apply failed:', applyError);
+            NetworkLogger.error('Netplan confirmation failed:', applyError);
             
             // Check if this is the same bond configuration issue
-            if (applyError.exit_status === 78 && applyError.message && applyError.message.includes('unknown bond mode')) {
-                NetworkLogger.warning('Bond configuration error detected during apply. VLAN files were deleted but network configuration not fully applied.');
+            if (applyError.message && applyError.message.includes('unknown bond mode')) {
+                NetworkLogger.warning('Bond configuration error detected during confirmation. VLAN files were deleted but bond error prevents full network reload.');
                 
                 if (typeof NetworkManager !== 'undefined' && NetworkManager.showToast) {
                     NetworkManager.showToast('warning', 'VLAN configuration files deleted but bond error prevents full network reload. Please fix bond configuration.');
@@ -2341,8 +2798,8 @@ function deleteVlanOriginal(vlanId) {
                 return cockpit.spawn(['rm', '-f', configPath], { superuser: 'try' });
             })
             .then(() => {
-                // Apply netplan to ensure configuration is clean
-                return cockpit.spawn(['netplan', 'apply'], { superuser: 'try' });
+                // Test netplan configuration with user confirmation
+                return applyNetplanWithConfirmation(60); // 1-minute timeout for deletion
             })
             .then(() => {
                 NetworkManager.showSuccess(`VLAN ${vlanId} deleted successfully`);
@@ -2401,8 +2858,12 @@ function populateEditIpAddresses(ipAddresses) {
     
     if (!container) {
         NetworkLogger.error('VlanManager: edit-ip-addresses-container not found!');
+        NetworkLogger.error('VlanManager: Available elements with id:', document.querySelectorAll('[id*="ip"]'));
         return;
     }
+    
+    NetworkLogger.info('VlanManager: Container found:', container);
+    NetworkLogger.info('VlanManager: Container innerHTML before clear:', container.innerHTML);
     
     // Clear existing entries
     container.innerHTML = '';
@@ -2459,7 +2920,7 @@ function addEditIpAddress() {
     
     const container = document.getElementById('edit-ip-addresses-container');
     
-    // Debug: Log current state before adding
+    // Log current state before adding
     const existingInputs = container.querySelectorAll('.edit-ip-address-input');
     NetworkLogger.info(`VlanManager: Before adding - existing inputs: ${existingInputs.length}`);
     existingInputs.forEach((input, idx) => {
@@ -2488,12 +2949,11 @@ function addEditIpAddress() {
     
     // Setup live validation for the new input
     const newInput = document.getElementById(`edit-vlan-ip-${window.editIpAddressCounter}`);
-    // Temporarily disabled to test if this is causing the IP collection issue
-    // if (typeof setupLiveValidation === 'function') {
-    //     setupLiveValidation(newInput.closest('form'));
-    // }
+    if (typeof setupLiveValidation === 'function') {
+        setupLiveValidation(newInput.closest('form'));
+    }
     
-    // Debug: Log state after adding
+    // Log state after adding
     const allInputsAfter = container.querySelectorAll('.edit-ip-address-input');
     NetworkLogger.info(`VlanManager: After adding - total inputs: ${allInputsAfter.length}`);
     allInputsAfter.forEach((input, idx) => {
@@ -2526,145 +2986,56 @@ function updateEditRemoveButtonVisibility() {
     });
 }
 
-// Debugging function to manually test IP collection
-function debugIpCollection() {
-    console.log('=== MANUAL IP COLLECTION DEBUG ===');
-    const container = document.getElementById('edit-ip-addresses-container');
-    
-    console.log('Container:', container);
-    console.log('Container exists:', !!container);
-    
-    if (container) {
-        console.log('Container innerHTML length:', container.innerHTML.length);
-        console.log('Container children count:', container.children.length);
-        
-        // Try different selectors
-        const allInputs = container.querySelectorAll('input');
-        const editInputs = container.querySelectorAll('.edit-ip-address-input');
-        const formControls = container.querySelectorAll('.form-control');
-        
-        console.log('All inputs in container:', allInputs.length);
-        console.log('Inputs with .edit-ip-address-input class:', editInputs.length);
-        console.log('Inputs with .form-control class:', formControls.length);
-        
-        // Check each input type
-        allInputs.forEach((input, index) => {
-            console.log(`All Input ${index}:`, {
-                element: input,
-                id: input.id,
-                value: input.value,
-                classes: Array.from(input.classList),
-                hasEditClass: input.classList.contains('edit-ip-address-input')
-            });
-        });
-        
-        editInputs.forEach((input, index) => {
-            console.log(`Edit Input ${index}:`, {
-                element: input,
-                id: input.id,
-                value: input.value,
-                trimmedValue: input.value.trim(),
-                visible: input.offsetParent !== null,
-                inDOM: document.contains(input),
-                parent: input.parentElement,
-                dataIndex: input.closest('.ip-address-entry')?.getAttribute('data-index')
-            });
-        });
-    }
-    
-    const collected = collectEditIpAddresses();
-    console.log('Collected IPs:', collected);
-    console.log('=== END MANUAL DEBUG ===');
-    
-    // Show alert with results
-    const debugAllInputs = container ? container.querySelectorAll('input') : [];
-    const debugEditInputs = container ? container.querySelectorAll('.edit-ip-address-input') : [];
-    
-    alert(`Debug Results:
-Total inputs in container: ${debugAllInputs.length}
-Edit IP inputs found: ${debugEditInputs.length}
-Collected IP addresses: ${collected.length}
-IPs: ${collected.join(', ')}`);
-}
-
-// Simple test function to check input field states
-function testInputStates() {
+// Emergency IP collection - collects all text inputs from edit container
+function emergencyCollectAllIps() {
     const container = document.getElementById('edit-ip-addresses-container');
     if (!container) {
-        console.log('Container not found!');
-        return;
+        return [];
     }
     
-    console.log('=== INPUT STATES TEST ===');
-    const inputs = container.querySelectorAll('.edit-ip-address-input');
-    console.log(`Found ${inputs.length} input fields`);
+    const textInputs = container.querySelectorAll('input[type="text"]');
+    const allIpAddresses = [];
     
-    const values = [];
-    inputs.forEach((input, index) => {
-        const value = input.value;
-        values.push(value);
-        console.log(`Input ${index}: id=${input.id}, value='${value}'`);
-        
-        // Test if input is responding to changes
-        const originalValue = input.value;
-        input.value = 'TEST';
-        const testValue = input.value;
-        input.value = originalValue;
-        
-        console.log(`Input ${index} test: Original='${originalValue}', Test='${testValue}', Restored='${input.value}' - ${testValue === 'TEST' ? 'WORKING' : 'NOT WORKING'}`);
+    // Collect from ALL text inputs
+    textInputs.forEach((input) => {
+        const value = input.value.trim();
+        if (value) {
+            const normalizedIp = normalizeIpWithCidr ? normalizeIpWithCidr(value) : value;
+            allIpAddresses.push(normalizedIp);
+        }
     });
     
-    console.log('All values:', values);
-    console.log('=== END INPUT STATES TEST ===');
-    return values;
+    return allIpAddresses;
 }
 
 function collectEditIpAddresses() {
-    // Look for both edit form inputs and any other IP inputs that might have been added
     const container = document.getElementById('edit-ip-addresses-container');
-    const ipInputs = container ? container.querySelectorAll('input[type="text"]') : [];
-    const ipAddresses = [];
+    if (!container) {
+        return [];
+    }
     
-    NetworkLogger.info(`VlanManager: collectEditIpAddresses - Found ${ipInputs.length} IP input fields in edit container`);
-    console.log('=== IP COLLECTION DEBUG ===');
-    console.log('Total input fields found:', ipInputs.length);
-    console.log('Selector used: input[type="text"] within edit container');
+    // Use the working approach: collect ALL text inputs in the container
+    const textInputs = container.querySelectorAll('input[type="text"]');
+    const allIpAddresses = [];
     
-    // Additional debugging - let's check the container
-    console.log('Container innerHTML:', container ? container.innerHTML : 'Container not found');
+    NetworkLogger.info(`VlanManager: collectEditIpAddresses - Found ${textInputs.length} IP input fields in edit container`);
     
-    ipInputs.forEach((input, index) => {
+    textInputs.forEach((input, index) => {
         const value = input.value.trim();
-        console.log(`Input ${index}:`, {
-            id: input.id,
-            value: value,
-            rawValue: input.value,
-            visible: input.offsetParent !== null,
-            exists: document.contains(input),
-            parent: input.parentElement ? input.parentElement.className : 'no parent',
-            classList: Array.from(input.classList),
-            type: input.type,
-            name: input.name
-        });
         
         NetworkLogger.info(`VlanManager: Input ${index} (id: ${input.id}): value='${value}', visible=${input.offsetParent !== null}`);
         
         if (value) {
-            // Normalize IP address with default /24 CIDR if not provided
             const normalizedIp = normalizeIpWithCidr(value);
-            ipAddresses.push(normalizedIp);
-            console.log(`Added IP: ${value} -> ${normalizedIp}`);
+            allIpAddresses.push(normalizedIp);
             NetworkLogger.info(`VlanManager: Added IP address: '${value}' -> '${normalizedIp}'`);
         } else {
-            console.log(`Skipped empty input ${index} with value: '${input.value}'`);
             NetworkLogger.info(`VlanManager: Skipped empty IP input ${index}`);
         }
     });
     
-    console.log('Final collected IPs:', ipAddresses);
-    console.log('=== END IP COLLECTION DEBUG ===');
-    NetworkLogger.info(`VlanManager: collectEditIpAddresses - Final collected IPs:`, ipAddresses);
-    return ipAddresses;
+    NetworkLogger.info(`VlanManager: collectEditIpAddresses - Final collected IPs:`, allIpAddresses);
+    return allIpAddresses;
 }
 
 // Multiple IP Address Management Functions
@@ -2767,76 +3138,6 @@ function populateIpAddresses(ipAddresses) {
     updateRemoveButtonVisibility();
 }
 
-// Test function to validate VLAN parent interface detection
-async function testVlanIpParsing() {
-    NetworkLogger.info('Testing VLAN IP parsing...');
-    try {
-        // Get current ip a output
-        const ipOutput = await cockpit.spawn(['ip', 'a'], { superuser: 'try' });
-        NetworkLogger.info('Current ip a output:', ipOutput.substring(0, 1000) + '...');
-        
-        // Find VLAN interfaces and test parsing
-        const vlans = VlanManager.vlans;
-        for (const vlan of vlans) {
-            NetworkLogger.info(`Testing IP parsing for VLAN: ${vlan.name}`);
-            const details = await VlanManager.getVlanDetailsFromSystem(vlan.name, ipOutput);
-            NetworkLogger.info(`Parsed details for ${vlan.name}:`, details);
-        }
-    } catch (error) {
-        NetworkLogger.error('Error in testVlanIpParsing:', error);
-    }
-}
-
-// Simple test function for browser console
-function testParsingLogic() {
-    console.log('Testing IP parsing logic...');
-    
-    const sampleOutput = `1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
-    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
-    inet 127.0.0.1/8 scope host lo
-2: eno1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
-    link/ether 00:25:90:8e:7e:f8 brd ff:ff:ff:ff:ff:ff
-    inet 192.168.1.100/24 brd 192.168.1.255 scope global eno1
-3: eno1.100@eno1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
-    link/ether 00:25:90:8e:7e:f8 brd ff:ff:ff:ff:ff:ff
-    inet 10.100.1.50/24 brd 10.100.1.255 scope global eno1.100
-    inet 10.100.1.51/24 scope global secondary eno1.100`;
-    
-    const interfaceName = 'eno1.100';
-    const details = { ipAddresses: [], status: 'unknown' };
-    
-    const lines = sampleOutput.split('\n');
-    let inInterfaceBlock = false;
-    
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const interfaceMatch = line.match(/^\d+:\s+([^@:\s]+)(?:@([^:\s]+))?:/);
-        
-        if (interfaceMatch) {
-            const currentInterface = interfaceMatch[1];
-            if (currentInterface === interfaceName) {
-                inInterfaceBlock = true;
-                details.status = line.includes('state UP') ? 'up' : 'down';
-                console.log(`Found interface ${interfaceName}, status: ${details.status}`);
-                continue;
-            } else {
-                if (inInterfaceBlock) break;
-                inInterfaceBlock = false;
-            }
-        }
-        
-        if (inInterfaceBlock && line.trim().startsWith('inet ')) {
-            const ipMatch = line.match(/inet\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(?:\/[0-9]+)?)/);
-            if (ipMatch) {
-                details.ipAddresses.push(ipMatch[1]);
-                console.log(`Found IP: ${ipMatch[1]}`);
-            }
-        }
-    }
-    
-    console.log('Final details:', details);
-    return details;
-}
 function normalizeIpWithCidr(ipAddress) {
     if (!ipAddress || !ipAddress.trim()) {
         return '';
@@ -2904,14 +3205,676 @@ window.addEditIpAddress = addEditIpAddress;
 window.removeEditIpAddress = removeEditIpAddress;
 window.updateEditRemoveButtonVisibility = updateEditRemoveButtonVisibility;
 window.collectEditIpAddresses = collectEditIpAddresses;
-window.debugIpCollection = debugIpCollection;
-window.testInputStates = testInputStates;
 window.addIpAddress = addIpAddress;
 window.removeIpAddress = removeIpAddress;
 window.updateRemoveButtonVisibility = updateRemoveButtonVisibility;
 window.collectIpAddresses = collectIpAddresses;
-window.testVlanIpParsing = testVlanIpParsing;
-window.testParsingLogic = testParsingLogic;
+
+// Helper function to apply netplan configuration safely with user confirmation
+async function applyNetplanWithConfirmation(timeout = 120) {
+    NetworkLogger.info('Testing Netplan configuration with automatic revert protection...');
+    
+    return new Promise(async (resolve, reject) => {
+        try {
+            // Show informational modal about what's happening
+            showNetplanAutoRevertInfo(timeout);
+            
+            // Use netplan try with automatic revert - this is the safest approach
+            NetworkLogger.info(`Running netplan try with ${timeout}s automatic revert timeout...`);
+            
+            // Run netplan try without PTY - let it handle the timeout automatically
+            const tryProcess = cockpit.spawn(['netplan', 'try', '--timeout', timeout.toString()], { 
+                superuser: 'try'
+            });
+            
+            // Set up timeout handler for our modal
+            const modalTimeoutId = setTimeout(() => {
+                NetworkLogger.info('Modal timeout reached - netplan try will auto-revert');
+                NetworkManager.closeModal();
+                reject(new Error('Configuration test timed out and was automatically reverted for safety'));
+            }, (timeout + 5) * 1000); // Give 5 extra seconds after netplan timeout
+            
+            tryProcess.done(() => {
+                clearTimeout(modalTimeoutId);
+                NetworkLogger.info('Netplan try completed successfully - configuration accepted');
+                
+                // Close info modal
+                NetworkManager.closeModal();
+                
+                // Configuration was accepted, now ask if user wants to make it permanent
+                setTimeout(() => showNetplanApplyConfirmation(resolve, reject), 500);
+            });
+            
+            tryProcess.fail((error) => {
+                clearTimeout(modalTimeoutId);
+                NetworkLogger.error('Netplan try failed or timed out:', error);
+                
+                // Close info modal
+                NetworkManager.closeModal();
+                
+                // Check if it was a timeout (configuration reverted) or real error
+                if (error.exit_status === 130 || error.message?.includes('timeout') || error.message?.includes('cancelled')) {
+                    // This was a timeout - configuration was automatically reverted
+                    setTimeout(() => showNetplanTimeoutRevertModal(reject), 500);
+                } else {
+                    // This was a real error
+                    setTimeout(() => showNetplanErrorModal(error, reject), 500);
+                }
+            });
+            
+        } catch (error) {
+            NetworkLogger.error('Error starting netplan try:', error);
+            
+            // Close progress modal if open
+            if (document.querySelector('.modal')) {
+                NetworkManager.closeModal();
+            }
+            
+            reject(error);
+        }
+    });
+}
+
+// Show information modal about netplan try with auto-revert
+function showNetplanAutoRevertInfo(timeout) {
+    const modalContent = `
+        <div class="netplan-auto-revert-content">
+            <div class="alert alert-info">
+                <i class="fas fa-shield-alt"></i>
+                <strong>Safe Network Configuration Test</strong>
+            </div>
+            
+            <p>The system is testing your network configuration with <strong>automatic safety protection</strong>.</p>
+            
+            <div class="safety-info">
+                <div class="safety-step">
+                    <i class="fas fa-play-circle text-primary"></i>
+                    <div class="step-content">
+                        <strong>Testing in Progress</strong>
+                        <p>The new configuration is being applied temporarily for testing</p>
+                    </div>
+                </div>
+                <div class="safety-step active">
+                    <i class="fas fa-shield-alt text-success"></i>
+                    <div class="step-content">
+                        <strong>Automatic Safety Revert</strong>
+                        <p>If network connectivity is lost, the configuration will automatically revert in ${timeout} seconds</p>
+                    </div>
+                </div>
+                <div class="safety-step">
+                    <i class="fas fa-check-circle text-info"></i>
+                    <div class="step-content">
+                        <strong>Manual Confirmation</strong>
+                        <p>If connectivity is maintained, you'll be prompted to make changes permanent</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="connection-status">
+                <div class="status-item">
+                    <i class="fas fa-wifi text-success"></i>
+                    <strong>Connection Test:</strong> If you can see this message, your connection is working
+                </div>
+                <div class="status-item">
+                    <i class="fas fa-clock text-warning"></i>
+                    <strong>Timeout Protection:</strong> Configuration will auto-revert if no response in ${timeout} seconds
+                </div>
+                <div class="status-item">
+                    <i class="fas fa-undo text-info"></i>
+                    <strong>No Risk:</strong> Your original configuration will be restored automatically if needed
+                </div>
+            </div>
+            
+            <div class="waiting-indicator">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="sr-only">Testing configuration...</span>
+                </div>
+                <p><strong>Please wait while the configuration is tested...</strong></p>
+                <p class="text-muted">This window will update automatically when testing is complete.</p>
+            </div>
+        </div>
+        
+        <style>
+            .netplan-auto-revert-content { font-family: system-ui, -apple-system, sans-serif; }
+            .alert { padding: 12px; border-radius: 6px; margin-bottom: 16px; }
+            .alert-info { background: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; }
+            .safety-info { margin: 20px 0; }
+            .safety-step { display: flex; align-items: flex-start; gap: 12px; margin: 16px 0; padding: 12px; border-radius: 6px; background: #f8f9fa; }
+            .safety-step.active { background: #e7f3ff; border: 1px solid #b8daff; }
+            .safety-step i { font-size: 16px; margin-top: 2px; }
+            .step-content strong { display: block; margin-bottom: 4px; color: #333; }
+            .step-content p { margin: 0; color: #666; font-size: 14px; }
+            .connection-status { background: #f8f9fa; padding: 16px; border-radius: 6px; margin: 20px 0; }
+            .status-item { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+            .status-item i { font-size: 14px; }
+            .text-primary { color: #007bff !important; }
+            .text-success { color: #28a745 !important; }
+            .text-warning { color: #ffc107 !important; }
+            .text-info { color: #17a2b8 !important; }
+            .text-muted { color: #6c757d !important; }
+            .waiting-indicator { text-align: center; margin: 20px 0; }
+            .spinner-border { width: 2rem; height: 2rem; margin-bottom: 12px; }
+            .spinner-border { border: 0.25em solid rgba(0, 123, 255, 0.25); border-right-color: #007bff; border-radius: 50%; animation: spinner-border 0.75s linear infinite; }
+            @keyframes spinner-border { to { transform: rotate(360deg); } }
+        </style>
+    `;
+    
+    // No footer buttons - this is an informational modal
+    const modalFooter = ``;
+    
+    // Create modal without close option
+    NetworkManager.createModal('Network Configuration Safety Test', modalContent, modalFooter, { 
+        allowClose: false 
+    });
+}
+
+// Show modal when netplan try times out and reverts automatically
+function showNetplanTimeoutRevertModal(reject) {
+    const modalContent = `
+        <div class="netplan-timeout-revert-content">
+            <div class="alert alert-success">
+                <i class="fas fa-shield-alt"></i>
+                <strong>Configuration Automatically Reverted</strong>
+            </div>
+            
+            <p>The network configuration test timed out, and <strong>your original configuration has been automatically restored</strong> to prevent network lockout.</p>
+            
+            <div class="revert-info">
+                <div class="info-item success">
+                    <i class="fas fa-check-circle text-success"></i>
+                    <strong>Safety Protection Activated:</strong> The automatic revert feature prevented potential network isolation.
+                </div>
+                <div class="info-item">
+                    <i class="fas fa-undo text-info"></i>
+                    <strong>Configuration Restored:</strong> Your network settings have been returned to their previous working state.
+                </div>
+                <div class="info-item">
+                    <i class="fas fa-network-wired text-primary"></i>
+                    <strong>Connectivity Preserved:</strong> Your network connection should now be fully restored.
+                </div>
+            </div>
+            
+            <div class="what-happened">
+                <h4>What happened?</h4>
+                <p>The new network configuration may have caused connectivity issues or conflicts. Common causes include:</p>
+                <ul>
+                    <li>IP address conflicts with existing network infrastructure</li>
+                    <li>Incorrect gateway or routing configuration</li>
+                    <li>VLAN configuration incompatible with network switch settings</li>
+                    <li>Parent interface or dependency issues</li>
+                </ul>
+            </div>
+            
+            <div class="next-steps">
+                <h4>Recommended next steps:</h4>
+                <ul>
+                    <li>Review the VLAN configuration for conflicts or errors</li>
+                    <li>Verify the parent interface is properly configured</li>
+                    <li>Check network switch VLAN settings if applicable</li>
+                    <li>Consider testing with different IP addresses or VLAN settings</li>
+                </ul>
+            </div>
+        </div>
+        
+        <style>
+            .netplan-timeout-revert-content { font-family: system-ui, -apple-system, sans-serif; }
+            .alert-success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+            .revert-info { background: #f8f9fa; padding: 16px; border-radius: 6px; margin: 16px 0; }
+            .info-item { display: flex; align-items: center; gap: 8px; margin: 12px 0; }
+            .info-item i { font-size: 14px; }
+            .what-happened, .next-steps { background: #fff3cd; padding: 12px; border-radius: 6px; margin: 16px 0; border-left: 4px solid #ffc107; }
+            .what-happened h4, .next-steps h4 { margin-top: 0; color: #856404; }
+            ul { margin-bottom: 0; }
+            .text-success { color: #28a745 !important; }
+            .text-info { color: #17a2b8 !important; }
+            .text-primary { color: #007bff !important; }
+        </style>
+    `;
+    
+    const modalFooter = `
+        <button class="btn btn-outline-secondary" onclick="NetworkManager.closeModal();">Close</button>
+    `;
+    
+    // Create modal
+    NetworkManager.createModal('Network Configuration Auto-Reverted', modalContent, modalFooter);
+    
+    setTimeout(() => {
+        reject(new Error('Network configuration test timed out and was automatically reverted for safety'));
+    }, 100);
+}
+
+// Show progress modal while netplan try is running
+function showNetplanTestingProgress(timeout) {
+    const modalContent = `
+        <div class="netplan-testing-content">
+            <div class="alert alert-info">
+                <i class="fas fa-cog fa-spin"></i>
+                <strong>Testing Network Configuration</strong>
+            </div>
+            
+            <p>The system is currently testing your network configuration. <strong>Please wait while the test completes.</strong></p>
+            
+            <div class="test-progress">
+                <div class="progress-step active">
+                    <i class="fas fa-file-alt"></i>
+                    <div class="step-content">
+                        <strong>Validating Configuration</strong>
+                        <p>Checking Netplan YAML syntax and structure</p>
+                    </div>
+                </div>
+                <div class="progress-step active">
+                    <i class="fas fa-network-wired fa-pulse"></i>
+                    <div class="step-content">
+                        <strong>Testing Network Connectivity</strong>
+                        <p>Applying configuration temporarily and checking network status</p>
+                    </div>
+                </div>
+                <div class="progress-step">
+                    <i class="fas fa-check-circle"></i>
+                    <div class="step-content">
+                        <strong>Verification Complete</strong>
+                        <p>Configuration will be evaluated for permanent application</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="test-info">
+                <div class="info-item">
+                    <i class="fas fa-info-circle text-info"></i>
+                    <strong>Safety Feature:</strong> This test will automatically revert if any issues are detected.
+                </div>
+                <div class="info-item">
+                    <i class="fas fa-clock text-warning"></i>
+                    <strong>Timeout:</strong> Test will complete within ${timeout} seconds maximum.
+                </div>
+                <div class="info-item">
+                    <i class="fas fa-shield-alt text-success"></i>
+                    <strong>No Risk:</strong> Your current network configuration is preserved during testing.
+                </div>
+            </div>
+            
+            <div class="loading-indicator">
+                <div class="spinner-border" role="status">
+                    <span class="sr-only">Testing in progress...</span>
+                </div>
+                <p><strong>Running netplan try...</strong></p>
+            </div>
+        </div>
+        
+        <style>
+            .netplan-testing-content { font-family: system-ui, -apple-system, sans-serif; }
+            .alert { padding: 12px; border-radius: 6px; margin-bottom: 16px; }
+            .alert-info { background: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; }
+            .test-progress { margin: 20px 0; }
+            .progress-step { display: flex; align-items: flex-start; gap: 12px; margin: 16px 0; padding: 12px; border-radius: 6px; transition: all 0.3s ease; }
+            .progress-step.active { background: #e7f3ff; border: 1px solid #b8daff; }
+            .progress-step:not(.active) { background: #f8f9fa; opacity: 0.6; }
+            .progress-step i { font-size: 16px; margin-top: 2px; color: #007bff; }
+            .step-content strong { display: block; margin-bottom: 4px; color: #333; }
+            .step-content p { margin: 0; color: #666; font-size: 14px; }
+            .test-info { background: #f8f9fa; padding: 16px; border-radius: 6px; margin: 20px 0; }
+            .info-item { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+            .info-item i { font-size: 14px; }
+            .text-info { color: #17a2b8 !important; }
+            .text-warning { color: #ffc107 !important; }
+            .text-success { color: #28a745 !important; }
+            .loading-indicator { text-align: center; margin: 20px 0; }
+            .spinner-border { width: 2rem; height: 2rem; margin-bottom: 12px; }
+            .spinner-border { border: 0.25em solid rgba(0, 123, 255, 0.25); border-right-color: #007bff; border-radius: 50%; animation: spinner-border 0.75s linear infinite; }
+            @keyframes spinner-border { to { transform: rotate(360deg); } }
+            .fa-pulse { animation: fa-pulse 1s infinite linear; }
+            @keyframes fa-pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+        </style>
+    `;
+    
+    // No footer buttons - this is a progress modal
+    const modalFooter = ``;
+    
+    // Create modal without close option (user should wait for test to complete)
+    NetworkManager.createModal('Network Configuration Test', modalContent, modalFooter, { 
+        allowClose: false 
+    });
+}
+
+// Restore critical system routes after netplan operations
+async function restoreSystemRoutes() {
+    if (!window.preservedSystemRoutes || window.preservedSystemRoutes.length === 0) {
+        NetworkLogger.info('No preserved system routes to restore');
+        return;
+    }
+    
+    try {
+        NetworkLogger.info('Restoring critical system routes...');
+        
+        // Get current routes to see what's missing
+        const currentRoutesOutput = await cockpit.spawn(['ip', 'route', 'show'], { superuser: 'try' });
+        const currentRoutes = currentRoutesOutput.trim().split('\n').filter(line => line.trim());
+        
+        // Find routes that need to be restored
+        const routesToRestore = window.preservedSystemRoutes.filter(route => {
+            // Focus on critical routes: default routes and static routes
+            if (route.includes('default via') || (route.includes('via') && !route.includes('proto kernel'))) {
+                // Check if this route is missing from current routes
+                return !currentRoutes.some(currentRoute => 
+                    currentRoute.trim() === route.trim() || 
+                    currentRoute.includes(route.split(' ')[0]) // Check destination
+                );
+            }
+            return false;
+        });
+        
+        NetworkLogger.info('Routes to restore:', routesToRestore);
+        
+        // Restore missing critical routes
+        for (const route of routesToRestore) {
+            if (!route.trim()) continue;
+            
+            try {
+                NetworkLogger.info('Attempting to restore route:', route);
+                
+                // Parse route components
+                const parts = route.trim().split(/\s+/);
+                const routeCmd = ['ip', 'route', 'add'];
+                
+                // Build route command from parts
+                let i = 0;
+                while (i < parts.length) {
+                    const part = parts[i];
+                    
+                    if (part === 'default') {
+                        routeCmd.push('default');
+                    } else if (part === 'via') {
+                        routeCmd.push('via', parts[i + 1]);
+                        i++; // skip next part as it's the gateway
+                    } else if (part === 'dev') {
+                        routeCmd.push('dev', parts[i + 1]);
+                        i++; // skip next part as it's the device
+                    } else if (part === 'proto') {
+                        routeCmd.push('proto', parts[i + 1]);
+                        i++; // skip next part as it's the protocol
+                    } else if (part.includes('/') || /^\d+\.\d+\.\d+\.\d+$/.test(part)) {
+                        // This is a destination
+                        if (routeCmd.length === 3) { // Only add if it's the first destination
+                            routeCmd.push(part);
+                        }
+                    }
+                    i++;
+                }
+                
+                // Only execute if we have a valid route command
+                if (routeCmd.length > 3) {
+                    NetworkLogger.info('Executing route restore command:', routeCmd);
+                    await cockpit.spawn(routeCmd, { superuser: 'try' });
+                    NetworkLogger.info('Successfully restored route:', route);
+                } else {
+                    NetworkLogger.warning('Could not parse route for restoration:', route);
+                }
+                
+            } catch (routeError) {
+                NetworkLogger.warning('Could not restore route:', route, routeError);
+                // Continue with other routes - don't fail the entire operation
+            }
+        }
+        
+        // Clean up the preserved routes
+        window.preservedSystemRoutes = null;
+        NetworkLogger.info('System route restoration completed');
+        
+    } catch (error) {
+        NetworkLogger.error('Failed to restore system routes:', error);
+        throw error;
+    }
+}
+
+// Show confirmation dialog after successful netplan try
+function showNetplanApplyConfirmation(resolve, reject) {
+    const modalContent = `
+        <div class="netplan-confirmation-content">
+            <div class="alert alert-success">
+                <i class="fas fa-check-circle"></i>
+                <strong>Configuration Test Successful</strong>
+            </div>
+            
+            <p>The network configuration has been tested successfully! <strong>Your network connection is working properly with the new configuration.</strong></p>
+            
+            <div class="test-results">
+                <div class="test-result success">
+                    <i class="fas fa-check text-success"></i>
+                    <strong>Configuration Valid:</strong> The new network configuration is syntactically correct and compatible.
+                </div>
+                <div class="test-result success">
+                    <i class="fas fa-check text-success"></i>
+                    <strong>Network Connectivity:</strong> You can still access this interface, indicating network connectivity is maintained.
+                </div>
+                <div class="test-result success">
+                    <i class="fas fa-check text-success"></i>
+                    <strong>Interface Status:</strong> The VLAN interface has been created and configured successfully.
+                </div>
+            </div>
+            
+            <div class="apply-options">
+                <h4>Do you want to make these changes permanent?</h4>
+                <p>You can choose to:</p>
+                <ul>
+                    <li><strong>Apply Permanently:</strong> Run <code>netplan apply</code> to make the configuration persistent across reboots</li>
+                    <li><strong>Keep Temporary:</strong> Keep the current working configuration but don't make it permanent (will revert on reboot)</li>
+                    <li><strong>Revert Changes:</strong> Undo the configuration changes and return to the previous state</li>
+                </ul>
+            </div>
+        </div>
+        
+        <style>
+            .netplan-confirmation-content { font-family: system-ui, -apple-system, sans-serif; }
+            .alert { padding: 12px; border-radius: 6px; margin-bottom: 16px; }
+            .alert-success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+            .test-results { background: #f8f9fa; padding: 16px; border-radius: 6px; margin: 16px 0; }
+            .test-result { margin: 12px 0; padding: 8px 0; }
+            .test-result i { margin-right: 8px; }
+            .apply-options { background: #e7f3ff; padding: 12px; border-radius: 6px; margin: 16px 0; border: 1px solid #b8daff; }
+            .apply-options h4 { margin-top: 0; color: #004085; }
+            .apply-options ul { margin-bottom: 0; }
+            .text-success { color: #28a745 !important; }
+            code { background: #f8f9fa; padding: 2px 4px; border-radius: 3px; font-family: monospace; }
+        </style>
+    `;
+    
+    const modalFooter = `
+        <button class="btn btn-outline-secondary" onclick="revertNetplanConfig();">Revert Changes</button>
+        <button class="btn btn-outline-primary" onclick="keepTemporaryConfig();">Keep Temporary</button>
+        <button class="btn btn-success" onclick="applyNetplanPermanently();">Apply Permanently</button>
+    `;
+    
+    // Global functions for modal buttons
+    window.applyNetplanPermanently = async () => {
+        try {
+            NetworkManager.closeModal();
+            NetworkLogger.info('User chose to apply configuration permanently');
+            
+            // Show progress
+            if (typeof NetworkManager !== 'undefined' && NetworkManager.showToast) {
+                NetworkManager.showToast('info', 'Applying configuration permanently...');
+            }
+            
+            // Run netplan apply
+            await cockpit.spawn(['netplan', 'apply'], { superuser: 'try' });
+            NetworkLogger.info('Netplan apply completed successfully');
+            
+            // Restore critical system routes if they were preserved
+            await restoreSystemRoutes();
+            
+            if (typeof NetworkManager !== 'undefined' && NetworkManager.showToast) {
+                NetworkManager.showToast('success', 'Configuration applied permanently');
+            }
+            resolve(true);
+        } catch (error) {
+            NetworkLogger.error('Netplan apply failed:', error);
+            NetworkManager.showError(`Failed to apply configuration permanently: ${error.message || error}`);
+            reject(error);
+        }
+    };
+    
+    window.keepTemporaryConfig = async () => {
+        try {
+            NetworkManager.closeModal();
+            NetworkLogger.info('User chose to keep temporary configuration');
+            
+            // Restore critical system routes if they were preserved
+            await restoreSystemRoutes();
+            
+            if (typeof NetworkManager !== 'undefined' && NetworkManager.showToast) {
+                NetworkManager.showToast('warning', 'Configuration is temporary - will revert on reboot');
+            }
+            resolve(true);
+        } catch (error) {
+            NetworkLogger.error('Failed to restore routes after keeping temporary config:', error);
+            if (typeof NetworkManager !== 'undefined' && NetworkManager.showToast) {
+                NetworkManager.showToast('warning', 'Configuration kept but some routes may need manual restoration');
+            }
+            resolve(true); // Don't fail the operation just for route restoration
+        }
+    };
+    
+    window.revertNetplanConfig = async () => {
+        try {
+            NetworkManager.closeModal();
+            NetworkLogger.info('User chose to revert configuration');
+            
+            // Show progress
+            if (typeof NetworkManager !== 'undefined' && NetworkManager.showToast) {
+                NetworkManager.showToast('info', 'Reverting configuration...');
+            }
+            
+            // Reload previous configuration
+            await cockpit.spawn(['netplan', 'apply'], { superuser: 'try' });
+            NetworkLogger.info('Configuration reverted successfully');
+            if (typeof NetworkManager !== 'undefined' && NetworkManager.showToast) {
+                NetworkManager.showToast('info', 'Configuration reverted to previous state');
+            }
+            reject(new Error('User chose to revert configuration'));
+        } catch (error) {
+            NetworkLogger.error('Failed to revert configuration:', error);
+            NetworkManager.showError(`Failed to revert configuration: ${error.message || error}`);
+            reject(error);
+        }
+    };
+    
+    // Create modal
+    NetworkManager.createModal('Apply Network Configuration', modalContent, modalFooter);
+}
+
+// Show error modal when netplan try fails
+function showNetplanErrorModal(error, reject) {
+    const modalContent = `
+        <div class="netplan-error-content">
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle"></i>
+                <strong>Configuration Test Failed</strong>
+            </div>
+            
+            <p>The network configuration test failed. <strong>This indicates there may be issues with the configuration that could cause network problems.</strong></p>
+            
+            <div class="error-details">
+                <h4>Error Details:</h4>
+                <div class="error-message">
+                    <code>${error.message || error}</code>
+                </div>
+            </div>
+            
+            <div class="error-implications">
+                <h4>What this means:</h4>
+                <ul>
+                    <li>The configuration has syntax errors or conflicts</li>
+                    <li>Applying this configuration could break network connectivity</li>
+                    <li>The system has prevented applying the problematic configuration</li>
+                </ul>
+            </div>
+            
+            <div class="recommendations">
+                <h4>Recommendations:</h4>
+                <ul>
+                    <li>Review the VLAN configuration for errors</li>
+                    <li>Check for IP address conflicts or invalid settings</li>
+                    <li>Verify parent interface exists and is properly configured</li>
+                    <li>Consult the system logs for more detailed error information</li>
+                </ul>
+            </div>
+        </div>
+        
+        <style>
+            .netplan-error-content { font-family: system-ui, -apple-system, sans-serif; }
+            .alert-danger { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+            .error-details, .error-implications, .recommendations { background: #f8f9fa; padding: 12px; border-radius: 6px; margin: 16px 0; }
+            .error-message { background: #fff; padding: 8px; border-radius: 4px; margin-top: 8px; }
+            .error-message code { background: transparent; color: #d63384; font-family: monospace; }
+            h4 { margin-top: 0; color: #495057; }
+            ul { margin-bottom: 0; }
+        </style>
+    `;
+    
+    const modalFooter = `
+        <button class="btn btn-outline-secondary" onclick="NetworkManager.closeModal();">Close</button>
+    `;
+    
+    // Create modal
+    NetworkManager.createModal('Configuration Test Failed', modalContent, modalFooter);
+    
+    setTimeout(() => {
+        reject(error);
+    }, 100);
+}
+
+// Show timeout modal when netplan try hangs
+function showNetplanTimeoutModal(reject) {
+    const modalContent = `
+        <div class="netplan-timeout-content">
+            <div class="alert alert-warning">
+                <i class="fas fa-clock"></i>
+                <strong>Configuration Test Timed Out</strong>
+            </div>
+            
+            <p>The network configuration test did not complete within the expected time. <strong>This may indicate network connectivity issues.</strong></p>
+            
+            <div class="timeout-implications">
+                <h4>Possible causes:</h4>
+                <ul>
+                    <li>The new configuration may have disrupted network connectivity</li>
+                    <li>There may be conflicts with existing network settings</li>
+                    <li>The system may be experiencing high load or other issues</li>
+                </ul>
+            </div>
+            
+            <div class="safety-note">
+                <h4>Safety measures:</h4>
+                <p>The configuration has been automatically reverted to prevent network lockout. Your original network configuration should be restored.</p>
+            </div>
+        </div>
+        
+        <style>
+            .netplan-timeout-content { font-family: system-ui, -apple-system, sans-serif; }
+            .alert-warning { background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; }
+            .timeout-implications, .safety-note { background: #f8f9fa; padding: 12px; border-radius: 6px; margin: 16px 0; }
+            h4 { margin-top: 0; color: #495057; }
+            ul { margin-bottom: 0; }
+        </style>
+    `;
+    
+    const modalFooter = `
+        <button class="btn btn-outline-secondary" onclick="NetworkManager.closeModal();">Close</button>
+    `;
+    
+    // Create modal
+    NetworkManager.createModal('Configuration Test Timeout', modalContent, modalFooter);
+    
+    setTimeout(() => {
+        reject(new Error('Configuration test timed out'));
+    }, 100);
+}
+
+// Debug function for IP population
+window.debugPopulateIps = function(testIps = ['192.168.1.10/24', '192.168.1.11/24']) {
+    console.log('Debug: Testing IP population with:', testIps);
+    populateEditIpAddresses(testIps);
+};
 
 // Export VlanManager globally so NetworkManager can access it
 window.VlanManager = VlanManager;

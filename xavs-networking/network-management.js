@@ -5506,11 +5506,20 @@ const validators = {
 
     cidr: (value) => {
         if (!value) return { valid: false, message: 'CIDR is required' };
+        
+        // First check if it's a plain IP address (will get /24 default)
+        const ipPattern = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+        if (ipPattern.test(value)) {
+            return { valid: true, message: 'Valid IP address (will default to /24)' };
+        }
+        
+        // Then check if it's a proper CIDR notation
         const cidrPattern = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/(?:[0-9]|[1-2][0-9]|3[0-2])$/;
         if (cidrPattern.test(value)) {
             return { valid: true, message: 'Valid CIDR notation' };
         }
-        return { valid: false, message: 'Invalid CIDR format (e.g., 192.168.1.0/24)' };
+        
+        return { valid: false, message: 'Invalid IP address or CIDR format (e.g., 192.168.1.10 or 192.168.1.0/24)' };
     },
 
     interfaceName: (value) => {
