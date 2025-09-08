@@ -58,7 +58,11 @@ body {
   width: 100%; 
   max-width: 100%; 
   padding: 16px 20px; 
-  box-sizing: border-box; 
+  box-sizing: border-box;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 64px; /* Account for fixed status bar */
 }
 
 /* Topbar - matches bootstrap module */
@@ -191,8 +195,19 @@ body {
 /* Toolbar / Footer */
 .toolbar, .footer-actions {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; padding: 10px 0;
+  gap: 12px; padding: 20px 0;
+  margin: 20px 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  position: relative;
+  min-height: 60px;
 }
+
+/* Ensure footer has proper spacing from content */
+.footer-actions {
+  margin-top: auto;
+}
+
 .toolbar .left, .toolbar .right { display: flex; gap: 10px; }
 
 /* Status panel */
@@ -349,6 +364,20 @@ body {
 .field-required:focus {
   border-color: #ef4444 !important;
   box-shadow: 0 0 0 0.2rem rgba(239, 68, 68, 0.25) !important;
+}
+
+/* Tab error highlighting */
+.nav-link.tab-has-error {
+  position: relative;
+}
+
+.nav-link.tab-has-error::after {
+  content: "●";
+  color: #ef4444;
+  font-size: 18px;
+  font-weight: bold;
+  margin-left: 6px;
+  vertical-align: middle;
 }
 
 /* Disabled save button */
@@ -662,4 +691,94 @@ select option:checked { background: var(--brand); color: #fff; }
 /* Add bottom padding to container to account for fixed status bar */
 .container-fluid {
   padding-bottom: 64px;
+}
+
+/* Dropdown menu positioning */
+.dropdown {
+  position: relative;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 0;
+  min-width: 200px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  z-index: 1050;
+  display: none;
+  max-height: 300px;
+  overflow-y: auto;
+  margin-top: 4px;
+}
+
+.dropdown-menu.show {
+  display: block;
+}
+
+/* Smart dropdown positioning - appears above when near bottom */
+.footer-actions .dropdown-menu {
+  bottom: 100%;
+  top: auto;
+  margin-top: 0;
+  margin-bottom: 4px;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border: none;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.dropdown-item:hover {
+  background: var(--surface-2);
+}
+
+.dropdown-item i {
+  width: 16px;
+  text-align: center;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .footer-actions {
+    flex-direction: column;
+    gap: 16px;
+    padding: 16px 0;
+  }
+  
+  .footer-actions .d-flex {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .dropdown-menu {
+    right: 20px;
+    left: 20px;
+    width: auto;
+    min-width: auto;
+  }
+}
+
+@media (max-height: 600px) {
+  .footer-actions {
+    padding: 12px 0;
+    margin: 10px 0;
+  }
+  
+  .container-fluid {
+    padding-bottom: 100px; /* Extra space when footer might be sticky */
+  }
 }
