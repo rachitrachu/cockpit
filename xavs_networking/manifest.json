@@ -14,11 +14,6 @@
         }
       ]
     }
-  },
-  "menu": {
-    "xavs-networking": {
-      "label": "XAVS Networking",
-      "order": 50
-    }
   }
 }
+

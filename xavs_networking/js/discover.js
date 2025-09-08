@@ -3,6 +3,8 @@
  * Discovers network interfaces and their configuration
  */
 
+/* global run, parseYamlFiles, getInterfaceOwnership */
+
 async function discover() {
   const [links, addrs, routes] = await Promise.all([
     run("ip -json link"), run("ip -json addr"), run("ip -json route")
@@ -102,4 +104,5 @@ function detectCriticalPath(routes) {
 
 // Export to global scope
 window.discover = discover;
+window.categorizeNics = categorizeNics;
 window.detectCriticalPath = detectCriticalPath;
