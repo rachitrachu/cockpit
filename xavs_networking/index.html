@@ -7,7 +7,7 @@
     <script src="../base1/cockpit.js"></script>
     <link rel="stylesheet" href="../xavs-images/xavs-images.css">
     <link rel="stylesheet" href="network-management.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="fontawesome/css/all.min.css">
 </head>
 <body>
     <div class="app">
@@ -56,6 +56,9 @@ Features:
             </a></li>
             <li><a href="#config" class="nav-link" data-tab="config">
                 <i class="fas fa-cog"></i>Configuration
+            </a></li>
+            <li><a href="#logs" class="nav-link" data-tab="logs">
+                <i class="fas fa-terminal"></i>Logs
             </a></li>
         </ul>
 
@@ -197,6 +200,9 @@ Features:
                         <button class="btn btn-outline-brand" onclick="refreshInterfaces()">
                             <i class="fas fa-sync-alt"></i> Refresh
                         </button>
+                        <button class="btn btn-outline-secondary" onclick="debugNetplanConfiguration('interfaces')">
+                            <i class="fas fa-bug"></i> Debug
+                        </button>
                     </div>
                 </div>
 
@@ -206,7 +212,9 @@ Features:
                         <select class="form-control" id="interface-filter" onchange="filterInterfaces()">
                             <option value="all">All Interfaces</option>
                             <option value="ethernet">Ethernet</option>
-                            <option value="wifi">Wi-Fi</option>
+                            <option value="vlan">VLAN</option>
+                            <option value="bond">Bond</option>
+                            <option value="bridge">Bridge</option>
                             <option value="virtual">Virtual</option>
                         </select>
                     </div>
@@ -224,6 +232,18 @@ Features:
                     <div class="actions">
                         <button class="btn btn-brand" onclick="addVlan()">
                             <i class="fas fa-plus"></i> Add VLAN
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="cleanupNetplanConflicts()">
+                            <i class="fas fa-broom"></i> Cleanup Conflicts
+                        </button>
+                        <button class="btn btn-outline-danger" onclick="emergencyCleanupCorruptedVlans()" title="Emergency cleanup for corrupted VLAN configurations with null links">
+                            <i class="fas fa-ambulance"></i> Emergency Cleanup
+                        </button>
+                        <button class="btn btn-outline-warning" onclick="debugNetplanConfiguration()" title="Run netplan --debug try and show detailed output in console">
+                            <i class="fas fa-bug"></i> Debug
+                        </button>
+                        <button class="btn btn-outline-info" onclick="diagnosticVlanConfiguration()" title="Run comprehensive VLAN diagnostic and show detailed report in console">
+                            <i class="fas fa-stethoscope"></i> Diagnostic
                         </button>
                         <button class="btn btn-outline-brand" onclick="refreshVlans()">
                             <i class="fas fa-sync-alt"></i> Refresh
@@ -266,6 +286,9 @@ Features:
                         <button class="btn btn-outline-brand" onclick="refreshBonds()">
                             <i class="fas fa-sync-alt"></i> Refresh
                         </button>
+                        <button class="btn btn-outline-secondary" onclick="debugNetplanConfiguration('bonds')">
+                            <i class="fas fa-bug"></i> Debug
+                        </button>
                     </div>
                 </div>
 
@@ -285,6 +308,9 @@ Features:
                         <button class="btn btn-outline-brand" onclick="refreshRoutes()">
                             <i class="fas fa-sync-alt"></i> Refresh
                         </button>
+                        <button class="btn btn-outline-secondary" onclick="debugNetplanConfiguration('routes')">
+                            <i class="fas fa-bug"></i> Debug
+                        </button>
                     </div>
                 </div>
 
@@ -303,6 +329,9 @@ Features:
                         </button>
                         <button class="btn btn-outline-brand" onclick="refreshDns()">
                             <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="debugNetplanConfiguration('dns')">
+                            <i class="fas fa-bug"></i> Debug
                         </button>
                     </div>
                 </div>
@@ -352,6 +381,31 @@ Features:
                     <!-- Configuration management will be populated here -->
                 </div>
             </div>
+
+            <!-- Logs Tab -->
+            <div id="logs" class="tab-pane">
+                <div class="logs-container">
+                    <div class="logs-header">
+                        <h3><i class="fas fa-terminal"></i> Network Management Logs</h3>
+                        <div class="logs-actions">
+                            <button class="btn btn-outline-muted" id="btn-clear-log" type="button">
+                                <i class="fas fa-trash"></i> Clear Log
+                            </button>
+                        </div>
+                    </div>
+                    <div class="logs-content">
+                        <pre class="log-terminal" id="log"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <span id="status-text">Ready</span>
+            <span class="status-actions">
+                <a href="#" class="status-link" data-tab="logs">View Logs</a>
+            </span>
         </div>
     </div>
 
