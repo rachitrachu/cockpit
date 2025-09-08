@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple YAML Test</title>
+</head>
+<body>
+    <h1>Simple YAML Library Test</h1>
+    <pre id="output"></pre>
+    
+    <script src="js/simple-yaml.js"></script>
+    <script>
+        // Test data similar to what we'd generate for Netplan
+        const testData = {
+            network: {
+                version: 2,
+                renderer: "networkd",
+                ethernets: {
+                    "eth0": {
+                        dhcp4: true,
+                        dhcp6: false,
+                        optional: true,
+                        mtu: 1500,
+                        "dhcp4-overrides": {
+                            "route-metric": 100,
+                            "use-dns": false
+                        },
+                        nameservers: {
+                            addresses: ["1.1.1.1", "8.8.8.8"]
+                        }
+                    },
+                    "eth1": {
+                        addresses: ["192.168.1.10/24"],
+                        gateway4: "192.168.1.1",
+                        routes: [
+                            {
+                                to: "0.0.0.0/0",
+                                via: "192.168.1.1",
+                                metric: 50
+                            }
+                        ]
+                    }
+                },
+                vlans: {
+                    "vlan100": {
+                        id: 100,
+                        link: "eth0",
+                        addresses: ["10.0.100.10/24"]
+                    }
+                }
+            }
+        };
+        
+        try {
+            const yamlOutput = jsyaml.dump(testData, { lineWidth: 80 });
+            document.getElementById('output').textContent = 
+                "Generated YAML:\n" + 
+                "=".repeat(50) + "\n" +
+                yamlOutput + "\n" +
+                "=".repeat(50) + "\n\n" +
+                "Test completed successfully!";
+        } catch (error) {
+            document.getElementById('output').textContent = 
+                "Error: " + error.message + "\n" +
+                error.stack;
+        }
+    </script>
+</body>
+</html>

@@ -2,9 +2,10 @@
  * XAVS Networking YAML Parser Module (2024)
  * Production-grade YAML parsing, writing, normalization, and merging
  * Handles Netplan-specific semantics and safe overlay merging
+ * Uses our CSP-compliant simple-yaml library
  */
 
-// Using jsyaml global library (loaded via CDN)
+/* global jsyaml */
 
 const XAVSYAMLParser = {
   
