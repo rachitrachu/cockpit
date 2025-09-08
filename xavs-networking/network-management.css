@@ -797,7 +797,7 @@ input:checked + .toggle-slider:before {
     cursor: pointer;
     background: transparent;
     border: none;
-    color: #495057;
+    color: #6c757d;
     font-size: 14px;
     font-weight: 500;
     transition: all 0.3s ease;
@@ -806,15 +806,17 @@ input:checked + .toggle-slider:before {
 }
 
 .toggle-pill .toggle-seg.active {
-    background: var(--color-brand);
-    color: white;
+    background: #007bff;
+    color: #ffffff;
+    font-weight: 600;
     box-shadow: 0 2px 4px rgba(0,0,0,0.15);
     transform: translateY(-1px);
 }
 
 .toggle-pill .toggle-seg:hover:not(.active) {
     background: #e9ecef;
-    color: #343a40;
+    color: #495057;
+    font-weight: 600;
 }
 
 /* Alert Styles */

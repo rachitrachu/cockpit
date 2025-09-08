@@ -285,11 +285,22 @@ const NetworkManager = {
             });
         }
         
-        // Refresh data every 30 seconds
+        // Auto-refresh disabled to prevent interrupting user interactions
+        // Users can manually refresh using the refresh buttons on each tab
+        // If auto-refresh is needed, consider implementing:
+        // 1. Only refresh when tab is not actively being used
+        // 2. Only refresh specific data that doesn't disrupt UI
+        // 3. Use longer intervals (5+ minutes)
+        
+        /* 
+        // Optional: Very infrequent auto-refresh (5 minutes) - currently disabled
         setInterval(() => {
-            // Refresh current tab data
-            this.loadTabData(this.currentTab);
-        }, 30000);
+            // Only refresh if no modal is open and user hasn't interacted recently
+            if (!document.querySelector('.modal') && !this.userActive) {
+                this.loadTabData(this.currentTab);
+            }
+        }, 300000); // 5 minutes
+        */
     },
 
     // Fix permissions for all XAVS Netplan files

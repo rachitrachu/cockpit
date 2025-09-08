@@ -877,8 +877,9 @@ async function addVlan() {
                 </div>
                 
                 <div class="form-group">
-                    <label class="form-label" for="vlan-gateway">Gateway</label>
+                    <label class="form-label" for="vlan-gateway">Gateway (Optional)</label>
                     <input type="text" id="vlan-gateway" class="form-control" placeholder="10.100.1.1" data-validate="ipAddress">
+                    <div class="hint">Gateway is informational only - routes are managed automatically</div>
                 </div>
                 
                 <div class="form-group full-width">
@@ -1205,12 +1206,16 @@ async function editVlan(vlanIdentifier) {
                     <button type="button" class="btn btn-sm btn-outline-brand" onclick="addEditIpAddress()" style="margin-top: 8px;">
                         <i class="fas fa-plus"></i> Add IP Address
                     </button>
+                    <button type="button" class="btn btn-sm btn-outline-info" onclick="debugIpCollection()" style="margin-top: 8px; margin-left: 8px;">
+                        <i class="fas fa-bug"></i> Debug IP Collection
+                    </button>
                     <div class="hint">Enter IP addresses. CIDR defaults to /24 if not specified (e.g., 192.168.1.10 becomes 192.168.1.10/24)</div>
                 </div>
                 
                 <div class="form-group">
-                    <label class="form-label" for="edit-vlan-gateway">Gateway</label>
+                    <label class="form-label" for="edit-vlan-gateway">Gateway (Optional)</label>
                     <input type="text" id="edit-vlan-gateway" class="form-control" value="${gateway}" data-validate="ipAddress">
+                    <div class="hint">Gateway is informational only - routes are managed automatically</div>
                 </div>
                 
                 <div class="form-group full-width">
@@ -1544,24 +1549,12 @@ async function createRealVlan(config) {
         NetworkLogger.info('File permissions set to 600');
         
         // Test the configuration first with netplan try
-        NetworkLogger.info('Testing Netplan configuration with netplan --debug try...');
+        NetworkLogger.info('Testing Netplan configuration with netplan try...');
         try {
-            const debugOutput = await cockpit.spawn(['netplan', '--debug', 'try', '--timeout=30'], { superuser: 'try' });
-            NetworkLogger.info('Netplan debug output:');
-            NetworkLogger.info('--- START NETPLAN DEBUG ---');
-            NetworkLogger.info(debugOutput);
-            NetworkLogger.info('--- END NETPLAN DEBUG ---');
+            const testOutput = await cockpit.spawn(['netplan', 'try', '--timeout=30'], { superuser: 'try' });
             NetworkLogger.info('Netplan try completed successfully');
         } catch (tryError) {
             NetworkLogger.error('Netplan try failed:', tryError);
-            
-            // Log the debug output even on failure
-            if (tryError.message) {
-                NetworkLogger.info('Netplan error output:');
-                NetworkLogger.info('--- START NETPLAN ERROR ---');
-                NetworkLogger.info(tryError.message);
-                NetworkLogger.info('--- END NETPLAN ERROR ---');
-            }
             
             // Check if this is just the bond revert warning (exit status 78)
             if (tryError.exit_status === 78) {
@@ -1645,20 +1638,28 @@ async function generateVlanNetplanConfig(config, parentType = 'unknown') {
     if (config.configType === 'static') {
         // Handle multiple IP addresses
         const ipAddresses = config.ipAddresses || (config.ip ? [config.ip] : []);
+        NetworkLogger.info(`VlanManager: generateVlanNetplanConfig - Processing IP addresses:`, ipAddresses);
+        NetworkLogger.info(`VlanManager: config.ipAddresses:`, config.ipAddresses);
+        NetworkLogger.info(`VlanManager: config.ip:`, config.ip);
+        
         if (ipAddresses.length > 0) {
             yamlConfig += `
       addresses:`;
-            ipAddresses.forEach(ip => {
+            ipAddresses.forEach((ip, index) => {
+                NetworkLogger.info(`VlanManager: Adding IP address ${index}: ${ip}`);
                 yamlConfig += `
         - ${ip}`;
             });
+        } else {
+            NetworkLogger.warning(`VlanManager: No IP addresses found for static configuration!`);
         }
         
+        // Note: Gateway configuration is disabled to prevent route conflicts
+        // The gateway field is preserved for future use or manual configuration
         if (config.gateway) {
-            yamlConfig += `
-      routes:
-        - to: default
-          via: ${config.gateway}`;
+            NetworkLogger.info(`VlanManager: Gateway ${config.gateway} specified but not added to prevent route conflicts`);
+            // Routes are managed by the system automatically based on IP configuration
+            // Manual route configuration can be done separately if needed
         }
         
         if (config.dns) {
@@ -1735,14 +1736,18 @@ async function saveVlanEdit(vlanIdentifier) {
         }
     }
     
+    // Collect IP addresses once to avoid potential issues
+    const collectedIpAddresses = collectEditIpAddresses();
+    NetworkLogger.info(`VlanManager: Collected IP addresses from form:`, collectedIpAddresses);
+    
     const formData = {
         id: originalVlan ? originalVlan.id : vlanIdentifier, // Keep original VLAN ID
         name: document.getElementById('edit-vlan-name').value,
         parent: document.getElementById('edit-vlan-parent').value,
         description: document.getElementById('edit-vlan-description').value,
         configType: document.querySelector('#vlan-edit-form .toggle-seg.active').getAttribute('data-config'),
-        ipAddresses: collectEditIpAddresses(),
-        ip: collectEditIpAddresses()[0] || '', // Backward compatibility
+        ipAddresses: collectedIpAddresses,
+        ip: collectedIpAddresses[0] || '', // Backward compatibility
         gateway: document.getElementById('edit-vlan-gateway')?.value || '',
         dns: document.getElementById('edit-vlan-dns')?.value || ''
     };
@@ -1874,20 +1879,20 @@ async function updateRealVlan(originalVlan, newConfig) {
         NetworkLogger.info('Setting file permissions...');
         await cockpit.spawn(['chmod', '600', newConfigPath], { superuser: 'try' });
         
-        // Test configuration with netplan debug try
-        NetworkLogger.info('Testing new configuration with netplan --debug try...');
+        // Test configuration with netplan try
+        NetworkLogger.info('Testing new configuration with netplan try...');
         try {
-            const debugResult = await cockpit.spawn(['netplan', '--debug', 'try'], { 
+            const testResult = await cockpit.spawn(['netplan', 'try', '--timeout=30'], { 
                 superuser: 'try',
                 err: 'out'
             });
-            NetworkLogger.info('Netplan debug output:', debugResult);
-        } catch (debugError) {
-            NetworkLogger.info('Netplan debug error:', debugError);
+            NetworkLogger.info('Netplan try completed successfully');
+        } catch (testError) {
+            NetworkLogger.info('Netplan try error:', testError);
             
             // Check if this is just a bond revert warning (exit status 78)
-            if (debugError.exit_status !== 78) {
-                throw new Error(`Netplan configuration test failed: ${debugError.message || debugError}`);
+            if (testError.exit_status !== 78) {
+                throw new Error(`Netplan configuration test failed: ${testError.message || testError}`);
             } else {
                 NetworkLogger.info('Ignoring bond revert warning (exit status 78)');
             }
@@ -2235,25 +2240,13 @@ VlanManager.deleteRealVlan = async function(vlanId, vlanName = null) {
             }
         }
         
-        // Test configuration with netplan --debug try
-        NetworkLogger.info('Testing VLAN deletion with netplan --debug try...');
+        // Test configuration with netplan try
+        NetworkLogger.info('Testing VLAN deletion with netplan try...');
         try {
-            const debugOutput = await cockpit.spawn(['netplan', '--debug', 'try', '--timeout=30'], { superuser: 'require' });
-            NetworkLogger.info('Netplan debug output:');
-            NetworkLogger.info('--- START NETPLAN DEBUG ---');
-            NetworkLogger.info(debugOutput);
-            NetworkLogger.info('--- END NETPLAN DEBUG ---');
+            const testOutput = await cockpit.spawn(['netplan', 'try', '--timeout=30'], { superuser: 'require' });
             NetworkLogger.info('Netplan try completed successfully');
         } catch (tryError) {
             NetworkLogger.error('Netplan try failed:', tryError);
-            
-            // Log the debug output even on failure
-            if (tryError.message) {
-                NetworkLogger.info('Netplan error output:');
-                NetworkLogger.info('--- START NETPLAN ERROR ---');
-                NetworkLogger.info(tryError.message);
-                NetworkLogger.info('--- END NETPLAN ERROR ---');
-            }
             
             // Check if this is just the bond revert warning (exit status 78) or bond configuration error
             if (tryError.exit_status === 78) {
@@ -2462,7 +2455,16 @@ function addEditIpAddress() {
     if (!window.editIpAddressCounter) window.editIpAddressCounter = 0;
     window.editIpAddressCounter++;
     
+    NetworkLogger.info(`VlanManager: Adding new IP address input field with index ${window.editIpAddressCounter}`);
+    
     const container = document.getElementById('edit-ip-addresses-container');
+    
+    // Debug: Log current state before adding
+    const existingInputs = container.querySelectorAll('.edit-ip-address-input');
+    NetworkLogger.info(`VlanManager: Before adding - existing inputs: ${existingInputs.length}`);
+    existingInputs.forEach((input, idx) => {
+        NetworkLogger.info(`VlanManager: Existing input ${idx}: id='${input.id}', value='${input.value}'`);
+    });
     
     const newEntry = document.createElement('div');
     newEntry.className = 'ip-address-entry';
@@ -2486,9 +2488,18 @@ function addEditIpAddress() {
     
     // Setup live validation for the new input
     const newInput = document.getElementById(`edit-vlan-ip-${window.editIpAddressCounter}`);
-    if (typeof setupLiveValidation === 'function') {
-        setupLiveValidation(newInput.closest('form'));
-    }
+    // Temporarily disabled to test if this is causing the IP collection issue
+    // if (typeof setupLiveValidation === 'function') {
+    //     setupLiveValidation(newInput.closest('form'));
+    // }
+    
+    // Debug: Log state after adding
+    const allInputsAfter = container.querySelectorAll('.edit-ip-address-input');
+    NetworkLogger.info(`VlanManager: After adding - total inputs: ${allInputsAfter.length}`);
+    allInputsAfter.forEach((input, idx) => {
+        NetworkLogger.info(`VlanManager: After adding - Input ${idx}: id='${input.id}', value='${input.value}'`);
+    });
+    NetworkLogger.info(`VlanManager: Successfully added IP input field: edit-vlan-ip-${window.editIpAddressCounter}`);
 }
 
 function removeEditIpAddress(index) {
@@ -2515,18 +2526,144 @@ function updateEditRemoveButtonVisibility() {
     });
 }
 
+// Debugging function to manually test IP collection
+function debugIpCollection() {
+    console.log('=== MANUAL IP COLLECTION DEBUG ===');
+    const container = document.getElementById('edit-ip-addresses-container');
+    
+    console.log('Container:', container);
+    console.log('Container exists:', !!container);
+    
+    if (container) {
+        console.log('Container innerHTML length:', container.innerHTML.length);
+        console.log('Container children count:', container.children.length);
+        
+        // Try different selectors
+        const allInputs = container.querySelectorAll('input');
+        const editInputs = container.querySelectorAll('.edit-ip-address-input');
+        const formControls = container.querySelectorAll('.form-control');
+        
+        console.log('All inputs in container:', allInputs.length);
+        console.log('Inputs with .edit-ip-address-input class:', editInputs.length);
+        console.log('Inputs with .form-control class:', formControls.length);
+        
+        // Check each input type
+        allInputs.forEach((input, index) => {
+            console.log(`All Input ${index}:`, {
+                element: input,
+                id: input.id,
+                value: input.value,
+                classes: Array.from(input.classList),
+                hasEditClass: input.classList.contains('edit-ip-address-input')
+            });
+        });
+        
+        editInputs.forEach((input, index) => {
+            console.log(`Edit Input ${index}:`, {
+                element: input,
+                id: input.id,
+                value: input.value,
+                trimmedValue: input.value.trim(),
+                visible: input.offsetParent !== null,
+                inDOM: document.contains(input),
+                parent: input.parentElement,
+                dataIndex: input.closest('.ip-address-entry')?.getAttribute('data-index')
+            });
+        });
+    }
+    
+    const collected = collectEditIpAddresses();
+    console.log('Collected IPs:', collected);
+    console.log('=== END MANUAL DEBUG ===');
+    
+    // Show alert with results
+    const debugAllInputs = container ? container.querySelectorAll('input') : [];
+    const debugEditInputs = container ? container.querySelectorAll('.edit-ip-address-input') : [];
+    
+    alert(`Debug Results:
+Total inputs in container: ${debugAllInputs.length}
+Edit IP inputs found: ${debugEditInputs.length}
+Collected IP addresses: ${collected.length}
+IPs: ${collected.join(', ')}`);
+}
+
+// Simple test function to check input field states
+function testInputStates() {
+    const container = document.getElementById('edit-ip-addresses-container');
+    if (!container) {
+        console.log('Container not found!');
+        return;
+    }
+    
+    console.log('=== INPUT STATES TEST ===');
+    const inputs = container.querySelectorAll('.edit-ip-address-input');
+    console.log(`Found ${inputs.length} input fields`);
+    
+    const values = [];
+    inputs.forEach((input, index) => {
+        const value = input.value;
+        values.push(value);
+        console.log(`Input ${index}: id=${input.id}, value='${value}'`);
+        
+        // Test if input is responding to changes
+        const originalValue = input.value;
+        input.value = 'TEST';
+        const testValue = input.value;
+        input.value = originalValue;
+        
+        console.log(`Input ${index} test: Original='${originalValue}', Test='${testValue}', Restored='${input.value}' - ${testValue === 'TEST' ? 'WORKING' : 'NOT WORKING'}`);
+    });
+    
+    console.log('All values:', values);
+    console.log('=== END INPUT STATES TEST ===');
+    return values;
+}
+
 function collectEditIpAddresses() {
-    const ipInputs = document.querySelectorAll('.edit-ip-address-input');
+    // Look for both edit form inputs and any other IP inputs that might have been added
+    const container = document.getElementById('edit-ip-addresses-container');
+    const ipInputs = container ? container.querySelectorAll('input[type="text"]') : [];
     const ipAddresses = [];
     
-    ipInputs.forEach(input => {
-        if (input.value.trim()) {
+    NetworkLogger.info(`VlanManager: collectEditIpAddresses - Found ${ipInputs.length} IP input fields in edit container`);
+    console.log('=== IP COLLECTION DEBUG ===');
+    console.log('Total input fields found:', ipInputs.length);
+    console.log('Selector used: input[type="text"] within edit container');
+    
+    // Additional debugging - let's check the container
+    console.log('Container innerHTML:', container ? container.innerHTML : 'Container not found');
+    
+    ipInputs.forEach((input, index) => {
+        const value = input.value.trim();
+        console.log(`Input ${index}:`, {
+            id: input.id,
+            value: value,
+            rawValue: input.value,
+            visible: input.offsetParent !== null,
+            exists: document.contains(input),
+            parent: input.parentElement ? input.parentElement.className : 'no parent',
+            classList: Array.from(input.classList),
+            type: input.type,
+            name: input.name
+        });
+        
+        NetworkLogger.info(`VlanManager: Input ${index} (id: ${input.id}): value='${value}', visible=${input.offsetParent !== null}`);
+        
+        if (value) {
             // Normalize IP address with default /24 CIDR if not provided
-            const normalizedIp = normalizeIpWithCidr(input.value.trim());
+            const normalizedIp = normalizeIpWithCidr(value);
             ipAddresses.push(normalizedIp);
+            console.log(`Added IP: ${value} -> ${normalizedIp}`);
+            NetworkLogger.info(`VlanManager: Added IP address: '${value}' -> '${normalizedIp}'`);
+        } else {
+            console.log(`Skipped empty input ${index} with value: '${input.value}'`);
+            NetworkLogger.info(`VlanManager: Skipped empty IP input ${index}`);
         }
     });
     
+    console.log('Final collected IPs:', ipAddresses);
+    console.log('=== END IP COLLECTION DEBUG ===');
+    NetworkLogger.info(`VlanManager: collectEditIpAddresses - Final collected IPs:`, ipAddresses);
     return ipAddresses;
 }
 
@@ -2767,6 +2904,8 @@ window.addEditIpAddress = addEditIpAddress;
 window.removeEditIpAddress = removeEditIpAddress;
 window.updateEditRemoveButtonVisibility = updateEditRemoveButtonVisibility;
 window.collectEditIpAddresses = collectEditIpAddresses;
+window.debugIpCollection = debugIpCollection;
+window.testInputStates = testInputStates;
 window.addIpAddress = addIpAddress;
 window.removeIpAddress = removeIpAddress;
 window.updateRemoveButtonVisibility = updateRemoveButtonVisibility;
