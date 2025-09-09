@@ -1,0 +1,20 @@
+{
+    "version": 1,
+    "requires": { 
+        "cockpit": "266" 
+    },
+    "conditions": [
+        {"path-exists": "/usr/share/dbus-1/system.d/org.freedesktop.UDisks2.conf"}
+    ],
+    "content-security-policy": "default-src 'self'; connect-src 'self' blob:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src 'self'",
+    
+    "tools": {
+        "xavs-storage-v2": {
+            "label": "XAVS Storage",
+            "path": "index.html",
+            "order": 30,
+            "icon": "fa-database"
+        }
+    
+    }
+}

@@ -1,0 +1,463 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>XAVS Storage</title>
+  <script src="../base1/cockpit.js"></script>
+  <script src="../base1/po.js"></script>
+  <script src="../manifests.js"></script>
+  <script src="po.js"></script>
+  <link rel="stylesheet" href="xavs-base.css">
+  <link rel="stylesheet" href="xavs-storage.css">
+  <link rel="stylesheet" href="fontawesome/css/all.min.css">
+</head>
+<body>
+  <div class="container-fluid">
+    <div class="topbar">
+      <h1 class="app-title">
+        <img src="logo-x.png" alt="X" class="logo-x">AVS Storage
+      </h1>
+      <div class="help" data-tip="This module helps manage storage devices and filesystems:
+• View and manage storage disks and volumes
+• Configure RAID arrays and LVM logical volumes  
+• Create and mount filesystems with real-time monitoring
+• Monitor disk usage and performance metrics">?</div>
+    </div>
+
+    <div class="tabs-container">
+      <ul class="nav-tabs" id="tabs">
+        <li><a class="nav-link active" data-target="panel-overview"><i class="fas fa-chart-pie"></i> Overview</a></li>
+        <li><a class="nav-link" data-target="panel-network-storage"><i class="fas fa-network-wired"></i> Network Storage</a></li>
+        <li><a class="nav-link" data-target="panel-raid"><i class="fas fa-server"></i> RAID</a></li>
+        <li><a class="nav-link" data-target="panel-lvm"><i class="fas fa-layer-group"></i> LVM</a></li>
+        <li><a class="nav-link" data-target="panel-logs"><i class="fas fa-terminal"></i> Logs</a></li>
+      </ul>
+      <button class="btn btn-brand btn-tab-right" id="btn-refresh-all" type="button">
+        <i class="fas fa-sync"></i> Refresh All
+      </button>
+    </div>
+
+    <!-- Overview -->
+    <section id="panel-overview" class="tab-pane active" style="display: block !important;">
+      <div class="overview-grid">
+        <!-- Storage Summary Card -->
+        <div class="card" style="display: block !important;">
+          <div class="card-header">
+            <h3><i class="fas fa-chart-pie"></i> Storage Summary</h3>
+          </div>
+          <div class="kv">
+            <div><b>Total Storage</b></div><div id="total-storage">Loading...</div>
+            <div><b>Used Space</b></div><div id="used-storage">Loading...</div>
+            <div><b>Free Space</b></div><div id="free-storage">Loading...</div>
+            <div><b>Usage</b></div><div><div class="progress"><div class="progress-bar usage-gradient-green" id="usage-fill" style="width: 0%;"></div></div></div>
+          </div>
+        </div>
+
+        <!-- Device Status Card -->
+        <div class="card" style="display: block !important;">
+          <div class="card-header">
+            <h3><i class="fas fa-hdd"></i> Device Status</h3>
+          </div>
+          <div class="kv">
+            <div><b>Healthy</b></div><div><span id="healthy-disks" class="badge ok">0</span></div>
+            <div><b>Warning</b></div><div><span id="warning-disks" class="badge warn">0</span></div>
+            <div><b>Failed</b></div><div><span id="failed-disks" class="badge err">0</span></div>
+            <div><b>Total Devices</b></div><div><span id="total-devices" class="badge brand">0</span></div>
+          </div>
+        </div>
+
+        <!-- RAID Arrays Card -->
+        <div class="card" style="display: block !important;">
+          <div class="card-header">
+            <h3><i class="fas fa-server"></i> RAID Arrays</h3>
+          </div>
+          <div id="raid-summary-content">
+            <div class="kv">
+              <div><b>Active Arrays</b></div><div id="raid-count">0</div>
+              <div><b>Status</b></div><div id="raid-status">No Arrays</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- LVM Status Card -->
+        <div class="card" style="display: block !important;">
+          <div class="card-header">
+            <h3><i class="fas fa-layer-group"></i> LVM Status</h3>
+          </div>
+          <div id="lvm-summary-content">
+            <div class="kv">
+              <div><b>Volume Groups</b></div><div id="vg-count">0</div>
+              <div><b>Logical Volumes</b></div><div id="lv-count">0</div>
+              <div><b>Status</b></div><div id="lvm-status">No volumes</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Network Storage Card -->
+        <div class="card" style="display: block !important;">
+          <div class="card-header">
+            <h3><i class="fas fa-network-wired"></i> Network Storage</h3>
+          </div>
+          <div id="network-summary-content">
+            <div class="kv">
+              <div><b>NFS Mounts</b></div><div id="nfs-mount-count">0</div>
+              <div><b>iSCSI Targets</b></div><div id="iscsi-target-count">0</div>
+              <div><b>Status</b></div><div id="network-storage-status">No mounts</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Storage Devices Table -->
+        <div class="card" style="display: block !important; grid-column: 1 / -1; margin-top: 16px;">
+          <div class="card-header">
+            <h3><i class="fas fa-hdd"></i> Storage Devices</h3>
+            <div class="card-header-actions">
+              <button class="btn btn-sm btn-outline-brand" id="btn-refresh-disks" type="button">
+                <i class="fas fa-sync"></i> Refresh
+              </button>
+            </div>
+          </div>
+          <div class="table-container">
+            <table class="table" id="table-disks">
+              <thead>
+                <tr>
+                  <th><i class="fas fa-hdd"></i> Device</th>
+                  <th><i class="fas fa-tag"></i> Model</th>
+                  <th><i class="fas fa-database"></i> Size</th>
+                  <th><i class="fas fa-chart-bar"></i> Used</th>
+                  <th><i class="fas fa-folder"></i> Filesystem</th>
+                  <th><i class="fas fa-link"></i> Mount Point</th>
+                  <th><i class="fas fa-heartbeat"></i> Health</th>
+                  <th><i class="fas fa-cog"></i> Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- Disk data will be loaded here by JavaScript -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Filesystem Management -->
+        <div class="card" style="display: block !important; grid-column: 1 / -1; margin-top: 16px;">
+          <div class="card-header">
+            <h3><i class="fas fa-folder-plus"></i> Filesystem Management</h3>
+          </div>
+          <div class="fs-form-container">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label"><i class="fas fa-hdd"></i> Device</label>
+                <select id="fs-device" class="form-select">
+                  <option value="">Select Device</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label"><i class="fas fa-list"></i> Filesystem Type</label>
+                <select id="fs-type" class="form-select">
+                  <option value="ext4">ext4 - Linux default</option>
+                  <option value="ext3">ext3 - Linux legacy</option>
+                  <option value="xfs">xfs - High performance</option>
+                  <option value="btrfs">btrfs - Next generation</option>
+                  <option value="ntfs">NTFS - Windows</option>
+                  <option value="vfat">FAT32 - Universal</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label"><i class="fas fa-tag"></i> Label (optional)</label>
+                <input id="fs-label" type="text" class="form-input" placeholder="MyData">
+              </div>
+              <div class="form-group form-action">
+                <label class="form-label">&nbsp;</label>
+                <button id="btn-create-fs" class="btn btn-sm btn-brand">
+                  <i class="fas fa-plus"></i> Create Filesystem
+                </button>
+              </div>
+            </div>
+          </div>
+          <div id="fs-output" class="output-section hidden"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Disks -->
+    <!-- Network Storage -->
+    <section id="panel-network-storage" class="tab-pane">
+      <!-- NFS Mount -->
+      <div class="card">
+        <div class="card-header">
+          <h3><i class="fas fa-network-wired"></i> NFS Mount</h3>
+          <div class="module-status" id="nfs-status">
+            <span class="badge" id="nfs-badge">Checking...</span>
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label><i class="fas fa-server"></i> NFS Server</label>
+            <input id="nfs-server" type="text" class="form-control" placeholder="192.168.1.100">
+          </div>
+          <div class="form-group">
+            <label><i class="fas fa-folder"></i> Remote Path</label>
+            <input id="nfs-path" type="text" class="form-control" placeholder="/export/data">
+          </div>
+          <div class="form-group">
+            <label><i class="fas fa-link"></i> Local Mount Point</label>
+            <input id="nfs-mountpoint" type="text" class="form-control" placeholder="/mnt/nfs">
+          </div>
+          <div class="form-group">
+            <label><i class="fas fa-cog"></i> Options</label>
+            <input id="nfs-options" type="text" class="form-control" placeholder="rw,sync,hard,intr">
+          </div>
+        </div>
+        <div class="card-footer">
+          <button id="btn-test-nfs" class="btn btn-outline-muted">
+            <i class="fas fa-vial"></i> Test Connection
+          </button>
+          <button id="btn-mount-nfs" class="btn btn-brand">
+            <i class="fas fa-link"></i> Mount NFS
+          </button>
+        </div>
+        <div id="nfs-output" class="output-section hidden"></div>
+      </div>
+
+      <!-- iSCSI Mount -->
+      <div class="card mt12">
+        <div class="card-header">
+          <h3><i class="fas fa-network-wired"></i> iSCSI Mount</h3>
+          <div class="module-status" id="iscsi-status">
+            <span class="badge" id="iscsi-badge">Checking...</span>
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label><i class="fas fa-server"></i> iSCSI Target</label>
+            <input id="iscsi-target" type="text" class="form-control" placeholder="192.168.1.200">
+          </div>
+          <div class="form-group">
+            <label><i class="fas fa-tag"></i> Target Name (IQN)</label>
+            <input id="iscsi-iqn" type="text" class="form-control" placeholder="iqn.2023-01.local.storage:disk01">
+          </div>
+          <div class="form-group">
+            <label><i class="fas fa-ethernet"></i> Port</label>
+            <input id="iscsi-port" type="text" class="form-control" placeholder="3260" value="3260">
+          </div>
+          <div class="form-group">
+            <label><i class="fas fa-user"></i> Username (optional)</label>
+            <input id="iscsi-username" type="text" class="form-control" placeholder="username">
+          </div>
+        </div>
+        <div class="card-footer">
+          <button id="btn-discover-iscsi" class="btn btn-outline-muted">
+            <i class="fas fa-search"></i> Discover Targets
+          </button>
+          <button id="btn-connect-iscsi" class="btn btn-brand">
+            <i class="fas fa-link"></i> Connect iSCSI
+          </button>
+        </div>
+        <div id="iscsi-output" class="output-section hidden"></div>
+      </div>
+
+      <!-- Active Network Mounts -->
+      <div class="card mt12">
+        <div class="card-header">
+          <h3><i class="fas fa-link"></i> Active Network Mounts</h3>
+          <button class="btn btn-sm btn-outline-brand" id="btn-refresh-network-mounts" type="button">
+            <i class="fas fa-sync"></i> Refresh
+          </button>
+        </div>
+        <div class="table-container">
+          <table class="table" id="table-network-mounts">
+            <thead>
+              <tr>
+                <th><i class="fas fa-server"></i> Source</th>
+                <th><i class="fas fa-folder"></i> Mount Point</th>
+                <th><i class="fas fa-list"></i> Type</th>
+                <th><i class="fas fa-chart-bar"></i> Status</th>
+                <th><i class="fas fa-cog"></i> Actions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- RAID -->
+    <section id="panel-raid" class="tab-pane">
+      <div class="card">
+        <div class="card-header">
+          <h3><i class="fas fa-server"></i> RAID Configuration</h3>
+          <button class="btn btn-sm btn-outline-brand" id="btn-refresh-raid" type="button">
+            <i class="fas fa-sync"></i> Refresh
+          </button>
+        </div>
+        <div class="fs-form-container">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label"><i class="fas fa-list"></i> RAID Level</label>
+              <select id="raid-level" class="form-select">
+                <option value="">Select RAID Level</option>
+                <option value="0">RAID 0 - Striping (no redundancy)</option>
+                <option value="1">RAID 1 - Mirroring</option>
+                <option value="5">RAID 5 - Striping with parity</option>
+                <option value="6">RAID 6 - Striping with double parity</option>
+                <option value="10">RAID 10 - Mirrored stripes</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label"><i class="fas fa-hdd"></i> Select Disks</label>
+              <select id="raid-disks" multiple class="form-select" style="height:80px;">
+                <option disabled>Loading available disks...</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label"><i class="fas fa-tag"></i> Array Name</label>
+              <input id="raid-name" type="text" class="form-input" placeholder="md0">
+            </div>
+            <div class="form-group form-action">
+              <label class="form-label">&nbsp;</label>
+              <button id="btn-create-raid" class="btn btn-sm btn-brand">
+                <i class="fas fa-plus"></i> Create RAID Array
+              </button>
+            </div>
+          </div>
+        </div>
+        <div id="raid-output" class="output-section hidden"></div>
+      </div>
+
+      <!-- Existing RAID Arrays -->
+      <div class="card mt12">
+        <div class="card-header">
+          <h3><i class="fas fa-list"></i> Existing RAID Arrays</h3>
+        </div>
+        <div id="raid-arrays-list">
+          <div class="empty-state">No RAID arrays found</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- LVM -->
+    <section id="panel-lvm" class="tab-pane">
+      <div class="card">
+        <div class="card-header">
+          <h3><i class="fas fa-cubes"></i> Volume Group Management</h3>
+          <button class="btn btn-sm btn-outline-brand" id="btn-refresh-lvm" type="button">
+            <i class="fas fa-sync"></i> Refresh
+          </button>
+        </div>
+        <div class="fs-form-container">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label"><i class="fas fa-tag"></i> VG Name</label>
+              <input id="vg-name" type="text" class="form-input" placeholder="vg_data">
+            </div>
+            <div class="form-group">
+              <label class="form-label"><i class="fas fa-hdd"></i> Physical Volumes</label>
+              <select id="vg-pvs" multiple class="form-select" style="height:80px;">
+                <option disabled>Loading available disks...</option>
+              </select>
+            </div>
+            <div class="form-group form-action">
+              <label class="form-label">&nbsp;</label>
+              <button id="btn-create-vg" class="btn btn-sm btn-brand">
+                <i class="fas fa-plus"></i> Create VG
+              </button>
+            </div>
+          </div>
+        </div>
+        <div id="vg-output" class="output-section hidden"></div>
+      </div>
+
+      <div class="card mt12">
+        <div class="card-header">
+          <h3><i class="fas fa-layer-group"></i> Logical Volume Management</h3>
+        </div>
+        <div class="fs-form-container">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label"><i class="fas fa-cubes"></i> Volume Group</label>
+              <select id="lv-vg" class="form-select">
+                <option value="">Select Volume Group</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label"><i class="fas fa-tag"></i> LV Name</label>
+              <input id="lv-name" type="text" class="form-input" placeholder="lv_data">
+            </div>
+            <div class="form-group">
+              <label class="form-label"><i class="fas fa-database"></i> Size</label>
+              <input id="lv-size" type="text" class="form-input" placeholder="10G">
+            </div>
+            <div class="form-group form-action">
+              <label class="form-label">&nbsp;</label>
+              <button id="btn-create-lv" class="btn btn-sm btn-brand">
+                <i class="fas fa-plus"></i> Create LV
+              </button>
+            </div>
+          </div>
+        </div>
+        <div id="lv-output" class="output-section hidden"></div>
+      </div>
+
+      <!-- Existing VGs and LVs -->
+      <div class="overview-grid mt12">
+        <div class="card">
+          <div class="card-header">
+            <h3><i class="fas fa-cubes"></i> Volume Groups</h3>
+          </div>
+          <div id="volume-groups-list">
+            <div class="empty-state">No volume groups found</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3><i class="fas fa-layer-group"></i> Logical Volumes</h3>
+          </div>
+          <div id="logical-volumes-list">
+            <div class="empty-state">No logical volumes found</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Logs -->
+    <section id="panel-logs" class="tab-pane" style="display: none;">
+      <div class="card" style="display: block !important;">
+        <div class="config-log-section">
+          <div class="config-log-header">
+            <h6><i class="fas fa-terminal"></i> Storage Operations Log</h6>
+            <button type="button" id="btn-clear-log" class="btn btn-sm btn-outline-muted">
+              <i class="fas fa-trash"></i> Clear
+            </button>
+          </div>
+          <div id="log" class="config-log-content">
+            <div class="log-entry log-info">
+              <span class="log-time">12:34:56</span>
+              <span class="log-message">Storage module ready</span>
+            </div>
+            <div class="log-entry log-success">
+              <span class="log-time">12:35:01</span>
+              <span class="log-message">Overview data loaded successfully</span>
+            </div>
+            <div class="log-entry log-info">
+              <span class="log-time">12:35:02</span>
+              <span class="log-message">Disk data loaded successfully</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Bottom Status Bar -->
+  <div class="bottom-status-bar">
+    <div class="status-content">
+      <span id="recent-activity">Ready</span>
+    </div>
+    <button type="button" class="status-link" data-tab="panel-logs">View Logs</button>
+  </div>
+
+  <script src="xavs-storage.js"></script>
+</body>
+</html>
