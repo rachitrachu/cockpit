@@ -207,6 +207,22 @@ function setupEventHandlers() {
             createFilesystem();
         });
     }
+    
+    // RAID creation
+    const createRaidBtn = document.getElementById('btn-create-raid');
+    if (createRaidBtn) {
+        createRaidBtn.addEventListener('click', function() {
+            createRaidArray();
+        });
+    }
+    
+    // LVM Volume Group creation
+    const createVgBtn = document.getElementById('btn-create-vg');
+    if (createVgBtn) {
+        createVgBtn.addEventListener('click', function() {
+            createVolumeGroup();
+        });
+    }
 }
 
 function loadInitialData() {
@@ -1124,6 +1140,9 @@ function loadRaidData() {
     // Update RAID status
     updateRaidStatus();
     
+    // Load available disks for RAID creation
+    loadAvailableDisksForRaid();
+    
     updateStatus('RAID data loaded');
 }
 
@@ -1188,6 +1207,9 @@ function loadLvmData() {
     
     // Load logical volumes
     loadLogicalVolumesTable();
+    
+    // Load available physical volumes for VG creation
+    loadAvailablePhysicalVolumes();
     
     updateStatus('LVM data loaded');
 }
@@ -1472,6 +1494,197 @@ function manageDisk(device) {
                 }
             });
     }
+}
+
+// Populate available disks for RAID configuration
+function loadAvailableDisksForRaid() {
+    const raidDisksSelect = document.getElementById('raid-disks');
+    if (!raidDisksSelect) return;
+    
+    // Clear existing options
+    raidDisksSelect.innerHTML = '<option disabled>Loading available disks...</option>';
+    
+    // Get list of available block devices
+    cockpit.spawn(['lsblk', '-J', '-o', 'NAME,TYPE,SIZE,MOUNTPOINT'])
+        .then(output => {
+            const data = JSON.parse(output);
+            const availableDisks = [];
+            
+            // Filter for whole disks that are not mounted
+            if (data.blockdevices) {
+                data.blockdevices.forEach(device => {
+                    if (device.type === 'disk' && !device.mountpoint) {
+                        availableDisks.push({
+                            name: device.name,
+                            size: device.size,
+                            path: `/dev/${device.name}`
+                        });
+                    }
+                });
+            }
+            
+            // Clear loading message and populate options
+            raidDisksSelect.innerHTML = '';
+            
+            if (availableDisks.length === 0) {
+                raidDisksSelect.innerHTML = '<option disabled>No available disks found</option>';
+            } else {
+                availableDisks.forEach(disk => {
+                    const option = document.createElement('option');
+                    option.value = disk.path;
+                    option.textContent = `${disk.name} (${disk.size})`;
+                    raidDisksSelect.appendChild(option);
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error loading disks for RAID:', error);
+            raidDisksSelect.innerHTML = '<option disabled>Error loading disks</option>';
+        });
+}
+
+// Populate available physical volumes for LVM
+function loadAvailablePhysicalVolumes() {
+    const vgPvsSelect = document.getElementById('vg-pvs');
+    if (!vgPvsSelect) return;
+    
+    // Clear existing options
+    vgPvsSelect.innerHTML = '<option disabled>Loading available disks...</option>';
+    
+    // Get list of available block devices
+    cockpit.spawn(['lsblk', '-J', '-o', 'NAME,TYPE,SIZE,MOUNTPOINT'])
+        .then(output => {
+            const data = JSON.parse(output);
+            const availableDevices = [];
+            
+            // Filter for whole disks and partitions that are not mounted
+            if (data.blockdevices) {
+                data.blockdevices.forEach(device => {
+                    // Add whole disk if not mounted
+                    if (device.type === 'disk' && !device.mountpoint) {
+                        availableDevices.push({
+                            name: device.name,
+                            size: device.size,
+                            path: `/dev/${device.name}`
+                        });
+                    }
+                    
+                    // Add partitions if not mounted
+                    if (device.children) {
+                        device.children.forEach(partition => {
+                            if (partition.type === 'part' && !partition.mountpoint) {
+                                availableDevices.push({
+                                    name: partition.name,
+                                    size: partition.size,
+                                    path: `/dev/${partition.name}`
+                                });
+                            }
+                        });
+                    }
+                });
+            }
+            
+            // Clear loading message and populate options
+            vgPvsSelect.innerHTML = '';
+            
+            if (availableDevices.length === 0) {
+                vgPvsSelect.innerHTML = '<option disabled>No available devices found</option>';
+            } else {
+                availableDevices.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device.path;
+                    option.textContent = `${device.name} (${device.size})`;
+                    vgPvsSelect.appendChild(option);
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error loading devices for LVM:', error);
+            vgPvsSelect.innerHTML = '<option disabled>Error loading devices</option>';
+        });
+}
+
+// Create RAID Array
+function createRaidArray() {
+    const raidLevel = document.getElementById('raid-level').value;
+    const selectedDisks = Array.from(document.getElementById('raid-disks').selectedOptions).map(o => o.value);
+    const arrayName = document.getElementById('raid-name').value || 'md0';
+    
+    if (selectedDisks.length < 2) {
+        alert('Please select at least 2 disks for RAID creation');
+        return;
+    }
+    
+    // Validate RAID level requirements
+    const minDisks = {
+        '0': 2, '1': 2, '5': 3, '6': 4, '10': 4
+    };
+    
+    if (selectedDisks.length < minDisks[raidLevel]) {
+        alert(`RAID ${raidLevel} requires at least ${minDisks[raidLevel]} disks`);
+        return;
+    }
+    
+    // Create the RAID array
+    const command = ['mdadm', '--create', `/dev/${arrayName}`, '--level=' + raidLevel, '--raid-devices=' + selectedDisks.length].concat(selectedDisks);
+    
+    cockpit.spawn(command)
+        .then(output => {
+            alert('RAID array created successfully');
+            loadRaidData(); // Refresh RAID data
+            loadOverviewData(); // Refresh overview
+        })
+        .catch(error => {
+            console.error('Error creating RAID array:', error);
+            alert('Error creating RAID array: ' + error);
+        });
+}
+
+// Create LVM Volume Group
+function createVolumeGroup() {
+    const vgName = document.getElementById('vg-name').value || 'vg_data';
+    const selectedPvs = Array.from(document.getElementById('vg-pvs').selectedOptions).map(o => o.value);
+    
+    if (selectedPvs.length === 0) {
+        alert('Please select at least one physical volume');
+        return;
+    }
+    
+    // Create physical volumes first
+    const pvCommands = selectedPvs.map(pv => ['pvcreate', pv]);
+    
+    // Execute pvcreate commands sequentially
+    let pvPromise = Promise.resolve();
+    pvCommands.forEach(cmd => {
+        pvPromise = pvPromise.then(() => cockpit.spawn(cmd));
+    });
+    
+    // Then create volume group
+    pvPromise
+        .then(() => {
+            const vgCommand = ['vgcreate', vgName].concat(selectedPvs);
+            return cockpit.spawn(vgCommand);
+        })
+        .then(output => {
+            alert('Volume Group created successfully');
+            loadLvmData(); // Refresh LVM data
+            loadOverviewData(); // Refresh overview
+        })
+        .catch(error => {
+            console.error('Error creating Volume Group:', error);
+            alert('Error creating Volume Group: ' + error);
+        });
+}
+
+// Load available disks when tabs are shown
+function loadRaidTabData() {
+    console.log('Loading RAID tab data...');
+    loadAvailableDisksForRaid();
+}
+
+function loadLvmTabData() {
+    console.log('Loading LVM tab data...');
+    loadAvailablePhysicalVolumes();
 }
 
 // End of file
