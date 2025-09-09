@@ -1,12 +1,18 @@
 // Bridge Management Module
 
 // Validate interface name to prevent command injection
+// Helper function to clear loading state and re-enable button
+function clearButtonLoading(button) {
+    ButtonProgress.clearLoading(button);
+    button.disabled = false;
+}
+
 function assertValidInterfaceName(name) {
     if (!name || typeof name !== 'string') {
         throw new Error(`Invalid interface name: ${name}`);
     }
     if (!INTERFACE_NAME_REGEX.test(name)) {
-        throw new Error(`Invalid interface name format: ${name}`);
+        throw new Error(`Invalid interface name format: ${name}. Allowed: bridge names (br-xxx), physical interfaces (enoxxx), VLANs (eno1.123, vlan123), bonds (bondX).`);
     }
 }
 
@@ -60,10 +66,19 @@ const BridgeManager = {
                 if (match) {
                     const interfaceName = match[1].trim();
                     
-                    // Check if this is a bridge interface
-                    if (interfaceName.startsWith('br-') || interfaceName.startsWith('bridge') || 
-                        await this.isBridgeInterface(interfaceName)) {
-                        
+                    // Check if this is a bridge interface (more robust detection)
+                    let isBridge = false;
+                    
+                    // Method 1: Check name patterns (quick filter)
+                    if (interfaceName.startsWith('br-') || interfaceName.startsWith('bridge')) {
+                        isBridge = await this.isBridgeInterface(interfaceName);
+                    }
+                    // Method 2: Check if it's actually a bridge (for other names)
+                    else {
+                        isBridge = await this.isBridgeInterface(interfaceName);
+                    }
+                    
+                    if (isBridge) {
                         try {
                             // Get bridge details
                             const details = await this.getBridgeDetails(interfaceName);
@@ -81,6 +96,7 @@ const BridgeManager = {
                             });
                         } catch (error) {
                             NetworkLogger.warning(`BridgeManager: Could not get details for bridge ${interfaceName}:`, error);
+                            // Only add to list if we're sure it's a bridge, even if details fail
                             bridges.push({
                                 name: interfaceName,
                                 description: `Bridge ${interfaceName}`,
@@ -108,16 +124,35 @@ const BridgeManager = {
     // Check if an interface is a bridge
     async isBridgeInterface(interfaceName) {
         try {
-            const bridgeOutput = await cockpit.spawn(['brctl', 'show'], { superuser: 'try' });
-            return bridgeOutput.includes(interfaceName);
-        } catch (error) {
-            // brctl might not be available, try alternative
+            // First, check if the bridge directory exists (most reliable method)
             try {
-                const bridgeOutput = await cockpit.spawn(['bridge', 'link', 'show'], { superuser: 'try' });
-                return bridgeOutput.includes(`master ${interfaceName}`);
-            } catch (error2) {
-                NetworkLogger.warning(`BridgeManager: Could not check if ${interfaceName} is a bridge:`, error2);
+                await cockpit.spawn(['test', '-d', `/sys/class/net/${interfaceName}/bridge`], { superuser: 'try' });
+                return true;
+            } catch (testError) {
+                // Bridge directory doesn't exist, so it's not a bridge
                 return false;
+            }
+        } catch (error) {
+            // Fallback to brctl/bridge commands if sys check fails
+            try {
+                const bridgeOutput = await cockpit.spawn(['brctl', 'show'], { superuser: 'try' });
+                const lines = bridgeOutput.split('\n');
+                for (const line of lines) {
+                    if (line.trim().startsWith(interfaceName + '\t') || 
+                        line.trim().startsWith(interfaceName + ' ')) {
+                        return true;
+                    }
+                }
+                return false;
+            } catch (brctlError) {
+                // brctl might not be available, try alternative
+                try {
+                    const bridgeOutput = await cockpit.spawn(['bridge', 'link', 'show'], { superuser: 'try' });
+                    return bridgeOutput.includes(`master ${interfaceName}`);
+                } catch (error2) {
+                    NetworkLogger.warning(`BridgeManager: Could not check if ${interfaceName} is a bridge:`, error2);
+                    return false;
+                }
             }
         }
     },
@@ -135,6 +170,13 @@ const BridgeManager = {
         };
 
         try {
+            // First verify this is actually a bridge before trying to get bridge-specific details
+            const isBridge = await this.isBridgeInterface(interfaceName);
+            if (!isBridge) {
+                NetworkLogger.warning(`BridgeManager: ${interfaceName} is not a bridge, skipping bridge-specific details`);
+                return details;
+            }
+
             // Get IP address information
             const ipAddrOutput = await cockpit.spawn(['ip', 'addr', 'show', interfaceName], 
                 { superuser: 'try' });
@@ -178,23 +220,25 @@ const BridgeManager = {
                 }
             }
 
-            // Try to get STP information
+            // Try to get STP information - only if bridge directory exists
             try {
                 const stpOutput = await cockpit.spawn(['cat', `/sys/class/net/${interfaceName}/bridge/stp_state`], 
                     { superuser: 'try' });
                 details.stp = stpOutput.trim() === '1';
             } catch (stpError) {
-                NetworkLogger.warning(`BridgeManager: Could not get STP state for ${interfaceName}:`, stpError);
+                // This is expected if not a bridge or bridge properties are not available
+                NetworkLogger.debug(`BridgeManager: Could not get STP state for ${interfaceName} (this is normal for non-bridges):`, stpError.message);
             }
 
-            // Try to get forward delay
+            // Try to get forward delay - only if bridge directory exists
             try {
                 const delayOutput = await cockpit.spawn(['cat', `/sys/class/net/${interfaceName}/bridge/forward_delay`], 
                     { superuser: 'try' });
                 const delayMs = parseInt(delayOutput.trim());
                 details.forwardDelay = `${Math.round(delayMs / 100)}s`;
             } catch (delayError) {
-                NetworkLogger.warning(`BridgeManager: Could not get forward delay for ${interfaceName}:`, delayError);
+                // This is expected if not a bridge or bridge properties are not available
+                NetworkLogger.debug(`BridgeManager: Could not get forward delay for ${interfaceName} (this is normal for non-bridges):`, delayError.message);
             }
 
             // Try to get route information for gateway (use global default route)
@@ -464,6 +508,14 @@ async function addBridge() {
                     </div>
                 </div>
                 <div class="hint">Select interfaces to add to the bridge. Click on interfaces to add/remove them.</div>
+                <div class="alert alert-info" style="margin-top: 8px; padding: 8px 12px; font-size: 13px;">
+                    <i class="fas fa-info-circle"></i> 
+                    <strong>Note:</strong> If you want to use VLAN interfaces (e.g., eno1.100), create them first in the VLAN configuration section before adding them to a bridge.
+                </div>
+                <div class="alert alert-warning" style="margin-top: 8px; padding: 8px 12px; font-size: 13px;">
+                    <i class="fas fa-exclamation-triangle"></i> 
+                    <strong>Important:</strong> Creating bridges may temporarily affect network connectivity. System routes will be preserved and restored automatically, but ensure you have console access if needed.
+                </div>
             </div>
             
             <div class="form-group full-width">
@@ -513,6 +565,13 @@ async function addBridge() {
                         <label class="form-label" for="bridge-forward-delay">Forward Delay</label>
                         <input type="text" id="bridge-forward-delay" class="form-control" value="4s" placeholder="4s">
                     </div>
+                </div>
+                <div style="margin-top: 12px;">
+                    <label style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="bridge-preserve-routes" checked>
+                        Preserve system routes during configuration
+                    </label>
+                    <div class="hint" style="margin-top: 4px; margin-left: 20px;">Recommended to maintain network connectivity</div>
                 </div>
             </div>
         </form>
@@ -615,6 +674,13 @@ async function editBridge(bridgeName) {
                         <label class="form-label" for="edit-bridge-forward-delay">Forward Delay</label>
                         <input type="text" id="edit-bridge-forward-delay" class="form-control" value="${bridge.forwardDelay}">
                     </div>
+                </div>
+                <div style="margin-top: 12px;">
+                    <label style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="edit-bridge-preserve-routes" checked>
+                        Preserve system routes during configuration
+                    </label>
+                    <div class="hint" style="margin-top: 4px; margin-left: 20px;">Recommended to maintain network connectivity</div>
                 </div>
             </div>
         </form>
@@ -883,7 +949,6 @@ async function addInterfaceToBridge(bridgeName) {
 }
 
 async function saveBridge() {
-    NetworkLogger.info(' Creating new bridge...');
     NetworkLogger.info('Creating new bridge...');
     
     const modal = document.querySelector('.modal');
@@ -891,7 +956,15 @@ async function saveBridge() {
     
     // Get the save button and show progress
     const saveButton = modal.querySelector('.btn-brand');
+    
+    // Prevent multiple submissions
+    if (saveButton.disabled) {
+        NetworkLogger.warning('Bridge creation already in progress, ignoring duplicate submission');
+        return;
+    }
+    
     ButtonProgress.setLoading(saveButton, '<i class="fas fa-plus"></i> Create Bridge');
+    saveButton.disabled = true;
     
     // Clear any existing modal messages
     if (typeof clearModalMessages === 'function') {
@@ -901,9 +974,24 @@ async function saveBridge() {
     // Validate form using live validation
     if (typeof validateForm === 'function') {
         if (!validateForm(form)) {
-            ButtonProgress.clearLoading(saveButton);
+            clearButtonLoading(saveButton);
             if (typeof showModalError === 'function') {
-                showModalError(modal, 'Please correct the errors in the form before continuing.');
+                // Get specific validation errors
+                const invalidFields = form.querySelectorAll('.form-group.has-error');
+                let errorMessage = 'Please correct the following errors:\n';
+                invalidFields.forEach(fieldGroup => {
+                    const label = fieldGroup.querySelector('label');
+                    const errorMsg = fieldGroup.querySelector('.validation-message');
+                    if (label && errorMsg) {
+                        errorMessage += `• ${label.textContent}: ${errorMsg.textContent}\n`;
+                    } else if (label) {
+                        errorMessage += `• ${label.textContent}: Required field\n`;
+                    }
+                });
+                if (invalidFields.length === 0) {
+                    errorMessage = 'Please fill in all required fields before continuing.';
+                }
+                showModalError(modal, errorMessage);
             }
             return;
         }
@@ -921,9 +1009,10 @@ async function saveBridge() {
         configType: document.querySelector('.toggle-seg.active').getAttribute('data-config'),
         ipAddresses: collectBridgeIpAddresses(),
         ip: collectBridgeIpAddresses()[0] || '', // Backward compatibility
-        gateway: document.getElementById('bridge-gateway')?.value || '',
-        stp: document.getElementById('bridge-stp')?.checked || false,
-        forwardDelay: document.getElementById('bridge-forward-delay')?.value || '4s'
+        gateway: (document.getElementById('bridge-gateway') && document.getElementById('bridge-gateway').value) || '',
+        stp: (document.getElementById('bridge-stp') && document.getElementById('bridge-stp').checked) || false,
+        forwardDelay: (document.getElementById('bridge-forward-delay') && document.getElementById('bridge-forward-delay').value) || '4s',
+        preserveRoutes: (document.getElementById('bridge-preserve-routes') && document.getElementById('bridge-preserve-routes').checked) !== false
     };
     
     NetworkLogger.info(' Form data collected:', formData);
@@ -1002,73 +1091,576 @@ async function saveBridge() {
 }
 
 // Create real bridge configuration
+// Check for existing default gateway conflicts before creating bridge
+async function checkForBridgeGatewayConflicts(config) {
+    NetworkLogger.info('Checking for existing default gateway conflicts...');
+    
+    try {
+        // Get all existing Netplan configurations
+        const netplanFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '*.yaml', '-o', '-name', '*.yml'], { superuser: 'try' });
+        const files = netplanFiles.trim().split('\n').filter(f => f.trim());
+        
+        const existingGateways = [];
+        const filesToFix = [];
+        
+        for (const file of files) {
+            try {
+                const content = await cockpit.file(file, { superuser: 'try' }).read();
+                if (content) {
+                    // Check for deprecated gateway4 usage
+                    const hasGateway4 = content.includes('gateway4:');
+                    
+                    // Check for gateway4 (deprecated) or default routes
+                    const gateway4Matches = content.match(/gateway4:\s*([^\s\n]+)/g);
+                    const defaultRouteMatches = content.match(/- to: (default|0\.0\.0\.0\/0)/g);
+                    
+                    if (hasGateway4) {
+                        filesToFix.push({
+                            file: file,
+                            content: content,
+                            hasGateway4: true
+                        });
+                    }
+                    
+                    if (gateway4Matches || defaultRouteMatches) {
+                        // Extract interface name from the file content
+                        const interfaceMatches = content.match(/^\s*([a-zA-Z0-9.-]+):/gm);
+                        if (interfaceMatches) {
+                            interfaceMatches.forEach(match => {
+                                const interfaceName = match.replace(':', '').trim();
+                                if (interfaceName && !['network', 'version', 'renderer', 'ethernets', 'bonds', 'bridges', 'vlans'].includes(interfaceName)) {
+                                    existingGateways.push({
+                                        interface: interfaceName,
+                                        file: file,
+                                        hasGateway4: !!gateway4Matches,
+                                        hasDefaultRoute: !!defaultRouteMatches
+                                    });
+                                }
+                            });
+                        }
+                    }
+                }
+            } catch (fileError) {
+                NetworkLogger.warning(`Could not read netplan file ${file}:`, fileError.message);
+            }
+        }
+        
+        // Show warning about deprecated gateway4 usage and offer to fix
+        if (filesToFix.length > 0) {
+            NetworkLogger.warning(`Found ${filesToFix.length} file(s) using deprecated gateway4. This may cause conflicts.`);
+            
+            const affectedFiles = filesToFix.map(f => f.file).join(', ');
+            NetworkLogger.info(`Files with deprecated gateway4: ${affectedFiles}`);
+            NetworkLogger.info('Automatically removing deprecated gateway4 configurations to prevent conflicts...');
+            
+            // Automatically fix deprecated gateway4 configurations
+            for (const fileToFix of filesToFix) {
+                try {
+                    let updatedContent = fileToFix.content;
+                    
+                    // Remove gateway4 lines and replace with equivalent routes if needed
+                    const gateway4Lines = updatedContent.match(/^\s*gateway4:\s*([^\s\n]+).*$/gm);
+                    if (gateway4Lines) {
+                        for (const line of gateway4Lines) {
+                            const gatewayMatch = line.match(/gateway4:\s*([^\s\n]+)/);
+                            if (gatewayMatch) {
+                                const gatewayIp = gatewayMatch[1];
+                                NetworkLogger.info(`Removing deprecated gateway4: ${gatewayIp} from ${fileToFix.file}`);
+                                
+                                // Simply remove the gateway4 line to prevent conflicts
+                                // Don't add default routes as they may conflict with other interfaces
+                                updatedContent = updatedContent.replace(line + '\n', '');
+                                updatedContent = updatedContent.replace(line, '');
+                            }
+                        }
+                        
+                        // Write the updated content back to the file
+                        await cockpit.file(fileToFix.file, { superuser: 'try' }).replace(updatedContent);
+                        NetworkLogger.info(`Updated ${fileToFix.file} to remove deprecated gateway4 configuration`);
+                    }
+                } catch (fixError) {
+                    NetworkLogger.warning(`Could not fix deprecated gateway4 in ${fileToFix.file}:`, fixError.message);
+                }
+            }
+        }
+        
+        if (existingGateways.length > 0) {
+            NetworkLogger.warning('Found existing interfaces with default gateways:', existingGateways);
+            
+            // Check if any interface has a default gateway and we're trying to add one
+            if (config.gateway && existingGateways.length > 0) {
+                const conflictingInterfaces = existingGateways.map(gw => gw.interface).join(', ');
+                NetworkLogger.warning(`Multiple default gateways detected. Existing: ${conflictingInterfaces}. Removing gateway from bridge ${config.name} to prevent conflicts.`);
+                // Remove gateway to prevent conflicts
+                delete config.gateway;
+            }
+        }
+        
+        // Always remove gateway from bridge config as a precaution to prevent route conflicts
+        if (config.gateway) {
+            NetworkLogger.info(`Removing gateway ${config.gateway} from bridge ${config.name} configuration to prevent route table conflicts`);
+            delete config.gateway;
+        }
+        
+    } catch (error) {
+        NetworkLogger.warning('Could not check for gateway conflicts:', error.message);
+        // Continue anyway, but remove gateway as a precaution
+        if (config.gateway) {
+            NetworkLogger.info('Removing gateway as precaution due to conflict check failure');
+            delete config.gateway;
+        }
+    }
+}
+
+// Clean up conflicting default routes from existing Netplan files (bridge version)
+async function cleanupBridgeConflictingRoutes() {
+    NetworkLogger.info('Cleaning up potentially conflicting default routes...');
+    
+    try {
+        // Get all existing Netplan configurations
+        const netplanFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '*.yaml', '-o', '-name', '*.yml'], { superuser: 'try' });
+        const files = netplanFiles.trim().split('\n').filter(f => f.trim());
+        
+        let defaultRouteFound = false;
+        let defaultRouteInterface = null;
+        
+        // First pass: identify which interface should keep the default route
+        for (const file of files) {
+            try {
+                const content = await cockpit.file(file, { superuser: 'try' }).read();
+                if (content) {
+                    // Check for default routes
+                    const defaultRouteMatches = content.match(/- to: (default|0\.0\.0\.0\/0)/g);
+                    if (defaultRouteMatches && !defaultRouteFound) {
+                        // Keep the first valid default route we find (usually from main config)
+                        const interfaceMatches = content.match(/^\s*([a-zA-Z0-9.-]+):/gm);
+                        if (interfaceMatches) {
+                            for (const match of interfaceMatches) {
+                                const interfaceName = match.replace(':', '').trim();
+                                if (interfaceName && !['network', 'version', 'renderer', 'ethernets', 'bonds', 'bridges', 'vlans'].includes(interfaceName)) {
+                                    defaultRouteInterface = interfaceName;
+                                    defaultRouteFound = true;
+                                    NetworkLogger.info(`Keeping default route on interface: ${interfaceName} (file: ${file})`);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (fileError) {
+                NetworkLogger.warning(`Could not read file ${file}:`, fileError.message);
+            }
+        }
+        
+        // Second pass: remove conflicting routes and gateway4 from other files
+        for (const file of files) {
+            try {
+                const content = await cockpit.file(file, { superuser: 'try' }).read();
+                if (content) {
+                    let updatedContent = content;
+                    let contentChanged = false;
+                    
+                    // Remove deprecated gateway4 lines
+                    const gateway4Lines = content.match(/^\s*gateway4:.*$/gm);
+                    if (gateway4Lines && gateway4Lines.length > 0) {
+                        NetworkLogger.info(`Removing deprecated gateway4 from ${file}`);
+                        for (const line of gateway4Lines) {
+                            updatedContent = updatedContent.replace(line + '\n', '');
+                            updatedContent = updatedContent.replace(line, '');
+                            contentChanged = true;
+                        }
+                    }
+                    
+                    // Check if this file contains the interface that should keep the default route
+                    const shouldKeepDefaultRoute = defaultRouteInterface && content.includes(`${defaultRouteInterface}:`);
+                    
+                    if (!shouldKeepDefaultRoute) {
+                        // Remove default routes from files that shouldn't have them
+                        const defaultRouteLines = content.match(/^\s*- to: (default|0\.0\.0\.0\/0).*$/gm);
+                        if (defaultRouteLines && defaultRouteLines.length > 0) {
+                            NetworkLogger.info(`Removing conflicting default route(s) from ${file}`);
+                            
+                            for (const line of defaultRouteLines) {
+                                updatedContent = updatedContent.replace(line + '\n', '');
+                                updatedContent = updatedContent.replace(line, '');
+                                contentChanged = true;
+                            }
+                        }
+                        
+                        // Also remove the entire routes section if it becomes empty
+                        updatedContent = updatedContent.replace(/^\s*routes:\s*$/gm, '');
+                        
+                        // Remove any "via:" lines that are orphaned after route removal
+                        updatedContent = updatedContent.replace(/^\s*via:.*$/gm, '');
+                    }
+                    
+                    // Fix incorrect bridge interface configuration (bridge referencing itself)
+                    const selfReferencingBridge = content.match(/^\s*([a-zA-Z0-9.-]+):\s*$[\s\S]*?interfaces:\s*\n\s*-\s*\1\s*$/gm);
+                    if (selfReferencingBridge) {
+                        NetworkLogger.info(`Fixing self-referencing bridge interface in ${file}`);
+                        // Remove the self-referencing interface line
+                        updatedContent = updatedContent.replace(/^\s*-\s*([a-zA-Z0-9.-]+)\s*$/gm, (match, interfaceName) => {
+                            // Check if this interface name matches any bridge name in the same file
+                            const bridgeNames = content.match(/^\s*([a-zA-Z0-9.-]+):\s*$/gm);
+                            if (bridgeNames) {
+                                for (const bridgeLine of bridgeNames) {
+                                    const bridgeName = bridgeLine.replace(':', '').trim();
+                                    if (bridgeName === interfaceName && !['network', 'version', 'renderer', 'ethernets', 'bonds', 'bridges', 'vlans'].includes(bridgeName)) {
+                                        NetworkLogger.info(`Removing self-reference: ${interfaceName}`);
+                                        contentChanged = true;
+                                        return ''; // Remove the self-referencing line
+                                    }
+                                }
+                            }
+                            return match; // Keep other interface references
+                        });
+                    }
+                    
+                    // Clean up any empty lines and sections
+                    updatedContent = updatedContent.replace(/\n\n\n+/g, '\n\n');
+                    updatedContent = updatedContent.replace(/^\s*interfaces:\s*$/gm, ''); // Remove empty interfaces sections
+                    
+                    if (contentChanged) {
+                        await cockpit.file(file, { superuser: 'try' }).replace(updatedContent);
+                        NetworkLogger.info(`Cleaned up conflicting configurations in ${file}`);
+                    }
+                }
+            } catch (fileError) {
+                NetworkLogger.warning(`Could not process file ${file}:`, fileError.message);
+            }
+        }
+        
+    } catch (error) {
+        NetworkLogger.warning('Could not clean up conflicting routes:', error.message);
+    }
+}
+
 async function createRealBridge(config) {
-    NetworkLogger.info(' Creating real bridge with config:', config);
+    NetworkLogger.info('Creating real bridge with config:', config);
     
     if (!cockpit || !cockpit.spawn || !cockpit.file) {
         throw new Error('Cockpit API not available. Please ensure this module is running within Cockpit.');
     }
     
     try {
+        // Check for existing default gateway conflicts before creating bridge
+        await checkForBridgeGatewayConflicts(config);
+        
+        // Additional cleanup: remove any conflicting default routes from other files
+        await cleanupBridgeConflictingRoutes();
+        
+        // Backup system routes before making changes if route preservation is enabled
+        if (config.preserveRoutes !== false) {
+            NetworkLogger.info('Backing up system routes before bridge creation...');
+            await NetworkConfigUtils.backupSystemRoutes();
+        } else {
+            NetworkLogger.info('Route preservation disabled by user');
+        }
+        
+        // Validate that referenced interfaces exist before proceeding
+        NetworkLogger.info('Validating bridge interfaces availability...');
+        await validateBridgeInterfaces(config.interfaces);
+        
         // Generate Netplan configuration for the bridge
-        const netplanConfig = generateBridgeNetplanConfig(config);
-        NetworkLogger.info(' Generated Netplan config:', netplanConfig);
+        const netplanConfigResult = generateBridgeNetplanConfig(config);
+        const { yamlContent: netplanConfig, hasVlanReferences, vlanInterfaces } = netplanConfigResult;
+        NetworkLogger.info('Generated Netplan config:', netplanConfig);
         
-        // Write Netplan configuration file
-        const configFile = `/etc/netplan/90-xavs-${config.name}.yaml`;
-        NetworkLogger.info(`BridgeManager: Writing configuration to ${configFile}`);
+        // Determine config file name using comprehensive dependency-aware system
+        // Analyze the bridge interfaces to determine parent types
+        let parentInfo = { parentType: 'physical' };
+        let isComplex = false;
         
-        await cockpit.file(configFile, { superuser: 'require' }).replace(netplanConfig);
-        NetworkLogger.info(' Netplan configuration written successfully');
-        
-        // Set proper permissions
-        await cockpit.spawn(['chmod', '600', configFile], { superuser: 'require' });
-        
-        // Test the configuration first with netplan try
-        NetworkLogger.info(' Testing Netplan configuration with netplan --debug try...');
-        try {
-            const debugOutput = await cockpit.spawn(['netplan', '--debug', 'try', '--timeout=30'], { superuser: 'require' });
-            NetworkLogger.info(' Netplan debug output:', debugOutput);
-        } catch (tryError) {
-            NetworkLogger.error(' Netplan try failed:', tryError);
-            
-            // Check if this is just the bridge revert warning (exit status 78)
-            if (tryError.exit_status === 78) {
-                NetworkLogger.info(' Netplan try exit 78: bridge change warning in non-interactive session; proceeding to apply');
-            } else {
-                // Fallback: try preflight validation with netplan generate
-                NetworkLogger.info(' Attempting fallback preflight validation...');
-                try {
-                    await cockpit.spawn(['netplan', 'generate'], { superuser: 'require' });
-                    NetworkLogger.info(' Preflight validation passed, proceeding to apply');
-                } catch (generateError) {
-                    NetworkLogger.error(' Preflight validation failed:', generateError);
-                    throw new Error(`Configuration validation failed: ${tryError.message || tryError}. The bridge configuration has not been applied.`);
-                }
+        // Check if any interfaces are VLANs, bonds, or other complex types
+        for (const interfaceName of config.interfaces) {
+            const analysis = NetworkConfigUtils.analyzeInterfaceStructure(interfaceName);
+            if (analysis.objectType !== 'physical') {
+                parentInfo.parentType = analysis.objectType;
+                parentInfo.isComplex = true;
+                isComplex = true;
+                break; // Found complex interface, use it for priority
             }
         }
         
-        // Apply Netplan configuration permanently
-        NetworkLogger.info(' Applying Netplan configuration permanently...');
+        // Generate filename using the comprehensive system
+        const filename = NetworkConfigUtils.generateNetplanFilename(config.name, 'bridge', parentInfo);
+        const configFile = `/etc/netplan/${filename}`;
+        
+        NetworkLogger.info(`BridgeManager: Writing configuration to ${configFile} (${isComplex ? 'complex topology priority' : 'standard priority'})`);
+        
+        if (hasVlanReferences) {
+            NetworkLogger.info(`Bridge references ${vlanInterfaces.length} VLAN interface(s): ${vlanInterfaces.map(v => v.name).join(', ')}`);
+        }
+        
+        // Validate the configuration before writing it
+        NetworkLogger.info('Validating Netplan configuration before applying...');
+        await validateNetplanConfig(netplanConfig);
+        
+        await cockpit.file(configFile, { superuser: 'require' }).replace(netplanConfig);
+        
+        // Set proper file permissions (ignore errors if file doesn't exist)
+        await NetworkConfigUtils.safeChmod(configFile, '600');
+        
+        NetworkLogger.info('Netplan configuration written successfully');
+        
+        // Apply the configuration directly with netplan apply for bridges
+        NetworkLogger.info('Applying bridge configuration directly with netplan apply...');
         await cockpit.spawn(['netplan', 'apply'], { superuser: 'require' });
-        NetworkLogger.info(' Netplan applied successfully');
+        NetworkLogger.info('Bridge configuration applied successfully');
+        
+        // Explicitly restore system routes as an additional safety measure if preservation is enabled
+        if (config.preserveRoutes !== false) {
+            NetworkLogger.info('Ensuring system routes are properly restored...');
+            try {
+                await NetworkConfigUtils.restoreSystemRoutes();
+                NetworkLogger.info('System routes restoration completed');
+            } catch (routeError) {
+                NetworkLogger.warning('Route restoration had issues, but continuing:', routeError);
+                // Don't fail the entire operation for route restoration issues
+            }
+        } else {
+            NetworkLogger.info('Route preservation was disabled, skipping route restoration');
+        }
         
         // Verify bridge creation
-        NetworkLogger.info(' Verifying bridge creation...');
-        await cockpit.spawn(['ip', 'link', 'show', config.name], { superuser: 'try' });
-        NetworkLogger.info(' Bridge interface verified');
+        NetworkLogger.info('Verifying bridge creation...');
+        try {
+            await cockpit.spawn(['ip', 'link', 'show', config.name], { superuser: 'try' });
+            NetworkLogger.info('Bridge interface verified successfully');
+        } catch (verifyError) {
+            NetworkLogger.warning('Could not verify bridge interface, but configuration was applied:', verifyError);
+        }
         
     } catch (error) {
-        NetworkLogger.error(' Error creating bridge:', error);
+        NetworkLogger.error('Error creating bridge:', error);
         throw new Error(`Failed to create bridge interface: ${error.message}`);
     }
 }
 
+// Helper function to validate Netplan configuration before applying
+async function validateNetplanConfig(yamlContent) {
+    if (!cockpit || !cockpit.spawn) {
+        throw new Error('Cockpit API not available');
+    }
+    
+    const tempFile = `/tmp/netplan-validate-${Date.now()}.yaml`;
+    
+    try {
+        // Write temporary config file for validation
+        NetworkLogger.info('Creating temporary config file for validation...');
+        await cockpit.file(tempFile, { superuser: 'require' }).replace(yamlContent);
+        
+        // Set proper file permissions to avoid Netplan warnings/errors
+        NetworkLogger.info('Setting secure permissions on temporary config file...');
+        await cockpit.spawn(['chmod', '600', tempFile], { superuser: 'require' });
+        
+        // Basic YAML syntax validation using python
+        NetworkLogger.info('Validating YAML syntax...');
+        await cockpit.spawn(['python3', '-c', `
+import yaml
+import sys
+try:
+    with open('${tempFile}', 'r') as f:
+        config = yaml.safe_load(f)
+    # Basic structure validation
+    if not isinstance(config, dict):
+        raise ValueError("Configuration must be a YAML object")
+    if 'network' not in config:
+        raise ValueError("Configuration must contain 'network' section")
+    if not isinstance(config['network'], dict):
+        raise ValueError("'network' must be an object")
+    if 'bridges' not in config['network']:
+        raise ValueError("Configuration must contain 'bridges' section")
+    print("YAML syntax and basic structure are valid")
+except Exception as e:
+    print(f"Configuration error: {e}")
+    sys.exit(1)
+`], { superuser: 'require' });
+        
+        NetworkLogger.info('Configuration validation completed successfully');
+        return true;
+    } catch (error) {
+        NetworkLogger.error('Configuration validation failed:', error);
+        throw new Error(`Invalid configuration: ${error.message}`);
+    } finally {
+        // Always clean up temp file, regardless of success or failure
+        try {
+            NetworkLogger.info('Cleaning up temporary validation file...');
+            await cockpit.spawn(['rm', '-f', tempFile], { superuser: 'require' });
+        } catch (cleanupError) {
+            NetworkLogger.warning('Could not clean up temporary file:', cleanupError);
+        }
+    }
+}
+
+// Helper function to validate that referenced interfaces exist
+async function validateBridgeInterfaces(interfaces) {
+    if (!interfaces || interfaces.length === 0) {
+        return true; // Empty bridge is valid
+    }
+    
+    const missingInterfaces = [];
+    const conflictInterfaces = [];
+    
+    for (const iface of interfaces) {
+        try {
+            // Check if interface exists in the system
+            await cockpit.spawn(['ip', 'link', 'show', iface], { superuser: 'try' });
+            NetworkLogger.info(`Interface ${iface} exists and is available for bridging`);
+            
+            // Check if interface is already assigned to a bond
+            try {
+                const bondFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '*bond*.yaml'], { superuser: 'try' });
+                const files = bondFiles.trim().split('\n').filter(f => f.trim());
+                
+                for (const file of files) {
+                    try {
+                        const content = await cockpit.file(file, { superuser: 'try' }).read();
+                        if (content && content.includes(`- ${iface}`)) {
+                            // Interface is already assigned to a bond
+                            const bondMatch = content.match(/(\w+):\s*\n.*interfaces:/s);
+                            const bondName = bondMatch ? bondMatch[1] : 'unknown bond';
+                            conflictInterfaces.push({
+                                name: iface,
+                                type: 'bond_conflict',
+                                message: `Interface ${iface} is already assigned to ${bondName}`
+                            });
+                            break;
+                        }
+                    } catch (fileError) {
+                        // Skip unreadable files
+                    }
+                }
+            } catch (bondCheckError) {
+                NetworkLogger.warning('Could not check for bond conflicts:', bondCheckError);
+            }
+            
+        } catch (error) {
+            // Interface doesn't exist - could be a VLAN that needs to be created first
+            const interfaceAnalysis = analyzeInterfacesForBridge([iface]);
+            
+            if (interfaceAnalysis.vlanInterfaces.length > 0) {
+                // This is a VLAN interface that should be defined elsewhere
+                missingInterfaces.push({
+                    name: iface,
+                    type: 'vlan',
+                    message: `VLAN interface ${iface} must be created first in VLAN configuration`
+                });
+            } else {
+                // Regular interface that doesn't exist
+                missingInterfaces.push({
+                    name: iface,
+                    type: 'physical',
+                    message: `Physical interface ${iface} not found in system`
+                });
+            }
+        }
+    }
+    
+    // Check for conflicts first (higher priority error)
+    if (conflictInterfaces.length > 0) {
+        const errorMessages = conflictInterfaces.map(iface => iface.message).join('; ');
+        throw new Error(`Interface conflicts: ${errorMessages}`);
+    }
+    
+    if (missingInterfaces.length > 0) {
+        const errorMessages = missingInterfaces.map(iface => iface.message).join('; ');
+        throw new Error(`Missing interfaces for bridge: ${errorMessages}`);
+    }
+    
+    return true;
+}
+
+// Helper function to analyze and categorize interfaces for bridge configuration
+function analyzeInterfacesForBridge(interfaces) {
+    const result = {
+        vlanInterfaces: [],
+        physicalInterfaces: [],
+        parentInterfaces: new Set()
+    };
+    
+    if (!interfaces || interfaces.length === 0) {
+        return result;
+    }
+    
+    interfaces.forEach(iface => {
+        // Check if this is a VLAN interface (format: parent.vlanid or vlan123)
+        const dotVlanMatch = iface.match(/^(.+)\.(\d+)$/);
+        const namedVlanMatch = iface.match(/^vlan(\d+)$/);
+        
+        if (dotVlanMatch) {
+            // Format: eno1.100, eth0.200
+            const parentInterface = dotVlanMatch[1];
+            const vlanId = parseInt(dotVlanMatch[2]);
+            result.vlanInterfaces.push({
+                name: iface,
+                parent: parentInterface,
+                vlanId: vlanId,
+                type: 'dot-notation'
+            });
+            result.parentInterfaces.add(parentInterface);
+            NetworkLogger.info(`Detected VLAN interface: ${iface} (parent: ${parentInterface}, VLAN ID: ${vlanId})`);
+        } else if (namedVlanMatch) {
+            // Format: vlan100, vlan200
+            const vlanId = parseInt(namedVlanMatch[1]);
+            result.vlanInterfaces.push({
+                name: iface,
+                parent: null, // Will be determined later
+                vlanId: vlanId,
+                type: 'named'
+            });
+            NetworkLogger.info(`Detected named VLAN interface: ${iface} (VLAN ID: ${vlanId}, parent TBD)`);
+        } else {
+            // Regular physical interface
+            result.physicalInterfaces.push(iface);
+            NetworkLogger.info(`Detected physical interface: ${iface}`);
+        }
+    });
+    
+    // For named VLANs without explicit parent, try to assign a suitable parent
+    result.vlanInterfaces.forEach(vlan => {
+        if (vlan.type === 'named' && !vlan.parent) {
+            if (result.physicalInterfaces.length > 0) {
+                // Use the first physical interface as parent
+                vlan.parent = result.physicalInterfaces[0];
+                result.parentInterfaces.add(vlan.parent);
+                NetworkLogger.info(`Assigned parent ${vlan.parent} to VLAN ${vlan.name}`);
+            } else {
+                // Fallback to a common interface name
+                vlan.parent = 'eth0';
+                result.parentInterfaces.add(vlan.parent);
+                NetworkLogger.warning(`Using fallback parent eth0 for VLAN ${vlan.name}`);
+            }
+        }
+    });
+    
+    return result;
+}
+
 // Generate Netplan configuration for bridge with modern features
+// This function creates a bridge-only Netplan YAML configuration that references existing interfaces
+// VLAN and ethernet interfaces should be defined in their respective configuration files
+// Example output for bridge referencing existing VLANs:
+//   network:
+//     version: 2
+//     renderer: networkd
+//     bridges:
+//       br-vm:
+//         interfaces:
+//           - eno1.100
+//           - eno2
+//         parameters:
+//           stp: true
+//         addresses:
+//           - 192.168.100.10/24
 function generateBridgeNetplanConfig(config) {
     NetworkLogger.info(' Generating Netplan config for bridge:', config.name);
     
-    // Build configuration object for better structure
+    // Analyze interfaces to identify VLANs and their parents for logging purposes
+    const interfaceAnalysis = analyzeInterfacesForBridge(config.interfaces);
+    const { vlanInterfaces, physicalInterfaces, parentInterfaces } = interfaceAnalysis;
+    
+    // Build configuration object - bridge only, references existing interfaces
     let yamlContent = `network:
   version: 2
   renderer: networkd
@@ -1076,7 +1668,7 @@ function generateBridgeNetplanConfig(config) {
     ${config.name}:
 `;
     
-    // Add bridge parameters
+    // Add bridge interfaces (reference existing interfaces, don't redefine them)
     if (config.interfaces && config.interfaces.length > 0) {
         yamlContent += `      interfaces:
 `;
@@ -1115,22 +1707,37 @@ function generateBridgeNetplanConfig(config) {
             });
         }
         
-        // Add gateway using modern routes format with legacy fallback
+        // Gateway configuration is intentionally disabled to prevent automatic route conflicts
+        // The gateway value is preserved in the configuration for reference but not applied as routes
+        // Routes are managed automatically by the system based on IP address configuration
+        // Users can manually configure custom routes after bridge creation if needed
         if (config.gateway && config.gateway.trim() && 
             !['N/A', 'Auto', 'null', 'undefined'].includes(config.gateway)) {
-            yamlContent += `      routes:
-        - to: default
-          via: ${config.gateway}
-      gateway4: ${config.gateway}
-`;
+            NetworkLogger.info(`Bridge gateway ${config.gateway} specified but not added to prevent automatic route conflicts`);
+            // Gateway is stored in the form but not written to Netplan to avoid route management issues
         }
     } else if (config.configType === 'dhcp') {
         yamlContent += `      dhcp4: true
 `;
     }
     
-    NetworkLogger.info(' Generated Netplan YAML:', yamlContent);
-    return yamlContent;
+    NetworkLogger.info(' Generated Netplan YAML (bridge-only):');
+    NetworkLogger.info('--- START YAML ---');
+    NetworkLogger.info(yamlContent);
+    NetworkLogger.info('--- END YAML ---');
+    NetworkLogger.info(` Bridge analysis: ${vlanInterfaces.length} VLAN interface(s), ${physicalInterfaces.length} physical interface(s), ${parentInterfaces.size} parent interface(s)`);
+    if (vlanInterfaces.length > 0) {
+        NetworkLogger.info(' Note: Bridge references VLANs - will use higher priority filename to load after VLAN configurations');
+    } else {
+        NetworkLogger.info(' Note: Bridge contains only physical interfaces - using standard priority filename');
+    }
+    
+    return {
+        yamlContent,
+        hasVlanReferences: vlanInterfaces.length > 0,
+        vlanInterfaces,
+        physicalInterfaces
+    };
 }
 
 async function updateBridge(bridgeName) {
@@ -1145,15 +1752,16 @@ async function updateBridge(bridgeName) {
     
     const formData = {
         name: bridgeName,
-        type: document.getElementById('edit-bridge-type')?.value || '',
-        description: document.getElementById('edit-bridge-description')?.value || '',
+        type: (document.getElementById('edit-bridge-type') && document.getElementById('edit-bridge-type').value) || '',
+        description: (document.getElementById('edit-bridge-description') && document.getElementById('edit-bridge-description').value) || '',
         interfaces: window.editSelectedBridgeInterfaces ? 
             Array.from(window.editSelectedBridgeInterfaces) : [],
         ipAddresses: collectEditBridgeIpAddresses(),
         ip: collectEditBridgeIpAddresses()[0] || '', // Backward compatibility
-        gateway: document.getElementById('edit-bridge-gateway')?.value || '',
-        stp: document.getElementById('edit-bridge-stp')?.checked || false,
-        forwardDelay: document.getElementById('edit-bridge-forward-delay')?.value || '4s'
+        gateway: (document.getElementById('edit-bridge-gateway') && document.getElementById('edit-bridge-gateway').value) || '',
+        stp: (document.getElementById('edit-bridge-stp') && document.getElementById('edit-bridge-stp').checked) || false,
+        forwardDelay: (document.getElementById('edit-bridge-forward-delay') && document.getElementById('edit-bridge-forward-delay').value) || '4s',
+        preserveRoutes: (document.getElementById('edit-bridge-preserve-routes') && document.getElementById('edit-bridge-preserve-routes').checked) !== false
     };
     
     NetworkLogger.info(' Update form data:', formData);
@@ -1197,10 +1805,19 @@ async function updateRealBridge(config) {
     }
     
     try {
-        // Read existing configuration
-        const configFile = `/etc/netplan/90-xavs-${config.name}.yaml`;
-        NetworkLogger.info(`BridgeManager: Reading existing config from ${configFile}`);
+        // Check for existing default gateway conflicts before updating bridge
+        await checkForBridgeGatewayConflicts(config);
         
+        // Additional cleanup: remove any conflicting default routes from other files
+        await cleanupBridgeConflictingRoutes();
+        
+        // Backup system routes before making changes if route preservation is enabled
+        if (config.preserveRoutes !== false) {
+            NetworkLogger.info('Backing up system routes before bridge update...');
+            await NetworkConfigUtils.backupSystemRoutes();
+        } else {
+            NetworkLogger.info('Route preservation disabled by user for bridge update');
+        }
         // Find bridge in current configuration
         const bridge = BridgeManager.bridges.find(b => b.name === config.name);
         if (!bridge) {
@@ -1221,16 +1838,74 @@ async function updateRealBridge(config) {
         };
         
         // Generate updated Netplan configuration
-        const newNetplanConfig = generateBridgeNetplanConfig(updatedConfig);
+        const netplanConfigResult = generateBridgeNetplanConfig(updatedConfig);
+        const { yamlContent: newNetplanConfig, hasVlanReferences } = netplanConfigResult;
         NetworkLogger.info(' Generated updated Netplan config:', newNetplanConfig);
+        
+        // Determine parent types for comprehensive filename system
+        let parentInfo = { parentType: 'physical' };
+        let isComplex = false;
+        
+        // Check if any interfaces are VLANs, bonds, or other complex types
+        for (const interfaceName of updatedConfig.interfaces) {
+            const analysis = NetworkConfigUtils.analyzeInterfaceStructure(interfaceName);
+            if (analysis.objectType !== 'physical') {
+                parentInfo.parentType = analysis.objectType;
+                parentInfo.isComplex = true;
+                isComplex = true;
+                break; // Found complex interface, use it for priority
+            }
+        }
+        
+        // Generate new filename using comprehensive system
+        const newFilename = NetworkConfigUtils.generateNetplanFilename(config.name, 'bridge', parentInfo);
+        const configFile = `/etc/netplan/${newFilename}`;
+        
+        // Check for old files that need cleanup (both old and new systems)
+        const oldConfigFile = `/etc/netplan/90-xavs-${config.name}.yaml`;
+        const oldHighPriorityFile = `/etc/netplan/91-xavs-${config.name}.yaml`;
+        
+        // Generate old filename using new system (in case it was previously created with new system)
+        const oldParentInfo = { parentType: 'physical' }; // Default for existing bridges
+        const oldNewSystemFilename = NetworkConfigUtils.generateNetplanFilename(config.name, 'bridge', oldParentInfo);
+        const oldNewSystemFile = `/etc/netplan/${oldNewSystemFilename}`;
+        
+        try {
+            // Clean up old configuration files (all possible old naming schemes)
+            NetworkLogger.info('Cleaning up old bridge configuration files...');
+            await cockpit.spawn(['rm', '-f', oldConfigFile], { superuser: 'try' });
+            await cockpit.spawn(['rm', '-f', oldHighPriorityFile], { superuser: 'try' });
+            if (oldNewSystemFile !== configFile) {
+                await cockpit.spawn(['rm', '-f', oldNewSystemFile], { superuser: 'try' });
+            }
+        } catch (cleanupError) {
+            NetworkLogger.warning('Error during old file cleanup:', cleanupError);
+        }
+        
+        NetworkLogger.info(`BridgeManager: Writing updated configuration to ${configFile}`);
         
         // Write updated configuration
         await cockpit.file(configFile, { superuser: 'require' }).replace(newNetplanConfig);
         NetworkLogger.info(' Updated configuration written');
         
-        // Apply changes
+        // Apply changes directly with netplan apply for bridges
+        NetworkLogger.info('Applying updated bridge configuration directly with netplan apply...');
         await cockpit.spawn(['netplan', 'apply'], { superuser: 'require' });
         NetworkLogger.info(' Configuration applied successfully');
+        
+        // Explicitly restore system routes as an additional safety measure if preservation is enabled
+        if (config.preserveRoutes !== false) {
+            NetworkLogger.info('Ensuring system routes are properly restored...');
+            try {
+                await NetworkConfigUtils.restoreSystemRoutes();
+                NetworkLogger.info('System routes restoration completed');
+            } catch (routeError) {
+                NetworkLogger.warning('Route restoration had issues, but continuing:', routeError);
+                // Don't fail the entire operation for route restoration issues
+            }
+        } else {
+            NetworkLogger.info('Route preservation was disabled, skipping route restoration');
+        }
         
     } catch (error) {
         NetworkLogger.error(' Error updating bridge:', error);
@@ -1330,26 +2005,78 @@ async function deleteRealBridge(bridgeName) {
             NetworkLogger.warning(`BridgeManager: Could not bring bridge down (may not exist):`, downError);
         }
         
-        // Remove the XAVS configuration file
-        const configFile = `/etc/netplan/90-xavs-${bridgeName}.yaml`;
-        NetworkLogger.info(`BridgeManager: Removing configuration file ${configFile}`);
+        // Remove configuration files (both old and new system naming)
+        const oldStandardFile = `/etc/netplan/90-xavs-${bridgeName}.yaml`;
+        const oldHighPriorityFile = `/etc/netplan/91-xavs-${bridgeName}.yaml`;
         
-        try {
-            await cockpit.spawn(['rm', '-f', configFile], { superuser: 'require' });
-            NetworkLogger.info(' Configuration file removed');
-        } catch (rmError) {
-            NetworkLogger.warning(' Could not remove configuration file:', rmError);
+        // Generate possible new system filenames to clean up
+        const possibleParentTypes = ['physical', 'bond', 'vlan'];
+        const configFilesToRemove = [oldStandardFile, oldHighPriorityFile];
+        
+        for (const parentType of possibleParentTypes) {
+            const parentInfo = { parentType: parentType };
+            const filename = NetworkConfigUtils.generateNetplanFilename(bridgeName, 'bridge', parentInfo);
+            const configPath = `/etc/netplan/${filename}`;
+            if (!configFilesToRemove.includes(configPath)) {
+                configFilesToRemove.push(configPath);
+            }
         }
         
-        // Apply Netplan to remove the bridge from system
-        NetworkLogger.info(' Applying Netplan to remove bridge...');
-        await cockpit.spawn(['netplan', 'apply'], { superuser: 'require' });
-        NetworkLogger.info(' Netplan applied - bridge should be removed');
+        NetworkLogger.info(`BridgeManager: Removing configuration files for ${bridgeName}...`);
+        
+        for (const configFile of configFilesToRemove) {
+            try {
+                await cockpit.spawn(['rm', '-f', configFile], { superuser: 'try' });
+                NetworkLogger.info(`Removed configuration file: ${configFile}`);
+            } catch (rmError) {
+                NetworkLogger.info(`Configuration file ${configFile} does not exist or could not be removed`);
+            }
+        }
+        
+        // Backup system routes before applying netplan changes
+        NetworkLogger.info('Backing up system routes before bridge deletion...');
+        await NetworkConfigUtils.backupSystemRoutes();
+        
+        // Clean up any remaining gateway conflicts and deprecated configs before applying
+        NetworkLogger.info('Cleaning up gateway conflicts and deprecated configs before bridge deletion...');
+        try {
+            await checkForBridgeGatewayConflicts();
+            await cleanupBridgeConflictingRoutes();
+        } catch (cleanupError) {
+            NetworkLogger.warning('Cleanup failed during bridge deletion:', cleanupError);
+            // Continue with netplan apply even if cleanup fails
+        }
+        
+        // Apply Netplan to remove the bridge from system directly
+        NetworkLogger.info('Applying Netplan bridge removal directly with netplan apply...');
+        try {
+            await cockpit.spawn(['netplan', 'apply'], { superuser: 'require' });
+            NetworkLogger.info('Netplan applied - bridge removal completed successfully');
+        } catch (netplanError) {
+            NetworkLogger.warning('Netplan apply failed during bridge removal:', netplanError);
+            // If netplan fails due to conflicts, try manual bridge deletion
+            NetworkLogger.info(`Attempting manual deletion of bridge ${bridgeName}...`);
+            try {
+                await cockpit.spawn(['ip', 'link', 'delete', bridgeName], { superuser: 'require' });
+                NetworkLogger.info(`Manual bridge deletion successful for ${bridgeName}`);
+            } catch (manualError) {
+                NetworkLogger.warning(`Manual bridge deletion also failed for ${bridgeName}:`, manualError);
+            }
+        }
         
         // Verify bridge is gone
         try {
             await cockpit.spawn(['ip', 'link', 'show', bridgeName], { superuser: 'try' });
             NetworkLogger.warning(`BridgeManager: Bridge ${bridgeName} still exists after deletion attempt`);
+            
+            // Try one more manual deletion attempt
+            try {
+                NetworkLogger.info(`Final manual deletion attempt for ${bridgeName}...`);
+                await cockpit.spawn(['ip', 'link', 'delete', bridgeName], { superuser: 'require' });
+                NetworkLogger.info(`Final manual deletion successful for ${bridgeName}`);
+            } catch (finalError) {
+                NetworkLogger.warning(`Final manual deletion failed for ${bridgeName}:`, finalError);
+            }
         } catch (verifyError) {
             NetworkLogger.info(`BridgeManager: Bridge ${bridgeName} successfully removed`);
         }
@@ -1414,6 +2141,10 @@ async function addRealInterfaceToBridge(bridgeName, interfaceName) {
     assertValidInterfaceName(interfaceName);
     
     try {
+        // Backup system routes before making changes
+        NetworkLogger.info('Backing up system routes before adding interface to bridge...');
+        await NetworkConfigUtils.backupSystemRoutes();
+        
         // First, ensure the interface is down
         NetworkLogger.info(`BridgeManager: Bringing interface ${interfaceName} down...`);
         await cockpit.spawn(['ip', 'link', 'set', interfaceName, 'down'], { superuser: 'require' });
@@ -1425,6 +2156,14 @@ async function addRealInterfaceToBridge(bridgeName, interfaceName) {
         // Bring the interface back up
         NetworkLogger.info(`BridgeManager: Bringing interface ${interfaceName} up...`);
         await cockpit.spawn(['ip', 'link', 'set', interfaceName, 'up'], { superuser: 'require' });
+        
+        // Restore system routes
+        try {
+            await NetworkConfigUtils.restoreSystemRoutes();
+            NetworkLogger.info('System routes restored successfully after adding interface to bridge');
+        } catch (routeError) {
+            NetworkLogger.warning('Could not restore system routes after adding interface to bridge:', routeError);
+        }
         
         NetworkLogger.info(`BridgeManager: Interface ${interfaceName} added to bridge ${bridgeName} successfully`);
         

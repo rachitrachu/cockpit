@@ -1843,8 +1843,138 @@ input:checked + .toggle-slider:before {
     .interface-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .bond-card {
         max-width: none;
     }
+}
+
+/* DNS Configuration Styles */
+.dns-servers-list h3 {
+    margin: 0 0 20px 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.dns-table {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 20px;
+}
+
+.dns-table-header,
+.dns-table-row {
+    display: grid;
+    grid-template-columns: 2fr 1.5fr 1.5fr 1fr;
+    gap: 16px;
+    padding: 12px 16px;
+    align-items: center;
+}
+
+.dns-table-header {
+    background: var(--accent);
+    color: white;
+    font-weight: 600;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.dns-table-row {
+    border-bottom: 1px solid var(--border);
+    transition: background-color 0.2s ease;
+}
+
+.dns-table-row:hover {
+    background: var(--hover);
+}
+
+.dns-table-row:last-child {
+    border-bottom: none;
+}
+
+.dns-server-col strong {
+    color: var(--text);
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+}
+
+.dns-source-col .badge {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+}
+
+.badge-success {
+    background: #28a745;
+    color: white;
+}
+
+.badge-info {
+    background: #17a2b8;
+    color: white;
+}
+
+.dns-interface-col code {
+    background: var(--code-bg, #f8f9fa);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    color: var(--accent);
+}
+
+.dns-actions-col {
+    text-align: right;
+}
+
+.dns-summary {
+    margin-top: 20px;
+}
+
+.summary-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+}
+
+.stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.stat-card i {
+    font-size: 24px;
+    color: var(--accent);
+}
+
+.stat-info {
+    flex: 1;
+}
+
+.stat-value {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0;
+}
+
+.stat-label {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin: 0;
 }

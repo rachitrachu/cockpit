@@ -8,7 +8,7 @@ if (typeof cockpit === 'undefined') {
 }
 
 // Global constants
-const INTERFACE_NAME_REGEX = /^(e(n|th)\w+|bond\d+|ens\d+|eno\d+|enp\d+s\d+|wl\w+|vlan\d+|br\w+)$/;
+const INTERFACE_NAME_REGEX = /^(e(n|th)[\w.-]+|bond\d+|ens\d+|eno\d+|enp\d+s\d+|wl[\w.-]+|vlan\d+|br[\w-]+|[\w-]+\.\d+)$/;
 
 // Logging functionality
 const NetworkLogger = {
@@ -2095,19 +2095,30 @@ const NetworkManager = {
             
             const dnsServers = [];
             
-            // Try to read systemd-resolved status
+            // Try to read systemd-resolved status using resolvectl
             try {
-                const resolvedStatus = await cockpit.spawn(['systemd-resolve', '--status'], { superuser: 'try' });
+                const resolvedStatus = await cockpit.spawn(['resolvectl', 'status'], { superuser: 'try' });
                 const lines = resolvedStatus.split('\n');
                 
+                let currentInterface = '';
                 for (const line of lines) {
-                    if (line.trim().startsWith('DNS Servers:')) {
-                        const servers = line.replace('DNS Servers:', '').trim().split(/\s+/);
+                    // Track current interface
+                    const linkMatch = line.match(/^Link \d+ \(([^)]+)\)/);
+                    if (linkMatch) {
+                        currentInterface = linkMatch[1];
+                        continue;
+                    }
+                    
+                    // Look for DNS Servers line
+                    if (line.trim().startsWith('DNS Servers:') || line.trim().startsWith('Current DNS Server:')) {
+                        const serverLine = line.replace('DNS Servers:', '').replace('Current DNS Server:', '').trim();
+                        const servers = serverLine.split(/\s+/);
                         servers.forEach(server => {
                             if (server && server.match(/^\d+\.\d+\.\d+\.\d+$/)) {
                                 dnsServers.push({
                                     server: server,
-                                    source: 'systemd-resolved'
+                                    source: currentInterface ? `interface ${currentInterface}` : 'systemd-resolved',
+                                    interface: currentInterface
                                 });
                             }
                         });
@@ -2138,9 +2149,120 @@ const NetworkManager = {
             this.dnsServers = dnsServers;
             NetworkLogger.info(`Found ${dnsServers.length} DNS servers`);
             
+            // Render DNS servers in the GUI
+            this.renderDnsConfig();
+            
         } catch (error) {
             NetworkLogger.warning('Failed to load DNS configuration:', error);
             this.dnsServers = [];
+            this.renderDnsConfig();
+        }
+    },
+
+    // Render DNS configuration in the GUI
+    renderDnsConfig() {
+        const dnsContainer = document.getElementById('dns-config');
+        if (!dnsContainer) {
+            NetworkLogger.warning('DNS config container not found');
+            return;
+        }
+
+        if (this.dnsServers.length === 0) {
+            dnsContainer.innerHTML = `
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i>
+                    <div>
+                        <h4>No DNS Servers Configured</h4>
+                        <p>Configure DNS servers to enable domain name resolution for your network interfaces.</p>
+                        <button class="btn btn-brand" onclick="addDnsServer()">
+                            <i class="fas fa-plus"></i> Add DNS Server
+                        </button>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        let dnsHtml = `
+            <div class="dns-servers-list">
+                <h3><i class="fas fa-server"></i> Active DNS Servers</h3>
+                <div class="dns-table">
+                    <div class="dns-table-header">
+                        <div class="dns-server-col">DNS Server</div>
+                        <div class="dns-source-col">Source</div>
+                        <div class="dns-interface-col">Interface</div>
+                        <div class="dns-actions-col">Actions</div>
+                    </div>
+        `;
+
+        this.dnsServers.forEach((dns, index) => {
+            dnsHtml += `
+                <div class="dns-table-row">
+                    <div class="dns-server-col">
+                        <strong>${dns.server}</strong>
+                    </div>
+                    <div class="dns-source-col">
+                        <span class="badge ${dns.source.includes('interface') ? 'badge-success' : 'badge-info'}">
+                            ${dns.source}
+                        </span>
+                    </div>
+                    <div class="dns-interface-col">
+                        ${dns.interface ? `<code>${dns.interface}</code>` : '<span class="text-muted">Global</span>'}
+                    </div>
+                    <div class="dns-actions-col">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="testDnsServer('${dns.server}')" title="Test DNS Server">
+                            <i class="fas fa-network-wired"></i> Test
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+
+        dnsHtml += `
+                </div>
+            </div>
+            
+            <div class="dns-summary">
+                <div class="summary-stats">
+                    <div class="stat-card">
+                        <i class="fas fa-server"></i>
+                        <div class="stat-info">
+                            <div class="stat-value">${this.dnsServers.length}</div>
+                            <div class="stat-label">DNS Servers</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <i class="fas fa-check-circle"></i>
+                        <div class="stat-info">
+                            <div class="stat-value">Active</div>
+                            <div class="stat-label">Resolution Status</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        dnsContainer.innerHTML = dnsHtml;
+    },
+
+    // Test DNS server connectivity
+    async testDnsServer(dnsServer) {
+        try {
+            NetworkLogger.info(`Testing DNS server: ${dnsServer}`);
+            
+            // Use nslookup to test DNS resolution
+            const cmd = `nslookup google.com ${dnsServer}`;
+            const result = await cockpit.spawn(['bash', '-c', cmd], { superuser: 'require' });
+            
+            if (result.includes('NXDOMAIN') || result.includes('timed out')) {
+                this.showAlert('DNS test failed', 'DNS server is not responding properly', 'error');
+            } else {
+                this.showAlert('DNS test successful', `DNS server ${dnsServer} is working correctly`, 'success');
+            }
+            
+        } catch (error) {
+            NetworkLogger.error('DNS test failed:', error);
+            this.showAlert('DNS test error', `Failed to test DNS server: ${error.message}`, 'error');
         }
     },
     
@@ -2942,10 +3064,10 @@ async function saveInterfaceEdit(interfaceName) {
         
         NetworkLogger.info(`[saveInterfaceEdit] Saving interface: ${interfaceName}`);
         
-        const enabled = document.getElementById('interface-enabled')?.checked;
+        const enabled = (document.getElementById('interface-enabled') && document.getElementById('interface-enabled').checked);
         const ipAddresses = getInterfaceIpAddresses();
-        const gateway = document.getElementById('interface-gateway')?.value?.trim();
-        const dns = document.getElementById('interface-dns')?.value?.trim();
+        const gateway = (document.getElementById('interface-gateway') && document.getElementById('interface-gateway').value && document.getElementById('interface-gateway').value.trim());
+        const dns = (document.getElementById('interface-dns') && document.getElementById('interface-dns').value && document.getElementById('interface-dns').value.trim());
         
         NetworkLogger.info('[saveInterfaceEdit] Form data:', {
             enabled,
@@ -3890,9 +4012,28 @@ function formatUptime(seconds) {
 }
 
 function validateIPAddress(ip) {
-    const ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+    // More strict IPv4 validation that rejects leading zeros
+    const ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])$/;
     const ipv6Regex = /^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/;
-    return ipv4Regex.test(ip) || ipv6Regex.test(ip);
+    
+    if (ipv4Regex.test(ip)) {
+        // Additional check for leading zeros in IPv4 octets
+        const octets = ip.split('.');
+        for (const octet of octets) {
+            // Reject if octet has leading zero (except for "0" itself)
+            if (octet.length > 1 && octet.startsWith('0')) {
+                return false;
+            }
+            // Validate range 0-255
+            const num = parseInt(octet, 10);
+            if (num < 0 || num > 255) {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    return ipv6Regex.test(ip);
 }
 
 function validateCIDR(cidr) {
@@ -5067,101 +5208,18 @@ function addVlan() {
 }
 
 function addBridge() {
-    const modal = document.getElementById('interface-modal');
-    const modalTitle = modal.querySelector('.modal-title');
-    const modalBody = modal.querySelector('.modal-body');
-    
-    modalTitle.textContent = 'Create Bridge Interface';
-    modalBody.innerHTML = `
-        <form id="bridge-form">
-            <div class="form-group">
-                <label for="bridge-name">Bridge Interface Name</label>
-                <input type="text" id="bridge-name" name="name" placeholder="e.g., br0" required>
-            </div>
-            <div class="form-group">
-                <label for="bridge-interfaces">Member Interfaces</label>
-                <div class="checkbox-group">
-                    ${NetworkManager.interfaces.filter(i => !i.systemInterface && i.type === 'ethernet').map(i => 
-                        `<label><input type="checkbox" name="bridgeInterfaces" value="${i.name}"> ${i.name}</label>`
-                    ).join('')}
-                </div>
-            </div>
-            <div class="form-group">
-                <label for="bridge-config-type">IP Configuration</label>
-                <select id="bridge-config-type" name="configType" onchange="toggleBridgeIPConfig(this.value)">
-                    <option value="dhcp">DHCP</option>
-                    <option value="static">Static IP</option>
-                    <option value="none">No IP Configuration</option>
-                </select>
-            </div>
-            <div id="bridge-static-config" style="display: none;">
-                <div class="form-group">
-                    <label for="bridge-ip">IP Address/CIDR</label>
-                    <input type="text" id="bridge-ip" name="ip" placeholder="e.g., 192.168.1.50/24">
-                </div>
-                <div class="form-group">
-                    <label for="bridge-gateway">Gateway (optional)</label>
-                    <input type="text" id="bridge-gateway" name="gateway" placeholder="e.g., 192.168.1.1">
-                </div>
-            </div>
-            <div class="form-group">
-                <label for="bridge-stp">Spanning Tree Protocol (STP)</label>
-                <select id="bridge-stp" name="stp">
-                    <option value="true">Enabled</option>
-                    <option value="false">Disabled</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label for="bridge-mtu">MTU (optional)</label>
-                <input type="number" id="bridge-mtu" name="mtu" placeholder="1500" min="576" max="9000">
-            </div>
-            <div class="form-actions">
-                <button type="button" class="btn btn-secondary" onclick="NetworkManager.closeModal()">Cancel</button>
-                <button type="submit" class="btn btn-brand">Create Bridge</button>
-            </div>
-        </form>
-    `;
-    
-    modal.style.display = 'block';
-    
-    // Handle form submission
-    document.getElementById('bridge-form').onsubmit = async function(e) {
-        e.preventDefault();
-        const formData = new FormData(e.target);
-        const selectedInterfaces = Array.from(formData.getAll('bridgeInterfaces'));
-        
-        const config = {
-            name: formData.get('name'),
-            interfaceType: 'bridge',
-            bridgeInterfaces: selectedInterfaces,
-            configType: formData.get('configType'),
-            ip: formData.get('ip'),
-            gateway: formData.get('gateway'),
-            mtu: formData.get('mtu') ? parseInt(formData.get('mtu')) : null,
-            bridgeParams: {
-                stp: formData.get('stp') === 'true'
-            }
-        };
-        
-        try {
-            await NetworkAPI.configureInterface(config);
-            NetworkManager.showSuccess(`Bridge ${config.name} created successfully`);
-            NetworkManager.closeModal();
-            NetworkManager.loadInterfaces();
-        } catch (error) {
-            NetworkManager.showError(`Failed to create bridge: ${error.message}`);
-        }
-    };
+    // Delegate to BridgeManager
+    if (typeof BridgeManager !== 'undefined' && BridgeManager.showAddBridgeDialog) {
+        BridgeManager.showAddBridgeDialog();
+    } else {
+        NetworkLogger.error('BridgeManager not available');
+        NetworkManager.showError('Bridge management functionality is not available.');
+    }
 }
 
 // Helper functions for dynamic forms
 function toggleVlanIPConfig(configType) {
     const staticConfig = document.getElementById('vlan-static-config');
-    staticConfig.style.display = configType === 'static' ? 'block' : 'none';
-}
-
-function toggleBridgeIPConfig(configType) {
-    const staticConfig = document.getElementById('bridge-static-config');
     staticConfig.style.display = configType === 'static' ? 'block' : 'none';
 }
 
@@ -5496,9 +5554,7 @@ function refreshRoutes() {
 const validators = {
     ipAddress: (value) => {
         if (!value) return { valid: false, message: 'IP address is required' };
-        const ipv4Pattern = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
-        const ipv6Pattern = /^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::1$|^::$/;
-        if (ipv4Pattern.test(value) || ipv6Pattern.test(value)) {
+        if (validateIPAddress(value)) {
             return { valid: true, message: 'Valid IP address' };
         }
         return { valid: false, message: 'Invalid IP address format' };
@@ -5508,14 +5564,12 @@ const validators = {
         if (!value) return { valid: false, message: 'CIDR is required' };
         
         // First check if it's a plain IP address (will get /24 default)
-        const ipPattern = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
-        if (ipPattern.test(value)) {
+        if (validateIPAddress(value)) {
             return { valid: true, message: 'Valid IP address (will default to /24)' };
         }
         
         // Then check if it's a proper CIDR notation
-        const cidrPattern = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/(?:[0-9]|[1-2][0-9]|3[0-2])$/;
-        if (cidrPattern.test(value)) {
+        if (validateCIDR(value)) {
             return { valid: true, message: 'Valid CIDR notation' };
         }
         
@@ -5700,5 +5754,18 @@ function clearModalMessages(modalElement) {
     const existingAlerts = modalElement.querySelectorAll('.modal-error, .modal-success');
     existingAlerts.forEach(alert => alert.remove());
 }
+
+// Global functions for HTML event handlers
+window.testDnsServer = function(dnsServer) {
+    if (window.networkManager) {
+        window.networkManager.testDnsServer(dnsServer);
+    }
+};
+
+window.addDnsServer = function() {
+    if (window.networkManager) {
+        window.networkManager.showAddDnsDialog();
+    }
+};
 
 // Debug Netplan configuration with detailed output - main network manager version

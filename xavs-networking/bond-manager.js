@@ -388,6 +388,14 @@ async function addBond() {
                     </div>
                     <div class="hint" style="color: #d63384;">⚠️ <strong>Warning:</strong> This will replace the current default route and may affect connectivity to other networks. Only enable if this bond should handle all internet traffic.</div>
                 </div>
+                
+                <div class="form-group full-width">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="bond-preserve-routes" class="form-control-checkbox" checked>
+                        <label for="bond-preserve-routes" style="margin: 0; font-size: 14px;">Preserve system routes during configuration</label>
+                    </div>
+                    <div class="hint">Recommended to maintain network connectivity during bond creation</div>
+                </div>
             </div>
         </form>
     `;
@@ -569,6 +577,14 @@ function editBond(bondName) {
                 <input type="number" id="edit-up-delay" class="form-control" value="${bond.upDelay}">
             </div>
             ` : ''}
+            
+            <div class="form-group full-width">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="edit-bond-preserve-routes" class="form-control-checkbox" checked>
+                    <label for="edit-bond-preserve-routes" style="margin: 0; font-size: 14px;">Preserve system routes during configuration</label>
+                </div>
+                <div class="hint">Recommended to maintain network connectivity during bond update</div>
+            </div>
         </form>
     `;
     
@@ -1001,17 +1017,18 @@ function saveBond() {
         mode: document.getElementById('bond-mode').value,
         slaves: selectedSlaves,
         description: document.getElementById('bond-description').value,
-        primary: document.getElementById('bond-primary')?.value || null,
-        lacpRate: document.getElementById('lacp-rate')?.value || null,
-        hashPolicy: document.getElementById('hash-policy')?.value || null,
+        primary: (document.getElementById('bond-primary') && document.getElementById('bond-primary').value) || null,
+        lacpRate: (document.getElementById('lacp-rate') && document.getElementById('lacp-rate').value) || null,
+        hashPolicy: (document.getElementById('hash-policy') && document.getElementById('hash-policy').value) || null,
         miiMonitor: document.getElementById('mii-monitor').value || '100',
         upDelay: document.getElementById('up-delay').value || '200',
         configType: document.querySelector('.toggle-seg.active').getAttribute('data-config'),
         ipAddresses: collectBondIpAddresses(),
         ip: collectBondIpAddresses()[0] || '', // Backward compatibility
-        gateway: document.getElementById('bond-gateway')?.value || '',
-        dns: document.getElementById('bond-dns')?.value || '',
-        setDefaultRoute: document.getElementById('bond-set-default-route')?.checked || false
+        gateway: (document.getElementById('bond-gateway') && document.getElementById('bond-gateway').value) || '',
+        dns: (document.getElementById('bond-dns') && document.getElementById('bond-dns').value) || '',
+        setDefaultRoute: (document.getElementById('bond-set-default-route') && document.getElementById('bond-set-default-route').checked) || false,
+        preserveRoutes: (document.getElementById('bond-preserve-routes') && document.getElementById('bond-preserve-routes').checked) !== false
     };
     
     NetworkLogger.info(' Form data collected:', formData);
@@ -1019,7 +1036,7 @@ function saveBond() {
     NetworkLogger.info(`IP Configuration - Type: ${formData.configType}, IPs: ${JSON.stringify(formData.ipAddresses)}, Gateway: ${formData.gateway}`);
     NetworkLogger.info(`DNS servers: ${formData.dns}`);
     
-    // Debug: Log static configuration visibility
+    // Log static configuration visibility
     const staticConfig = document.getElementById('bond-static-config');
     NetworkLogger.info(`Static config visibility: ${staticConfig ? staticConfig.style.display : 'element not found'}`);
     NetworkLogger.info(`Selected config type: ${formData.configType}`);
@@ -1127,71 +1144,146 @@ async function createRealBond(config) {
     }
     
     try {
-        // First, backup current routes to avoid losing them
-        NetworkLogger.info(' Backing up current routing table...');
-        const currentRoutes = await backupCurrentRoutes();
+        // Backup system routes before making changes if route preservation is enabled
+        if (config.preserveRoutes !== false) {
+            NetworkLogger.info('Backing up system routes before bond creation...');
+            await NetworkConfigUtils.backupSystemRoutes();
+        } else {
+            NetworkLogger.info('Route preservation disabled by user');
+        }
         
-        // Generate Netplan configuration for the bond
-        const netplanConfig = generateBondNetplanConfig(config);
-        NetworkLogger.info(' Generated Netplan config:', netplanConfig);
-        
-        // Write Netplan configuration file
-        const configFile = `/etc/netplan/90-xavs-${config.name}.yaml`;
-        NetworkLogger.info(`BondManager: Writing configuration to ${configFile}`);
-        
-        await cockpit.file(configFile, { superuser: 'require' }).replace(netplanConfig);
-        NetworkLogger.info(' Netplan configuration written successfully');
-        
-        // Test the configuration first with netplan try
-        NetworkLogger.info(' Testing Netplan configuration with netplan --debug try...');
-        try {
-            const debugOutput = await cockpit.spawn(['netplan', '--debug', 'try', '--timeout=30'], { superuser: 'require' });
-            NetworkLogger.info(' Netplan debug output:');
-            NetworkLogger.info('--- START NETPLAN DEBUG ---');
-            NetworkLogger.info(debugOutput);
-            NetworkLogger.info('--- END NETPLAN DEBUG ---');
-            NetworkLogger.info(' Netplan try completed successfully');
-        } catch (tryError) {
-            NetworkLogger.error(' Netplan try failed:', tryError);
-            
-            // Log the debug output even on failure
-            if (tryError.message) {
-                NetworkLogger.info(' Netplan error output:');
-                NetworkLogger.info('--- START NETPLAN ERROR ---');
-                NetworkLogger.info(tryError.message);
-                NetworkLogger.info('--- END NETPLAN ERROR ---');
-            }
-            
-            // Check if this is just the bond revert warning (exit status 78)
-            if (tryError.exit_status === 78) {
-                NetworkLogger.info(' Netplan try exit 78: bond change warning in non-interactive session; proceeding to apply');
-                // This is the expected behavior for bond configs in headless/non-TTY environments
-            } else {
-                // Fallback: try preflight validation with netplan generate
-                NetworkLogger.info(' Attempting fallback preflight validation...');
-                try {
-                    await cockpit.spawn(['netplan', 'generate'], { superuser: 'require' });
-                    NetworkLogger.info(' Preflight validation passed, proceeding to apply');
-                } catch (generateError) {
-                    NetworkLogger.error(' Preflight validation failed:', generateError);
-                    throw new Error(`Configuration validation failed: ${tryError.message || tryError}. The bond configuration has not been applied.`);
+        // Validate that slave interfaces exist and are available
+        NetworkLogger.info('Validating slave interfaces...');
+        for (const slave of config.slaves) {
+            try {
+                // Check if interface exists
+                await cockpit.spawn(['ip', 'link', 'show', slave], { superuser: 'try' });
+                NetworkLogger.info(`Interface ${slave} exists and is available`);
+                
+                // Check if interface is already enslaved
+                const isAlreadyBonded = await isInterfaceAlreadyBonded(slave);
+                if (isAlreadyBonded) {
+                    throw new Error(`Interface ${slave} is already part of another bond`);
                 }
+                
+                // Check if interface is assigned to a bridge
+                try {
+                    const bridgeFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '*bridge*.yaml', '-o', '-name', '*br-*.yaml'], { superuser: 'try' });
+                    const files = bridgeFiles.trim().split('\n').filter(f => f.trim());
+                    
+                    for (const file of files) {
+                        try {
+                            const content = await cockpit.file(file, { superuser: 'try' }).read();
+                            if (content && content.includes(`- ${slave}`)) {
+                                const bridgeMatch = content.match(/(\w+):\s*\n.*interfaces:/s);
+                                const bridgeName = bridgeMatch ? bridgeMatch[1] : 'unknown bridge';
+                                throw new Error(`Interface ${slave} is already assigned to bridge ${bridgeName}`);
+                            }
+                        } catch (fileError) {
+                            // Skip unreadable files
+                        }
+                    }
+                } catch (bridgeCheckError) {
+                    NetworkLogger.warning('Could not check for bridge conflicts:', bridgeCheckError);
+                }
+                
+                // Bring down the interface to prepare it for bonding
+                NetworkLogger.info(`Bringing down interface ${slave} to prepare for bonding...`);
+                try {
+                    await cockpit.spawn(['ip', 'link', 'set', slave, 'down'], { superuser: 'require' });
+                    NetworkLogger.info(`Interface ${slave} brought down successfully`);
+                } catch (downError) {
+                    NetworkLogger.warning(`Could not bring down interface ${slave}:`, downError);
+                    // Continue anyway - this may not be critical
+                }
+            } catch (linkError) {
+                NetworkLogger.error(`Interface ${slave} validation failed:`, linkError);
+                throw new Error(`Interface ${slave} is not available or does not exist: ${linkError.message}`);
             }
         }
         
-        // Apply Netplan configuration permanently
-        NetworkLogger.info(' Applying Netplan configuration permanently...');
+        // Generate Netplan configuration for the bond
+        const netplanConfig = generateBondNetplanConfig(config);
+        NetworkLogger.info('Generated Netplan config:', netplanConfig);
+        
+        // Analyze bond interfaces to determine parent types for priority
+        let parentInfo = { parentType: 'physical' };
+        let isComplex = false;
+        
+        // Check if any slave interfaces are VLANs or other complex types
+        // Note: config uses 'slaves' property for bond interfaces
+        const interfaceList = config.slaves || config.interfaces || [];
+        for (const interfaceName of interfaceList) {
+            const analysis = NetworkConfigUtils.analyzeInterfaceStructure(interfaceName);
+            if (analysis.objectType !== 'physical') {
+                parentInfo.parentType = analysis.objectType;
+                parentInfo.isComplex = true;
+                isComplex = true;
+                break; // Found complex interface, use it for priority
+            }
+        }
+        
+        // Generate filename using comprehensive system
+        const filename = NetworkConfigUtils.generateNetplanFilename(config.name, 'bond', parentInfo);
+        const configFile = `/etc/netplan/${filename}`;
+        
+        NetworkLogger.info(`BondManager: Writing configuration to ${configFile} (${isComplex ? 'complex topology priority' : 'standard priority'})`);
+        
+        // Validate the generated YAML before writing
+        NetworkLogger.info('Validating generated YAML configuration...');
+        if (!netplanConfig || netplanConfig.trim().length === 0) {
+            throw new Error('Generated Netplan configuration is empty');
+        }
+        
+        // Check for basic YAML structure
+        if (!netplanConfig.includes('network:') || !netplanConfig.includes('bonds:') || !netplanConfig.includes(config.name + ':')) {
+            throw new Error('Generated Netplan configuration is missing required sections');
+        }
+        
+        await cockpit.file(configFile, { superuser: 'require' }).replace(netplanConfig);
+        
+        // Set proper file permissions (ignore errors if file doesn't exist)
+        await NetworkConfigUtils.safeChmod(configFile, '600');
+        
+        // Also fix permissions on any existing bond files that might be too open
+        try {
+            const existingBondFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '*bond*.yaml'], { superuser: 'try' });
+            const files = existingBondFiles.trim().split('\n').filter(f => f.trim());
+            for (const file of files) {
+                await NetworkConfigUtils.safeChmod(file, '600');
+            }
+            NetworkLogger.info('Fixed permissions on all bond configuration files');
+        } catch (permError) {
+            NetworkLogger.warning('Could not fix permissions on existing bond files:', permError);
+        }
+        
+        NetworkLogger.info('Netplan configuration written successfully');
+        
+        // Apply the configuration directly without testing for bonds
+        NetworkLogger.info('Applying bond configuration directly with netplan apply...');
         await cockpit.spawn(['netplan', 'apply'], { superuser: 'require' });
-        NetworkLogger.info(' Netplan applied successfully');
+        NetworkLogger.info('Bond configuration applied successfully');
+        
+        // Explicitly restore system routes if preservation is enabled
+        if (config.preserveRoutes !== false) {
+            try {
+                await NetworkConfigUtils.restoreSystemRoutes();
+                NetworkLogger.info('System routes restored successfully after bond creation');
+            } catch (routeError) {
+                NetworkLogger.warning('Could not restore system routes after bond creation:', routeError);
+            }
+        } else {
+            NetworkLogger.info('Route preservation was disabled, skipping route restoration');
+        }
         
         // Verify bond creation
-        NetworkLogger.info(' Verifying bond creation...');
-        await cockpit.spawn(['ip', 'link', 'show', config.name], { superuser: 'try' });
-        NetworkLogger.info(' Bond interface verified');
-        
-        // Restore any critical routes that might have been lost
-        NetworkLogger.info(' Checking and restoring critical routes...');
-        await restoreCriticalRoutes(currentRoutes, config);
+        NetworkLogger.info('Verifying bond creation...');
+        try {
+            await cockpit.spawn(['ip', 'link', 'show', config.name], { superuser: 'try' });
+            NetworkLogger.info('Bond interface verified successfully');
+        } catch (verifyError) {
+            NetworkLogger.warning('Could not verify bond interface, but configuration was applied:', verifyError);
+        }
         
     } catch (error) {
         NetworkLogger.error(' Error creating bond:', error);
@@ -1443,13 +1535,14 @@ function updateBond(bondName) {
     
     const formData = {
         name: bondName,
-        description: document.getElementById('edit-bond-description')?.value || '',
+        description: (document.getElementById('edit-bond-description') && document.getElementById('edit-bond-description').value) || '',
         ipAddresses: collectEditIpAddresses(),
         ip: collectEditIpAddresses()[0] || '', // Backward compatibility
-        gateway: document.getElementById('edit-bond-gateway')?.value || '',
-        miiMonitor: document.getElementById('edit-mii-monitor')?.value || '100',
-        primary: document.getElementById('edit-bond-primary')?.value || null,
-        upDelay: document.getElementById('edit-up-delay')?.value || null
+        gateway: (document.getElementById('edit-bond-gateway') && document.getElementById('edit-bond-gateway').value) || '',
+        miiMonitor: (document.getElementById('edit-mii-monitor') && document.getElementById('edit-mii-monitor').value) || '100',
+        primary: (document.getElementById('edit-bond-primary') && document.getElementById('edit-bond-primary').value) || null,
+        upDelay: (document.getElementById('edit-up-delay') && document.getElementById('edit-up-delay').value) || null,
+        preserveRoutes: (document.getElementById('edit-bond-preserve-routes') && document.getElementById('edit-bond-preserve-routes').checked) !== false
     };
     
     NetworkLogger.info(' Update form data:', formData);
@@ -1483,24 +1576,59 @@ async function updateRealBond(config) {
     }
     
     try {
-        // Read existing configuration
-        const configFile = `/etc/netplan/90-xavs-${config.name}.yaml`;
-        NetworkLogger.info(`BondManager: Reading existing config from ${configFile}`);
-        
-        let existingConfig;
-        try {
-            existingConfig = await cockpit.file(configFile).read();
-        } catch (readError) {
-            throw new Error(`Configuration file not found for bond ${config.name}. Please recreate the bond.`);
+        // Backup system routes before making changes if route preservation is enabled
+        if (config.preserveRoutes !== false) {
+            NetworkLogger.info('Backing up system routes before bond update...');
+            await NetworkConfigUtils.backupSystemRoutes();
+        } else {
+            NetworkLogger.info('Route preservation disabled by user for bond update');
         }
         
-        // Parse and update the configuration
-        // For simplicity, we'll regenerate the configuration with updated values
-        // In a production environment, you might want to use a YAML parser
+        // Determine config file location using new system
+        // First try to find existing file (could be old or new system)
+        const oldConfigFile = `/etc/netplan/90-xavs-${config.name}.yaml`;
         
+        // Generate new filename using comprehensive system
+        let parentInfo = { parentType: 'physical' };
+        let isComplex = false;
+        
+        // Check if any slave interfaces are VLANs or other complex types
         const bond = NetworkManager.bonds.find(b => b.name === config.name);
         if (!bond) {
             throw new Error(`Bond ${config.name} not found in current configuration`);
+        }
+        
+        for (const interfaceName of bond.slaves) {
+            const analysis = NetworkConfigUtils.analyzeInterfaceStructure(interfaceName);
+            if (analysis.objectType !== 'physical') {
+                parentInfo.parentType = analysis.objectType;
+                parentInfo.isComplex = true;
+                isComplex = true;
+                break; // Found complex interface, use it for priority
+            }
+        }
+        
+        const newFilename = NetworkConfigUtils.generateNetplanFilename(config.name, 'bond', parentInfo);
+        const configFile = `/etc/netplan/${newFilename}`;
+        
+        NetworkLogger.info(`BondManager: Looking for existing config...`);
+        
+        let existingConfig;
+        try {
+            // Try new system file first
+            existingConfig = await cockpit.file(configFile).read();
+            NetworkLogger.info(`Found config at ${configFile}`);
+        } catch (readError) {
+            try {
+                // Try old system file as fallback
+                existingConfig = await cockpit.file(oldConfigFile).read();
+                NetworkLogger.info(`Found config at old location ${oldConfigFile}, will migrate to new system`);
+                
+                // Clean up old file after reading
+                await cockpit.spawn(['rm', '-f', oldConfigFile], { superuser: 'try' });
+            } catch (oldFileError) {
+                throw new Error(`Configuration file not found for bond ${config.name}. Please recreate the bond.`);
+            }
         }
         
         // Create updated configuration
@@ -1526,9 +1654,22 @@ async function updateRealBond(config) {
         await cockpit.file(configFile, { superuser: 'require' }).replace(newNetplanConfig);
         NetworkLogger.info(' Updated configuration written');
         
-        // Apply changes
+        // Apply changes directly with netplan apply for bonds
+        NetworkLogger.info('Applying bond update directly with netplan apply...');
         await cockpit.spawn(['netplan', 'apply'], { superuser: 'require' });
         NetworkLogger.info(' Configuration applied successfully');
+        
+        // Explicitly restore system routes if preservation is enabled
+        if (config.preserveRoutes !== false) {
+            try {
+                await NetworkConfigUtils.restoreSystemRoutes();
+                NetworkLogger.info('System routes restored successfully after bond update');
+            } catch (routeError) {
+                NetworkLogger.warning('Could not restore system routes after bond update:', routeError);
+            }
+        } else {
+            NetworkLogger.info('Route preservation was disabled, skipping route restoration');
+        }
         
     } catch (error) {
         NetworkLogger.error(' Error updating bond:', error);
@@ -1653,30 +1794,77 @@ async function deleteRealBond(bondName) {
             NetworkLogger.warning(`BondManager: Could not delete bond interface (may not exist):`, deleteError);
         }
         
-        // Remove the XAVS configuration file
-        const configFile = `/etc/netplan/90-xavs-${bondName}.yaml`;
-        NetworkLogger.info(`BondManager: Removing configuration file ${configFile}`);
+        // Remove configuration files (both old and new system naming)
+        const oldConfigFile = `/etc/netplan/90-xavs-${bondName}.yaml`;
         
-        try {
-            await cockpit.spawn(['rm', configFile], { superuser: 'require' });
-            NetworkLogger.info(' Configuration file removed');
-        } catch (rmError) {
-            NetworkLogger.warning(' Configuration file may not exist or could not be removed:', rmError);
+        // Generate possible new system filenames to clean up
+        const possibleParentTypes = ['physical', 'vlan', 'bridge'];
+        const configFilesToRemove = [oldConfigFile];
+        
+        for (const parentType of possibleParentTypes) {
+            const parentInfo = { parentType: parentType };
+            const filename = NetworkConfigUtils.generateNetplanFilename(bondName, 'bond', parentInfo);
+            const configPath = `/etc/netplan/${filename}`;
+            if (!configFilesToRemove.includes(configPath)) {
+                configFilesToRemove.push(configPath);
+            }
         }
         
-        // Apply Netplan to clean up any remaining configuration
-        NetworkLogger.info(' Applying Netplan to clean up...');
+        NetworkLogger.info(`BondManager: Removing configuration files for ${bondName}...`);
+        
+        for (const configFile of configFilesToRemove) {
+            try {
+                await cockpit.spawn(['rm', '-f', configFile], { superuser: 'try' });
+                NetworkLogger.info(`Removed configuration file: ${configFile}`);
+            } catch (rmError) {
+                NetworkLogger.info(`Configuration file ${configFile} does not exist or could not be removed`);
+            }
+        }
+        
+        // Backup system routes before applying netplan changes
+        NetworkLogger.info('Backing up system routes before bond deletion...');
+        await NetworkConfigUtils.backupSystemRoutes();
+        
+        // Clean up any remaining gateway conflicts and deprecated configs before applying
+        NetworkLogger.info('Cleaning up gateway conflicts and deprecated configs before bond deletion...');
+        try {
+            await checkForBondGatewayConflicts();
+            await cleanupBondConflictingRoutes();
+        } catch (cleanupError) {
+            NetworkLogger.warning('Cleanup failed during bond deletion:', cleanupError);
+            // Continue with netplan apply even if cleanup fails
+        }
+        
+        // Apply Netplan to clean up configuration directly for bond deletion
+        NetworkLogger.info('Applying Netplan cleanup directly with netplan apply...');
         try {
             await cockpit.spawn(['netplan', 'apply'], { superuser: 'require' });
-            NetworkLogger.info(' Netplan applied');
+            NetworkLogger.info('Netplan cleanup applied successfully');
         } catch (netplanError) {
-            NetworkLogger.warning(' Netplan apply failed:', netplanError);
+            NetworkLogger.warning('Netplan apply failed during cleanup:', netplanError);
+            // If netplan fails due to conflicts, try manual bond deletion
+            NetworkLogger.info(`Attempting manual deletion of bond ${bondName}...`);
+            try {
+                await cockpit.spawn(['ip', 'link', 'delete', bondName], { superuser: 'require' });
+                NetworkLogger.info(`Manual bond deletion successful for ${bondName}`);
+            } catch (manualError) {
+                NetworkLogger.warning(`Manual bond deletion also failed for ${bondName}:`, manualError);
+            }
         }
         
         // Verify bond is gone
         try {
             await cockpit.spawn(['ip', 'link', 'show', bondName], { superuser: 'try' });
             NetworkLogger.warning(`BondManager: Bond ${bondName} still exists after deletion attempt`);
+            
+            // Try one more manual deletion attempt
+            try {
+                NetworkLogger.info(`Final manual deletion attempt for ${bondName}...`);
+                await cockpit.spawn(['ip', 'link', 'delete', bondName], { superuser: 'require' });
+                NetworkLogger.info(`Final manual deletion successful for ${bondName}`);
+            } catch (finalError) {
+                NetworkLogger.warning(`Final manual deletion failed for ${bondName}:`, finalError);
+            }
         } catch (verifyError) {
             NetworkLogger.info(`BondManager: Bond ${bondName} successfully removed from system`);
         }
@@ -1725,6 +1913,10 @@ async function addRealSlaveToBond(bondName, slaveInterface) {
     assertValidInterfaceName(slaveInterface);
     
     try {
+        // Backup system routes before making changes
+        NetworkLogger.info('Backing up system routes before adding slave to bond...');
+        await NetworkConfigUtils.backupSystemRoutes();
+        
         // First, ensure the slave interface is down
         NetworkLogger.info(`BondManager: Bringing slave interface ${slaveInterface} down...`);
         await cockpit.spawn(['ip', 'link', 'set', slaveInterface, 'down'], { superuser: 'require' });
@@ -1737,6 +1929,14 @@ async function addRealSlaveToBond(bondName, slaveInterface) {
         // Bring the slave interface up
         NetworkLogger.info(`BondManager: Bringing slave interface ${slaveInterface} up...`);
         await cockpit.spawn(['ip', 'link', 'set', slaveInterface, 'up'], { superuser: 'require' });
+        
+        // Restore system routes
+        try {
+            await NetworkConfigUtils.restoreSystemRoutes();
+            NetworkLogger.info('System routes restored successfully after adding slave to bond');
+        } catch (routeError) {
+            NetworkLogger.warning('Could not restore system routes after adding slave to bond:', routeError);
+        }
         
         NetworkLogger.info(`BondManager: Slave ${slaveInterface} added to bond ${bondName} successfully`);
         
@@ -1790,6 +1990,10 @@ async function removeRealSlaveFromBond(bondName, slaveInterface) {
     assertValidInterfaceName(slaveInterface);
     
     try {
+        // Backup system routes before making changes
+        NetworkLogger.info('Backing up system routes before removing slave from bond...');
+        await NetworkConfigUtils.backupSystemRoutes();
+        
         // Remove slave from bond via sysfs using cockpit.file for safety
         NetworkLogger.info(`BondManager: Removing ${slaveInterface} from bond ${bondName} via sysfs...`);
         const slavePath = `/sys/class/net/${bondName}/bonding/slaves`;
@@ -1798,6 +2002,14 @@ async function removeRealSlaveFromBond(bondName, slaveInterface) {
         // Bring the former slave interface down
         NetworkLogger.info(`BondManager: Bringing former slave interface ${slaveInterface} down...`);
         await cockpit.spawn(['ip', 'link', 'set', slaveInterface, 'down'], { superuser: 'require' });
+        
+        // Restore system routes
+        try {
+            await NetworkConfigUtils.restoreSystemRoutes();
+            NetworkLogger.info('System routes restored successfully after removing slave from bond');
+        } catch (routeError) {
+            NetworkLogger.warning('Could not restore system routes after removing slave from bond:', routeError);
+        }
         
         NetworkLogger.info(`BondManager: Slave ${slaveInterface} removed from bond ${bondName} successfully`);
         
@@ -1814,7 +2026,7 @@ function refreshBonds() {
 // Initialize IP address counter for bond management
 let bondIpAddressCounter = 0;
 
-// Debug Netplan configuration with detailed output
+// Add IP address entry for bond configuration
 function addBondIpAddress() {
     bondIpAddressCounter++;
     const container = document.getElementById('bond-ip-addresses-container');
@@ -1883,7 +2095,7 @@ function collectBondIpAddresses() {
     return ipAddresses;
 }
 
-// Debug: Ensure functions are globally available
+// Ensure functions are globally available
 NetworkLogger.info('Bond Manager loaded. Functions available:', {
     addBond: typeof addBond,
     editBond: typeof editBond,
@@ -1912,3 +2124,107 @@ window.updateEditBondRemoveButtonVisibility = updateEditBondRemoveButtonVisibili
 
 // Provide backward compatibility - BondManager is actually NetworkManager
 window.BondManager = NetworkManager;
+
+// Bond-specific gateway conflict prevention functions
+async function checkForBondGatewayConflicts() {
+    try {
+        const netplanFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '*.yaml', '-type', 'f'], { superuser: 'try' });
+        const files = netplanFiles.trim().split('\n').filter(f => f.trim());
+        
+        for (const file of files) {
+            try {
+                const content = await cockpit.file(file).read();
+                if (content && content.includes('gateway4')) {
+                    NetworkLogger.warning(`Found deprecated gateway4 in ${file} - will be removed`);
+                }
+            } catch (readError) {
+                NetworkLogger.warning(`Could not read file ${file}:`, readError);
+            }
+        }
+    } catch (error) {
+        NetworkLogger.warning('Error checking for bond gateway conflicts:', error);
+    }
+}
+
+async function cleanupBondConflictingRoutes() {
+    try {
+        const netplanFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '*.yaml', '-type', 'f'], { superuser: 'try' });
+        const files = netplanFiles.trim().split('\n').filter(f => f.trim());
+        
+        let foundConflicts = false;
+        
+        for (const file of files) {
+            try {
+                const content = await cockpit.file(file).read();
+                if (!content) continue;
+                
+                let modified = false;
+                let lines = content.split('\n');
+                
+                // Remove deprecated gateway4 lines
+                lines = lines.filter(line => {
+                    if (line.includes('gateway4:')) {
+                        NetworkLogger.info(`Removing deprecated gateway4 from ${file}: ${line.trim()}`);
+                        foundConflicts = true;
+                        modified = true;
+                        return false;
+                    }
+                    return true;
+                });
+                
+                // Check for default route conflicts and keep only one
+                const routeLineIndices = [];
+                lines.forEach((line, index) => {
+                    if (line.includes('- to: 0.0.0.0/0') || line.includes('- to: default')) {
+                        routeLineIndices.push(index);
+                    }
+                });
+                
+                if (routeLineIndices.length > 1) {
+                    NetworkLogger.info(`Found ${routeLineIndices.length} default routes in ${file}, keeping only the first one`);
+                    // Remove all but the first default route
+                    for (let i = routeLineIndices.length - 1; i > 0; i--) {
+                        const routeIndex = routeLineIndices[i];
+                        // Remove the route line and the following via line if it exists
+                        lines.splice(routeIndex, 1);
+                        if (routeIndex < lines.length && lines[routeIndex].includes('via:')) {
+                            lines.splice(routeIndex, 1);
+                        }
+                    }
+                    foundConflicts = true;
+                    modified = true;
+                }
+                
+                // Fix self-referencing bridge interfaces
+                const bridgeMatch = file.match(/(\w+)\.yaml$/);
+                if (bridgeMatch) {
+                    const interfaceName = bridgeMatch[1].replace(/^\d+-xavs-/, '');
+                    lines = lines.map(line => {
+                        if (line.includes('interfaces:') && line.includes(`[${interfaceName}]`)) {
+                            NetworkLogger.info(`Removing self-reference from ${file}: ${line.trim()}`);
+                            foundConflicts = true;
+                            modified = true;
+                            return line.replace(`${interfaceName},`, '').replace(`,${interfaceName}`, '').replace(`[${interfaceName}]`, '[]');
+                        }
+                        return line;
+                    });
+                }
+                
+                if (modified) {
+                    await cockpit.file(file).replace(lines.join('\n'));
+                    NetworkLogger.info(`Cleaned up conflicting routes and deprecated configs in ${file}`);
+                }
+                
+            } catch (fileError) {
+                NetworkLogger.warning(`Could not process file ${file}:`, fileError);
+            }
+        }
+        
+        if (foundConflicts) {
+            NetworkLogger.info('Successfully cleaned up gateway conflicts and deprecated configurations');
+        }
+        
+    } catch (error) {
+        NetworkLogger.warning('Error cleaning up bond conflicting routes:', error);
+    }
+}

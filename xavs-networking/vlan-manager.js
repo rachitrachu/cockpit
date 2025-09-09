@@ -32,7 +32,7 @@ const VlanManager = {
     async fixNetplanPermissions() {
         try {
             NetworkLogger.info('Checking and fixing Netplan file permissions...');
-            const xavsFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '90-xavs-*.yaml'], { superuser: 'try' });
+            const xavsFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '*-xavs-*.yaml'], { superuser: 'try' });
             const files = xavsFiles.trim().split('\n').filter(f => f.trim());
             
             for (const file of files) {
@@ -616,7 +616,13 @@ const VlanManager = {
             const searchPatterns = [
                 `90-xavs-*-vlan${vlanId}.yaml`,
                 `90-xavs-vlan${vlanId}.yaml`,
-                `90-xavs-*${vlanName}*.yaml`
+                `90-xavs-*${vlanName}*.yaml`,
+                `92-xavs-*-vlan${vlanId}.yaml`,
+                `92-xavs-vlan${vlanId}.yaml`,
+                `92-xavs-*${vlanName}*.yaml`,
+                `95-xavs-*-vlan${vlanId}.yaml`,
+                `95-xavs-vlan${vlanId}.yaml`,
+                `95-xavs-*${vlanName}*.yaml`
             ];
             
             for (const pattern of searchPatterns) {
@@ -822,6 +828,15 @@ async function addVlan() {
     const modalContent = `
         <form id="vlan-form" class="form-grid">
             <div class="form-group">
+                <label class="form-label" for="vlan-parent">Parent Interface</label>
+                <select id="vlan-parent" class="form-control" required>
+                    <option value="">Select interface</option>
+                    ${interfaceOptions}
+                </select>
+                <div class="hint">Parent interface for the VLAN</div>
+            </div>
+            
+            <div class="form-group">
                 <label class="form-label" for="vlan-id">VLAN ID</label>
                 <input type="number" id="vlan-id" class="form-control" min="1" max="4094" placeholder="100" required data-validate="vlanId">
                 <div class="hint">Valid range: 1-4094</div>
@@ -831,15 +846,6 @@ async function addVlan() {
                 <label class="form-label" for="vlan-name">VLAN Name</label>
                 <input type="text" id="vlan-name" class="form-control" placeholder="vlan100" required data-validate="interfaceName">
                 <div class="hint">Interface name (e.g., vlan100 or eth0.100)</div>
-            </div>
-            
-            <div class="form-group">
-                <label class="form-label" for="vlan-parent">Parent Interface</label>
-                <select id="vlan-parent" class="form-control" required>
-                    <option value="">Select interface</option>
-                    ${interfaceOptions}
-                </select>
-                <div class="hint">Parent interface for the VLAN</div>
             </div>
             
             <div class="form-group full-width">
@@ -1168,6 +1174,13 @@ async function editVlan(vlanIdentifier) {
     const modalContent = `
         <form id="vlan-edit-form" class="form-grid">
             <div class="form-group">
+                <label class="form-label" for="edit-vlan-parent">Parent Interface</label>
+                <select id="edit-vlan-parent" class="form-control" required>
+                    ${parentOptionsHtml}
+                </select>
+            </div>
+            
+            <div class="form-group">
                 <label class="form-label" for="edit-vlan-id">VLAN ID</label>
                 <input type="number" id="edit-vlan-id" class="form-control" value="${vlan.id}" readonly>
             </div>
@@ -1175,13 +1188,6 @@ async function editVlan(vlanIdentifier) {
             <div class="form-group">
                 <label class="form-label" for="edit-vlan-name">VLAN Name</label>
                 <input type="text" id="edit-vlan-name" class="form-control" value="${vlan.name}" required>
-            </div>
-            
-            <div class="form-group">
-                <label class="form-label" for="edit-vlan-parent">Parent Interface</label>
-                <select id="edit-vlan-parent" class="form-control" required>
-                    ${parentOptionsHtml}
-                </select>
             </div>
             
             <div class="form-group full-width">
@@ -1336,8 +1342,8 @@ async function saveVlan() {
         configType: document.querySelector('.toggle-seg.active').getAttribute('data-config'),
         ipAddresses: collectIpAddresses(),
         ip: collectIpAddresses()[0] || '', // Backward compatibility
-        gateway: document.getElementById('vlan-gateway')?.value || '',
-        dns: document.getElementById('vlan-dns')?.value || ''
+        gateway: (document.getElementById('vlan-gateway') && document.getElementById('vlan-gateway').value) || '',
+        dns: (document.getElementById('vlan-dns') && document.getElementById('vlan-dns').value) || ''
     };
     
     NetworkLogger.info('Form data collected:', formData);
@@ -1500,7 +1506,277 @@ async function getParentInterfaceType(interfaceName) {
     }
 }
 
+// Determine the correct Netplan filename prefix based on parent interface type
+function getVlanFilePrefix(parentType, parentName = '') {
+    // Use the new comprehensive system from NetworkConfigUtils
+    const parentInfo = {
+        parentType: parentType,
+        parentInterface: parentName
+    };
+    
+    // If parent is a complex interface, analyze it for better classification
+    if (parentName && (parentName.includes('.') || parentName.includes('bond') || parentName.includes('br'))) {
+        const analysis = NetworkConfigUtils.analyzeInterfaceStructure(parentName);
+        parentInfo.parentType = analysis.objectType;
+        parentInfo.isComplex = analysis.isComplex;
+    }
+    
+    return NetworkConfigUtils.getNetplanFilePrefix('vlan', parentInfo);
+}
+
 // Create real VLAN configuration
+// Check for existing default gateway conflicts before creating VLAN
+async function checkForGatewayConflicts(config) {
+    NetworkLogger.info('Checking for existing default gateway conflicts...');
+    
+    try {
+        // Get all existing Netplan configurations
+        const netplanFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '*.yaml', '-o', '-name', '*.yml'], { superuser: 'try' });
+        const files = netplanFiles.trim().split('\n').filter(f => f.trim());
+        
+        const existingGateways = [];
+        const filesToFix = [];
+        
+        for (const file of files) {
+            try {
+                const content = await cockpit.file(file, { superuser: 'try' }).read();
+                if (content) {
+                    // Check for deprecated gateway4 usage
+                    const hasGateway4 = content.includes('gateway4:');
+                    
+                    // Check for gateway4 (deprecated) or default routes
+                    const gateway4Matches = content.match(/gateway4:\s*([^\s\n]+)/g);
+                    const defaultRouteMatches = content.match(/- to: (default|0\.0\.0\.0\/0)/g);
+                    
+                    if (hasGateway4) {
+                        filesToFix.push({
+                            file: file,
+                            content: content,
+                            hasGateway4: true
+                        });
+                    }
+                    
+                    if (gateway4Matches || defaultRouteMatches) {
+                        // Extract interface name from the file content
+                        const interfaceMatches = content.match(/^\s*([a-zA-Z0-9.-]+):/gm);
+                        if (interfaceMatches) {
+                            interfaceMatches.forEach(match => {
+                                const interfaceName = match.replace(':', '').trim();
+                                if (interfaceName && !['network', 'version', 'renderer', 'ethernets', 'bonds', 'bridges', 'vlans'].includes(interfaceName)) {
+                                    existingGateways.push({
+                                        interface: interfaceName,
+                                        file: file,
+                                        hasGateway4: !!gateway4Matches,
+                                        hasDefaultRoute: !!defaultRouteMatches
+                                    });
+                                }
+                            });
+                        }
+                    }
+                }
+            } catch (fileError) {
+                NetworkLogger.warning(`Could not read netplan file ${file}:`, fileError.message);
+            }
+        }
+        
+        // Show warning about deprecated gateway4 usage and offer to fix
+        if (filesToFix.length > 0) {
+            NetworkLogger.warning(`Found ${filesToFix.length} file(s) using deprecated gateway4. This may cause conflicts.`);
+            
+            const affectedFiles = filesToFix.map(f => f.file).join(', ');
+            NetworkLogger.info(`Files with deprecated gateway4: ${affectedFiles}`);
+            NetworkLogger.info('Automatically removing deprecated gateway4 configurations to prevent conflicts...');
+            
+            // Automatically fix deprecated gateway4 configurations
+            for (const fileToFix of filesToFix) {
+                try {
+                    let updatedContent = fileToFix.content;
+                    
+                    // Remove gateway4 lines and replace with equivalent routes if needed
+                    const gateway4Lines = updatedContent.match(/^\s*gateway4:\s*([^\s\n]+).*$/gm);
+                    if (gateway4Lines) {
+                        for (const line of gateway4Lines) {
+                            const gatewayMatch = line.match(/gateway4:\s*([^\s\n]+)/);
+                            if (gatewayMatch) {
+                                const gatewayIp = gatewayMatch[1];
+                                NetworkLogger.info(`Removing deprecated gateway4: ${gatewayIp} from ${fileToFix.file}`);
+                                
+                                // Simply remove the gateway4 line to prevent conflicts
+                                // Don't add default routes as they may conflict with other interfaces
+                                updatedContent = updatedContent.replace(line + '\n', '');
+                                updatedContent = updatedContent.replace(line, '');
+                            }
+                        }
+                        
+                        // Write the updated content back to the file
+                        await cockpit.file(fileToFix.file, { superuser: 'try' }).replace(updatedContent);
+                        NetworkLogger.info(`Updated ${fileToFix.file} to remove deprecated gateway4 configuration`);
+                    }
+                } catch (fixError) {
+                    NetworkLogger.warning(`Could not fix deprecated gateway4 in ${fileToFix.file}:`, fixError.message);
+                }
+            }
+        }
+        
+        if (existingGateways.length > 0) {
+            NetworkLogger.warning('Found existing interfaces with default gateways:', existingGateways);
+            
+            // If we're trying to create a VLAN with gateway on a parent that already has a gateway, warn
+            const parentHasGateway = existingGateways.find(gw => gw.interface === config.parent);
+            if (parentHasGateway && config.gateway) {
+                NetworkLogger.warning(`Parent interface ${config.parent} already has a default gateway. VLAN gateway will be ignored to prevent conflicts.`);
+                // Remove gateway from config to prevent conflicts
+                delete config.gateway;
+            }
+            
+            // Check if any other interface has a default gateway and we're trying to add one
+            if (config.gateway && existingGateways.length > 0) {
+                const conflictingInterfaces = existingGateways.map(gw => gw.interface).join(', ');
+                NetworkLogger.warning(`Multiple default gateways detected. Existing: ${conflictingInterfaces}. Removing gateway from VLAN ${config.name} to prevent conflicts.`);
+                // Remove gateway to prevent conflicts
+                delete config.gateway;
+            }
+        }
+        
+        // Always remove gateway from VLAN config as a precaution to prevent route conflicts
+        if (config.gateway) {
+            NetworkLogger.info(`Removing gateway ${config.gateway} from VLAN ${config.name} configuration to prevent route table conflicts`);
+            delete config.gateway;
+        }
+        
+    } catch (error) {
+        NetworkLogger.warning('Could not check for gateway conflicts:', error.message);
+        // Continue anyway, but remove gateway as a precaution
+        if (config.gateway) {
+            NetworkLogger.info('Removing gateway as precaution due to conflict check failure');
+            delete config.gateway;
+        }
+    }
+}
+
+// Clean up conflicting default routes from existing Netplan files
+async function cleanupConflictingRoutes() {
+    NetworkLogger.info('Cleaning up potentially conflicting default routes...');
+    
+    try {
+        // Get all existing Netplan configurations
+        const netplanFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '*.yaml', '-o', '-name', '*.yml'], { superuser: 'try' });
+        const files = netplanFiles.trim().split('\n').filter(f => f.trim());
+        
+        let defaultRouteFound = false;
+        let defaultRouteInterface = null;
+        
+        // First pass: identify which interface should keep the default route
+        for (const file of files) {
+            try {
+                const content = await cockpit.file(file, { superuser: 'try' }).read();
+                if (content) {
+                    // Check for default routes
+                    const defaultRouteMatches = content.match(/- to: (default|0\.0\.0\.0\/0)/g);
+                    if (defaultRouteMatches && !defaultRouteFound) {
+                        // Keep the first valid default route we find (usually from main config)
+                        const interfaceMatches = content.match(/^\s*([a-zA-Z0-9.-]+):/gm);
+                        if (interfaceMatches) {
+                            for (const match of interfaceMatches) {
+                                const interfaceName = match.replace(':', '').trim();
+                                if (interfaceName && !['network', 'version', 'renderer', 'ethernets', 'bonds', 'bridges', 'vlans'].includes(interfaceName)) {
+                                    defaultRouteInterface = interfaceName;
+                                    defaultRouteFound = true;
+                                    NetworkLogger.info(`Keeping default route on interface: ${interfaceName} (file: ${file})`);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (fileError) {
+                NetworkLogger.warning(`Could not read file ${file}:`, fileError.message);
+            }
+        }
+        
+        // Second pass: remove conflicting routes and gateway4 from other files
+        for (const file of files) {
+            try {
+                const content = await cockpit.file(file, { superuser: 'try' }).read();
+                if (content) {
+                    let updatedContent = content;
+                    let contentChanged = false;
+                    
+                    // Remove deprecated gateway4 lines
+                    const gateway4Lines = content.match(/^\s*gateway4:.*$/gm);
+                    if (gateway4Lines && gateway4Lines.length > 0) {
+                        NetworkLogger.info(`Removing deprecated gateway4 from ${file}`);
+                        for (const line of gateway4Lines) {
+                            updatedContent = updatedContent.replace(line + '\n', '');
+                            updatedContent = updatedContent.replace(line, '');
+                            contentChanged = true;
+                        }
+                    }
+                    
+                    // Check if this file contains the interface that should keep the default route
+                    const shouldKeepDefaultRoute = defaultRouteInterface && content.includes(`${defaultRouteInterface}:`);
+                    
+                    if (!shouldKeepDefaultRoute) {
+                        // Remove default routes from files that shouldn't have them
+                        const defaultRouteLines = content.match(/^\s*- to: (default|0\.0\.0\.0\/0).*$/gm);
+                        if (defaultRouteLines && defaultRouteLines.length > 0) {
+                            NetworkLogger.info(`Removing conflicting default route(s) from ${file}`);
+                            
+                            for (const line of defaultRouteLines) {
+                                updatedContent = updatedContent.replace(line + '\n', '');
+                                updatedContent = updatedContent.replace(line, '');
+                                contentChanged = true;
+                            }
+                        }
+                        
+                        // Also remove the entire routes section if it becomes empty
+                        updatedContent = updatedContent.replace(/^\s*routes:\s*$/gm, '');
+                        
+                        // Remove any "via:" lines that are orphaned after route removal
+                        updatedContent = updatedContent.replace(/^\s*via:.*$/gm, '');
+                    }
+                    
+                    // Fix incorrect bridge interface configuration (bridge referencing itself)
+                    const selfReferencingBridge = content.match(/^\s*([a-zA-Z0-9.-]+):\s*$[\s\S]*?interfaces:\s*\n\s*-\s*\1\s*$/gm);
+                    if (selfReferencingBridge) {
+                        NetworkLogger.info(`Fixing self-referencing bridge interface in ${file}`);
+                        // Remove the self-referencing interface line
+                        updatedContent = updatedContent.replace(/^\s*-\s*([a-zA-Z0-9.-]+)\s*$/gm, (match, interfaceName) => {
+                            // Check if this interface name matches any bridge name in the same file
+                            const bridgeNames = content.match(/^\s*([a-zA-Z0-9.-]+):\s*$/gm);
+                            if (bridgeNames) {
+                                for (const bridgeLine of bridgeNames) {
+                                    const bridgeName = bridgeLine.replace(':', '').trim();
+                                    if (bridgeName === interfaceName && !['network', 'version', 'renderer', 'ethernets', 'bonds', 'bridges', 'vlans'].includes(bridgeName)) {
+                                        NetworkLogger.info(`Removing self-reference: ${interfaceName}`);
+                                        contentChanged = true;
+                                        return ''; // Remove the self-referencing line
+                                    }
+                                }
+                            }
+                            return match; // Keep other interface references
+                        });
+                    }
+                    
+                    // Clean up any empty lines and sections
+                    updatedContent = updatedContent.replace(/\n\n\n+/g, '\n\n');
+                    updatedContent = updatedContent.replace(/^\s*interfaces:\s*$/gm, ''); // Remove empty interfaces sections
+                    
+                    if (contentChanged) {
+                        await cockpit.file(file, { superuser: 'try' }).replace(updatedContent);
+                        NetworkLogger.info(`Cleaned up conflicting configurations in ${file}`);
+                    }
+                }
+            } catch (fileError) {
+                NetworkLogger.warning(`Could not process file ${file}:`, fileError.message);
+            }
+        }
+        
+    } catch (error) {
+        NetworkLogger.warning('Could not clean up conflicting routes:', error.message);
+    }
+}
+
 async function createRealVlan(config) {
     NetworkLogger.info('Creating real VLAN configuration...');
     
@@ -1508,14 +1784,30 @@ async function createRealVlan(config) {
         throw new Error('Cockpit API not available');
     }
     
+    // Check for existing default gateway conflicts before creating VLAN
+    await checkForGatewayConflicts(config);
+    
+    // Additional cleanup: remove any conflicting default routes from other files
+    await cleanupConflictingRoutes();
+    
     // Check parent interface type first
     const parentType = await getParentInterfaceType(config.parent);
     NetworkLogger.info(`VlanManager: Parent interface ${config.parent} detected as type: ${parentType}`);
     
+    // Get correct file prefix based on parent type using new system
+    const filePrefix = getVlanFilePrefix(parentType, config.parent);
+    
+    // Generate proper filename using the new comprehensive system
+    const parentInfo = {
+        parentType: parentType,
+        parentInterface: config.parent
+    };
+    const filename = NetworkConfigUtils.generateNetplanFilename(config.name, 'vlan', parentInfo);
+    
     // Generate Netplan configuration with parent type information
     const netplanConfig = await generateVlanNetplanConfig(config, parentType);
-    // Use interface-specific filename to avoid conflicts when same VLAN ID is used on different interfaces
-    const configPath = `/etc/netplan/90-xavs-${config.parent}-vlan${config.id}.yaml`;
+    // Use the new comprehensive filename system
+    const configPath = `/etc/netplan/${filename}`;
     
     NetworkLogger.info('Generated Netplan config:', netplanConfig);
     NetworkLogger.info('Writing configuration to', configPath);
@@ -1537,7 +1829,7 @@ async function createRealVlan(config) {
         // Remove any existing XAVS config files that might conflict with this interface name
         // This helps prevent the "device type changes" error
         try {
-            const existingXavsFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '90-xavs-*.yaml'], { superuser: 'try' });
+            const existingXavsFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '*-xavs-*.yaml'], { superuser: 'try' });
             const files = existingXavsFiles.trim().split('\n').filter(f => f.trim());
             
             for (const file of files) {
@@ -1580,13 +1872,21 @@ async function createRealVlan(config) {
             NetworkLogger.warn('Could not set file permissions (file may not exist):', chmodError.message);
         }
         
-        // Skip individual netplan try test - will be handled by applyNetplanWithConfirmation
+        // Skip individual netplan try test - will be handled by NetworkConfigUtils.applyNetplanWithConfirmation
         NetworkLogger.info('Configuration written, will test during application...');
         
         // Apply the configuration with user confirmation
         NetworkLogger.info('Testing Netplan configuration with user confirmation...');
-        await applyNetplanWithConfirmation(120); // 2-minute timeout
+        await NetworkConfigUtils.applyNetplanWithConfirmation(120); // 2-minute timeout
         NetworkLogger.info('Netplan configuration confirmed and applied successfully');
+        
+        // Explicitly restore system routes in case they were lost during configuration
+        try {
+            await NetworkConfigUtils.restoreSystemRoutes();
+            NetworkLogger.info('System routes restored successfully');
+        } catch (routeError) {
+            NetworkLogger.warning('Could not restore system routes:', routeError);
+        }
         
         // Verify VLAN creation
         NetworkLogger.info('Verifying VLAN creation...');
@@ -1757,7 +2057,7 @@ async function showRouteOptionsModal(originalVlan, originalIps, newIps, existing
         
         // Add handler function to window
         window.handleRouteOptionChoice = function() {
-            const selectedOption = document.querySelector('input[name="routeOption"]:checked')?.value;
+            const selectedOption = (document.querySelector('input[name="routeOption"]:checked') && document.querySelector('input[name="routeOption"]:checked').value);
             NetworkManager.closeModal();
             
             switch (selectedOption) {
@@ -1937,7 +2237,7 @@ async function showNewVlanRouteWarningModal(vlanConfig, parentRoutes, hasConflic
         
         // Add handler function to window
         window.handleNewVlanRouteOptionChoice = function() {
-            const selectedOption = document.querySelector('input[name="newVlanRouteOption"]:checked')?.value;
+            const selectedOption = (document.querySelector('input[name="newVlanRouteOption"]:checked') && document.querySelector('input[name="newVlanRouteOption"]:checked').value);
             NetworkManager.closeModal();
             
             switch (selectedOption) {
@@ -2034,11 +2334,13 @@ async function generateVlanNetplanConfig(config, parentType = 'unknown') {
     }
     
     let yamlConfig = `network:
-  version: 2`;
+  version: 2
+  renderer: networkd`;
     
     // For bonds and bridges, we need to include a minimal definition so Netplan can resolve the parent
+    // However, we exclude any IP configuration, gateways, or routes to prevent conflicts
     if (parentType === 'bond' || parentType === 'bridge') {
-        NetworkLogger.info(`VlanManager: Including parent ${parentType} definition for ${config.parent}`);
+        NetworkLogger.info(`VlanManager: Including minimal parent ${parentType} definition for ${config.parent} (no IP/route config)`);
         
         if (parentType === 'bond') {
             yamlConfig += `
@@ -2046,13 +2348,15 @@ async function generateVlanNetplanConfig(config, parentType = 'unknown') {
     ${config.parent}:
       # Minimal bond definition - full config should be in another file
       # This is just to satisfy netplan's parent interface requirement
+      # No IP configuration to avoid route conflicts
       interfaces: []`;
         } else if (parentType === 'bridge') {
             yamlConfig += `
   bridges:
     ${config.parent}:
-      # Minimal bridge definition - full config should be in another file
+      # Minimal bridge definition - full config should be in another file  
       # This is just to satisfy netplan's parent interface requirement
+      # No IP configuration to avoid route conflicts
       interfaces: []`;
         }
     }
@@ -2100,19 +2404,33 @@ async function generateVlanNetplanConfig(config, parentType = 'unknown') {
             }
         }
         
-        // Add preserved routes if available
+        // Add preserved routes if available (but avoid default routes to prevent conflicts)
         if (config.routes && config.routes.length > 0) {
-            yamlConfig += `
-      routes:`;
-            config.routes.forEach((route, index) => {
-                NetworkLogger.info(`VlanManager: Adding preserved route ${index}:`, route);
+            const nonDefaultRoutes = config.routes.filter(route => 
+                route.to !== 'default' && route.to !== '0.0.0.0/0' && route.to !== '::0/0'
+            );
+            
+            if (nonDefaultRoutes.length > 0) {
                 yamlConfig += `
-        - to: ${route.to}`;
-                if (route.via) {
+      routes:`;
+                nonDefaultRoutes.forEach((route, index) => {
+                    NetworkLogger.info(`VlanManager: Adding preserved non-default route ${index}:`, route);
                     yamlConfig += `
+        - to: ${route.to}`;
+                    if (route.via) {
+                        yamlConfig += `
           via: ${route.via}`;
-                }
-            });
+                    }
+                });
+            }
+            
+            // Log filtered out default routes
+            const defaultRoutes = config.routes.filter(route => 
+                route.to === 'default' || route.to === '0.0.0.0/0' || route.to === '::0/0'
+            );
+            if (defaultRoutes.length > 0) {
+                NetworkLogger.info(`VlanManager: Filtered out ${defaultRoutes.length} default route(s) to prevent conflicts:`, defaultRoutes);
+            }
         }
     } else if (config.configType === 'dhcp') {
         yamlConfig += `
@@ -2192,8 +2510,8 @@ async function saveVlanEdit(vlanIdentifier) {
         configType: document.querySelector('#vlan-edit-form .toggle-seg.active').getAttribute('data-config'),
         ipAddresses: collectedIpAddresses,
         ip: collectedIpAddresses[0] || '', // Backward compatibility
-        gateway: document.getElementById('edit-vlan-gateway')?.value || '',
-        dns: document.getElementById('edit-vlan-dns')?.value || ''
+        gateway: (document.getElementById('edit-vlan-gateway') && document.getElementById('edit-vlan-gateway').value) || '',
+        dns: (document.getElementById('edit-vlan-dns') && document.getElementById('edit-vlan-dns').value) || ''
     };
     
     NetworkLogger.info('Edit form data collected:', formData);
@@ -2291,10 +2609,25 @@ async function updateRealVlan(originalVlan, newConfig) {
     }
     
     const vlanId = originalVlan.id;
-    // Use interface-specific filenames to avoid conflicts
-    const oldConfigPath = `/etc/netplan/90-xavs-${originalVlan.parentInterface}-vlan${vlanId}.yaml`;
-    const oldGenericConfigPath = `/etc/netplan/90-xavs-vlan${vlanId}.yaml`;
-    const oldCustomConfigPath = `/etc/netplan/90-xavs-${originalVlan.name}.yaml`;
+    
+    // Get parent interface type for proper file prefix
+    const oldParentType = await getParentInterfaceType(originalVlan.parentInterface);
+    const oldFilePrefix = getVlanFilePrefix(oldParentType, originalVlan.parentInterface);
+    const newParentType = await getParentInterfaceType(newConfig.parent);
+    const newFilePrefix = getVlanFilePrefix(newParentType, newConfig.parent);
+    
+    // Generate old filename paths using both old and new systems for cleanup
+    const oldConfigPath = `/etc/netplan/${oldFilePrefix}-${originalVlan.parentInterface}-vlan${vlanId}.yaml`;
+    const oldGenericConfigPath = `/etc/netplan/${oldFilePrefix}-vlan${vlanId}.yaml`;
+    const oldCustomConfigPath = `/etc/netplan/${oldFilePrefix}-${originalVlan.name}.yaml`;
+    
+    // Generate old filename using new system (in case it was previously created with new system)
+    const oldParentInfo = {
+        parentType: oldParentType,
+        parentInterface: originalVlan.parentInterface
+    };
+    const oldNewSystemFilename = NetworkConfigUtils.generateNetplanFilename(originalVlan.name, 'vlan', oldParentInfo);
+    const oldNewSystemPath = `/etc/netplan/${oldNewSystemFilename}`;
     
     try {
         // Remove old configuration files (try both old and new naming schemes)
@@ -2302,10 +2635,11 @@ async function updateRealVlan(originalVlan, newConfig) {
         await cockpit.spawn(['rm', '-f', oldConfigPath], { superuser: 'try' });
         await cockpit.spawn(['rm', '-f', oldGenericConfigPath], { superuser: 'try' });
         await cockpit.spawn(['rm', '-f', oldCustomConfigPath], { superuser: 'try' });
+        await cockpit.spawn(['rm', '-f', oldNewSystemPath], { superuser: 'try' });
         
         // Remove any conflicting XAVS files for this interface name
         try {
-            const existingXavsFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '90-xavs-*.yaml'], { superuser: 'try' });
+            const existingXavsFiles = await cockpit.spawn(['find', '/etc/netplan', '-name', '*-xavs-*.yaml'], { superuser: 'try' });
             const files = existingXavsFiles.trim().split('\n').filter(f => f.trim());
             
             for (const file of files) {
@@ -2324,12 +2658,17 @@ async function updateRealVlan(originalVlan, newConfig) {
         }
         
         // Generate and write new configuration with parent type detection
-        const parentType = await getParentInterfaceType(newConfig.parent);
-        NetworkLogger.info(`VlanManager: Parent interface ${newConfig.parent} detected as type: ${parentType}`);
+        NetworkLogger.info(`VlanManager: Parent interface ${newConfig.parent} detected as type: ${newParentType}`);
         
-        const netplanConfig = await generateVlanNetplanConfig(newConfig, parentType);
-        // Use interface-specific filename to avoid conflicts
-        const newConfigPath = `/etc/netplan/90-xavs-${newConfig.parent}-vlan${vlanId}.yaml`;
+        const netplanConfig = await generateVlanNetplanConfig(newConfig, newParentType);
+        
+        // Generate new filename using the comprehensive system
+        const newParentInfo = {
+            parentType: newParentType,
+            parentInterface: newConfig.parent
+        };
+        const newFilename = NetworkConfigUtils.generateNetplanFilename(newConfig.name, 'vlan', newParentInfo);
+        const newConfigPath = `/etc/netplan/${newFilename}`;
         
         NetworkLogger.info('Generated new Netplan config:', netplanConfig);
         NetworkLogger.info('Writing new configuration to', newConfigPath);
@@ -2369,7 +2708,15 @@ async function updateRealVlan(originalVlan, newConfig) {
             }
         }
         
-        await applyNetplanWithConfirmation(120); // 2-minute timeout
+        await NetworkConfigUtils.applyNetplanWithConfirmation(120); // 2-minute timeout
+        
+        // Explicitly restore system routes in case they were lost during configuration
+        try {
+            await NetworkConfigUtils.restoreSystemRoutes();
+            NetworkLogger.info('System routes restored successfully after VLAN update');
+        } catch (routeError) {
+            NetworkLogger.warning('Could not restore system routes after VLAN update:', routeError);
+        }
         
         NetworkLogger.info('VLAN configuration updated successfully');
         
@@ -2397,15 +2744,15 @@ async function updateRealVlan(originalVlan, newConfig) {
             
             NetworkLogger.info('Generated YAML config:', oldNetplanConfig);
             
-            // Use interface-specific path for restore
-            const restoreConfigPath = `/etc/netplan/90-xavs-${originalVlan.parentInterface}-vlan${originalVlan.id}.yaml`;
+            // Use interface-specific path with correct prefix for restore
+            const restoreConfigPath = `/etc/netplan/${oldFilePrefix}-${originalVlan.parentInterface}-vlan${originalVlan.id}.yaml`;
             await cockpit.file(restoreConfigPath, { superuser: 'try' }).replace(oldNetplanConfig);
             try {
                 await cockpit.spawn(['chmod', '600', restoreConfigPath], { superuser: 'try' });
             } catch (chmodError) {
                 NetworkLogger.warn('Could not set restore file permissions:', chmodError.message);
             }
-            await applyNetplanWithConfirmation(60); // 1-minute timeout for restoration
+            await NetworkConfigUtils.applyNetplanWithConfirmation(60); // 1-minute timeout for restoration
             
             NetworkLogger.info('Old configuration restored');
         } catch (restoreError) {
@@ -2678,25 +3025,33 @@ VlanManager.deleteRealVlan = async function(vlanId, vlanName = null) {
         }
         
         // Remove all possible configuration files for this VLAN
-        // Support both old and new naming schemes
+        // Support both old and new naming schemes with different prefixes
         const configFiles = [
             `/etc/netplan/90-xavs-vlan${vlan.id}.yaml`, // Old naming scheme
             `/etc/netplan/90-xavs-${vlan.name}.yaml`, // Custom name scheme
+            `/etc/netplan/92-xavs-vlan${vlan.id}.yaml`, // VLAN on bridge naming scheme
+            `/etc/netplan/92-xavs-${vlan.name}.yaml`, // VLAN on bridge custom name scheme
+            `/etc/netplan/95-xavs-vlan${vlan.id}.yaml`, // VLAN on bond naming scheme
+            `/etc/netplan/95-xavs-${vlan.name}.yaml`, // VLAN on bond custom name scheme
         ];
         
         // Add interface-specific naming scheme if we can determine the parent
         if (vlan.parentInterface) {
-            configFiles.push(`/etc/netplan/90-xavs-${vlan.parentInterface}-vlan${vlan.id}.yaml`);
+            // Try all possible prefixes for the parent interface
+            const prefixes = ['90-xavs', '92-xavs', '95-xavs'];
+            for (const prefix of prefixes) {
+                configFiles.push(`/etc/netplan/${prefix}-${vlan.parentInterface}-vlan${vlan.id}.yaml`);
+            }
         }
         
         // Try to find ALL possible interface-specific files by pattern matching
         // This catches cases where the parent interface detection was incorrect
         try {
-            const findResult = await cockpit.spawn(['find', '/etc/netplan', '-name', `90-xavs-*-vlan${vlan.id}.yaml`], { superuser: 'try' });
+            const findResult = await cockpit.spawn(['find', '/etc/netplan', '-name', `*-xavs-*-vlan${vlan.id}.yaml`], { superuser: 'try' });
             const foundFiles = findResult.trim().split('\n').filter(f => f.trim());
             
             // Also search for files containing this VLAN name
-            const nameSearchResult = await cockpit.spawn(['find', '/etc/netplan', '-name', `90-xavs-*${vlan.name}*.yaml`], { superuser: 'try' });
+            const nameSearchResult = await cockpit.spawn(['find', '/etc/netplan', '-name', `*-xavs-*${vlan.name}*.yaml`], { superuser: 'try' });
             const nameFoundFiles = nameSearchResult.trim().split('\n').filter(f => f.trim());
             
             // Combine all found files and deduplicate
@@ -2720,13 +3075,23 @@ VlanManager.deleteRealVlan = async function(vlanId, vlanName = null) {
             }
         }
         
-        // Skip individual netplan try test - will be handled by applyNetplanWithConfirmation
+        // Skip individual netplan try test - will be handled by NetworkConfigUtils.applyNetplanWithConfirmation
         NetworkLogger.info('Configuration files deleted, will test during application...');
+        
+        // Clean up any remaining gateway conflicts and deprecated configs before applying
+        NetworkLogger.info('Cleaning up gateway conflicts and deprecated configs before VLAN deletion...');
+        try {
+            await checkForGatewayConflicts();
+            await cleanupConflictingRoutes();
+        } catch (cleanupError) {
+            NetworkLogger.warning('Cleanup failed during VLAN deletion:', cleanupError);
+            // Continue with netplan apply even if cleanup fails
+        }
         
         // Apply netplan to ensure configuration is clean
         NetworkLogger.info('Testing VLAN deletion configuration...');
         try {
-            await applyNetplanWithConfirmation(60); // 1-minute timeout for deletion
+            await NetworkConfigUtils.applyNetplanWithConfirmation(60); // 1-minute timeout for deletion
             NetworkLogger.info('VLAN deletion configuration confirmed and applied successfully');
         } catch (applyError) {
             NetworkLogger.error('Netplan confirmation failed:', applyError);
@@ -2785,7 +3150,28 @@ function deleteVlanOriginal(vlanId) {
             return;
         }
         
-        const configPath = `/etc/netplan/90-xavs-vlan${vlanId}.yaml`;
+        // Try to find all possible config files for this VLAN
+        let configPaths = [
+            `/etc/netplan/90-xavs-vlan${vlanId}.yaml`, // Old default naming
+            `/etc/netplan/92-xavs-vlan${vlanId}.yaml`, // VLAN on bridge naming
+            `/etc/netplan/95-xavs-vlan${vlanId}.yaml`, // VLAN on bond naming
+        ];
+        
+        // Add interface-specific paths if we know the parent
+        if (vlan.parentInterface) {
+            configPaths.push(
+                `/etc/netplan/90-xavs-${vlan.parentInterface}-vlan${vlanId}.yaml`,
+                `/etc/netplan/92-xavs-${vlan.parentInterface}-vlan${vlanId}.yaml`,
+                `/etc/netplan/95-xavs-${vlan.parentInterface}-vlan${vlanId}.yaml`
+            );
+        }
+        
+        // Add custom name paths
+        configPaths.push(
+            `/etc/netplan/90-xavs-${vlan.name}.yaml`,
+            `/etc/netplan/92-xavs-${vlan.name}.yaml`,
+            `/etc/netplan/95-xavs-${vlan.name}.yaml`
+        );
         
         // First bring down the interface
         cockpit.spawn(['ip', 'link', 'set', vlan.name, 'down'], { superuser: 'try' })
@@ -2794,12 +3180,16 @@ function deleteVlanOriginal(vlanId) {
                 return cockpit.spawn(['ip', 'link', 'delete', vlan.name], { superuser: 'try' });
             })
             .then(() => {
-                // Remove the Netplan configuration file
-                return cockpit.spawn(['rm', '-f', configPath], { superuser: 'try' });
+                // Remove all possible Netplan configuration files
+                const removePromises = configPaths.map(path => 
+                    cockpit.spawn(['rm', '-f', path], { superuser: 'try' })
+                        .catch(error => NetworkLogger.warning(`Could not remove ${path}:`, error))
+                );
+                return Promise.all(removePromises);
             })
             .then(() => {
                 // Test netplan configuration with user confirmation
-                return applyNetplanWithConfirmation(60); // 1-minute timeout for deletion
+                return NetworkConfigUtils.applyNetplanWithConfirmation(60); // 1-minute timeout for deletion
             })
             .then(() => {
                 NetworkManager.showSuccess(`VLAN ${vlanId} deleted successfully`);
@@ -3253,7 +3643,7 @@ async function applyNetplanWithConfirmation(timeout = 120) {
                 NetworkManager.closeModal();
                 
                 // Check if it was a timeout (configuration reverted) or real error
-                if (error.exit_status === 130 || error.message?.includes('timeout') || error.message?.includes('cancelled')) {
+                if (error.exit_status === 130 || (error.message && error.message.includes('timeout')) || (error.message && error.message.includes('cancelled'))) {
                     // This was a timeout - configuration was automatically reverted
                     setTimeout(() => showNetplanTimeoutRevertModal(reject), 500);
                 } else {
@@ -3869,12 +4259,6 @@ function showNetplanTimeoutModal(reject) {
         reject(new Error('Configuration test timed out'));
     }, 100);
 }
-
-// Debug function for IP population
-window.debugPopulateIps = function(testIps = ['192.168.1.10/24', '192.168.1.11/24']) {
-    console.log('Debug: Testing IP population with:', testIps);
-    populateEditIpAddresses(testIps);
-};
 
 // Export VlanManager globally so NetworkManager can access it
 window.VlanManager = VlanManager;
