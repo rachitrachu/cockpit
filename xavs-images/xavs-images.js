@@ -210,11 +210,11 @@ document.addEventListener('DOMContentLoaded', () => {
     countElement.textContent = '(Loading...)';
     
     try {
-      // Use the priority-based image list loading
+      // Use the simplified image list loading (only /etc/xavs/images.list)
       const imagesList = await getImagesList();
       
       if (!imagesList || imagesList.trim() === '') {
-        listElement.innerHTML = '<li class="empty-state">No images configured</li>';
+        listElement.innerHTML = '<li class="empty-state">No images configured in /etc/xavs/images.list</li>';
         countElement.textContent = '(0 images)';
         return;
       }
@@ -224,7 +224,7 @@ document.addEventListener('DOMContentLoaded', () => {
         .filter(line => line && !line.startsWith('#'));
       
       if (images.length === 0) {
-        listElement.innerHTML = '<li class="empty-state">No images configured</li>';
+        listElement.innerHTML = '<li class="empty-state">No images configured in /etc/xavs/images.list</li>';
         countElement.textContent = '(0 images)';
         return;
       }
@@ -241,8 +241,18 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       
     } catch (e) {
-      listElement.innerHTML = `<li class="error-state">Error loading images: ${e.message}</li>`;
-      countElement.textContent = '(Error)';
+      if (e.message.includes('Images list file not found')) {
+        listElement.innerHTML = `
+          <li class="error-state">
+            <div class="error-title">❌ Images list file missing</div>
+            <div class="error-details">File not found: /etc/xavs/images.list</div>
+            <div class="error-hint">Create this file with one image per line</div>
+          </li>`;
+        countElement.textContent = '(Missing file)';
+      } else {
+        listElement.innerHTML = `<li class="error-state">Error loading images: ${e.message}</li>`;
+        countElement.textContent = '(Error)';
+      }
     }
   }
 
@@ -424,7 +434,6 @@ OS: ${imageData.Os}`;
 
   // ---- Constants ----
   const IMAGE_LIST_PATH = '/etc/xavs/images.list';
-  const MODULE_IMAGES_LIST = '/usr/share/cockpit/xavs-images/images-list.txt';
   const DOCKER_DAEMON_JSON = '/etc/docker/daemon.json';
   const PUBLIC_REG = 'quay.io';
   const LOCAL_REG_HOST = 'docker-registry:4000';
@@ -436,7 +445,7 @@ OS: ${imageData.Os}`;
   let imageListLoading = false; // Prevent multiple simultaneous loads
   const CACHE_TTL = 5000; // 5 seconds cache
 
-  // ---- Helper to get images list with priority order ----
+  // ---- Helper to get images list from /etc/xavs/images.list ----
   async function getImagesList() {
     // Return cached result if still valid
     const now = Date.now();
@@ -459,41 +468,26 @@ OS: ${imageData.Os}`;
     imageListLoading = true;
 
     try {
-      // Priority order: 1. Module file, 2. System file, 3. Generate default
-      const paths = [
-        '/usr/share/cockpit/xavs-images/images-list.txt',  // Module file (highest priority)
-        './images-list.txt',                                // Development path
-        'images-list.txt',                                  // Relative path
-        '/etc/xavs/images.list'                            // System file (fallback)
-      ];
-    
-    for (const path of paths) {
+      const imagePath = '/etc/xavs/images.list';
+      
       try {
-        const content = await readFile(path);
+        const content = await readFile(imagePath);
         if (content && content.trim()) {
-          // Only log on first successful read or when switching sources
-          if (!imageListCache || imageListCache !== content.trim()) {
-            console.log(`Reading images list from: ${path}`);
-          }
+          console.log(`Reading images list from: ${imagePath}`);
           // Cache the result
           imageListCache = content.trim();
           imageListCacheTime = now;
           return imageListCache;
+        } else {
+          throw new Error('File is empty');
         }
       } catch (error) {
-        console.log(`Could not read from ${path}: ${error.message}`);
-        continue;
+        console.log(`Could not read from ${imagePath}: ${error.message}`);
+        // Prompt user about missing file
+        const errorMessage = `Images list file not found: ${imagePath}\n\nPlease create this file with one image per line.\nExample content:\nkeystone:2024.1-ubuntu-jammy\nnova-api:2024.1-ubuntu-jammy\nneutron-server:2024.1-ubuntu-jammy`;
+        log(`❌ ERROR: ${errorMessage}`);
+        throw new Error(errorMessage);
       }
-    }
-    
-    // If no file found, generate default
-    console.log('No images list file found, generating default');
-    const defaultList = await generateDefaultImagesList();
-    // Cache the result
-    imageListCache = defaultList;
-    imageListCacheTime = now;
-    return imageListCache;
-    
     } finally {
       imageListLoading = false;
     }
@@ -502,78 +496,6 @@ OS: ${imageData.Os}`;
   // Global variable to track current pull process
   let currentPullProcess = null;
   let isPulling = false;
-
-  // Function to load images from module file
-  async function loadModuleImagesList() {
-    // Try multiple paths: installed path first, then relative path for development
-    const paths = [
-      '/usr/share/cockpit/xavs-images/images-list.txt',  // Production path
-      './images-list.txt',                                // Development relative path
-      'images-list.txt'                                   // Fallback
-    ];
-    
-    for (const path of paths) {
-      try {
-        console.log(`Trying to read images list from: ${path}`);
-        const content = await readFile(path);
-        if (content && content.trim()) {
-          console.log(`Successfully loaded ${content.trim().split('\n').length} lines from ${path}`);
-          return content.trim().split('\n')
-            .map(line => line.trim())
-            .filter(line => line && !line.startsWith('#'));
-        }
-      } catch (error) {
-        console.log(`Failed to read images list from ${path}:`, error.message);
-        continue; // Try next path
-      }
-    }
-    
-    console.warn('Failed to load module images list from any path, using fallback');
-    // Fallback comprehensive list
-    return [
-      'keystone',
-      'keystone-fernet',
-      'nova-api',
-      'nova-conductor',
-      'nova-scheduler',
-      'nova-compute',
-      'neutron-server',
-      'neutron-dhcp-agent',
-      'neutron-l3-agent',
-      'cinder-api',
-      'cinder-scheduler',
-      'cinder-volume',
-      'glance-api',
-      'horizon',
-      'mariadb-server',
-      'memcached',
-      'rabbitmq',
-      'heat-api',
-      'heat-engine',
-      'placement-api'
-    ];
-  }
-
-  // Generate default images list content
-  async function generateDefaultImagesList() {
-    const images = await loadModuleImagesList();
-    console.log(`loadModuleImagesList returned ${images.length} images:`, images.slice(0, 5));
-    
-    // Add the correct tag format if not already present
-    const imagesWithTags = images.map(image => {
-      if (image.includes(':')) {
-        return image; // Already has a tag
-      } else {
-        return `${image}:2024.1-ubuntu-jammy`; // Add the correct tag
-      }
-    });
-    
-    const content = `# xAVS Container Images List
-# One image per line - these will be pulled from quay.io/xavs.images/
-${imagesWithTags.join('\n')}`;
-    console.log(`Generated content length: ${content.length}`);
-    return content;
-  }
 
   const DOCKER_CONFIG_TEMPLATE = {
     "bridge": "none",
@@ -881,10 +803,40 @@ ${imagesWithTags.join('\n')}`;
         log(' Docker pull command test failed, but continuing...\n');
       }
 
-    log(' Reading images list...\n');
+    log('📖 Reading images list...\n');
       progressText.textContent = 'Reading images list...';
-      // Use the priority-based image list loading
-      const imagesList = await getImagesList();
+      
+      let imagesList;
+      try {
+        // Use the simplified image list loading (only /etc/xavs/images.list)
+        imagesList = await getImagesList();
+      } catch (e) {
+        // Show user-friendly error for missing images list file
+        log('❌ IMAGES LIST FILE MISSING\n');
+        log('================================================================\n');
+        log('📂 Expected file: /etc/xavs/images.list\n');
+        log('❗ This file is required and must contain one image per line.\n\n');
+        log('📝 Example content for /etc/xavs/images.list:\n');
+        log('   keystone:2024.1-ubuntu-jammy\n');
+        log('   nova-api:2024.1-ubuntu-jammy\n');
+        log('   neutron-server:2024.1-ubuntu-jammy\n');
+        log('   glance-api:2024.1-ubuntu-jammy\n');
+        log('   horizon:2024.1-ubuntu-jammy\n\n');
+        log('💡 Solution: Create the file /etc/xavs/images.list with the required images\n');
+        log('================================================================\n');
+        
+        progressText.textContent = 'Error: Images list file missing';
+        progressBar.style.backgroundColor = '#dc2626'; // Red color for error
+        progressBar.style.width = '100%';
+        
+        // Hide progress bar after delay
+        setTimeout(() => {
+          progressContainer.classList.add('hidden');
+          progressBar.style.backgroundColor = ''; // Reset color
+        }, 5000);
+        
+        return;
+      }
       
       // Parse and pull images
       const images = imagesList && imagesList.trim() ? 
@@ -893,8 +845,19 @@ ${imagesWithTags.join('\n')}`;
           .filter(line => line && !line.startsWith('#')) : [];
       
       if (images.length === 0) {
-        log('No images found in any images list file.\n');
-        log('Please add images to the module images-list.txt file or create /etc/xavs/images.list\n');
+        log('❌ No images found in /etc/xavs/images.list\n');
+        log('📝 Please add images to /etc/xavs/images.list (one per line)\n');
+        
+        progressText.textContent = 'Error: No images configured';
+        progressBar.style.backgroundColor = '#dc2626'; // Red color for error
+        progressBar.style.width = '100%';
+        
+        // Hide progress bar after delay
+        setTimeout(() => {
+          progressContainer.classList.add('hidden');
+          progressBar.style.backgroundColor = ''; // Reset color
+        }, 3000);
+        
         return;
       }
       
@@ -1998,7 +1961,7 @@ ${volumeSize}
 
   async function countImagesList() {
     try {
-      // Use the priority-based image list loading
+      // Use the simplified image list loading (only /etc/xavs/images.list)
       const content = await getImagesList();
       
       if (content) {
@@ -2009,7 +1972,11 @@ ${volumeSize}
         $('images-list-count').textContent = '0 images configured';
       }
     } catch (e) {
-      $('images-list-count').textContent = 'Error';
+      if (e.message.includes('Images list file not found')) {
+        $('images-list-count').textContent = '/etc/xavs/images.list missing';
+      } else {
+        $('images-list-count').textContent = 'Error reading images list';
+      }
     }
   }
 
