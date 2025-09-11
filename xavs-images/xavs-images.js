@@ -344,7 +344,7 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
           <div class="image-actions">
             <button class="btn-icon inspect" data-action="inspect-local" data-image-id="${imageId}" title="Inspect Image">
-              <i class="fa fa-search"></i>
+              <i class="fa fa-info"></i>
             </button>
             <button class="btn-icon delete" data-action="delete-local" data-image-id="${imageId}" data-image-name="${repoTag}" title="Delete Image">
               <i class="fa fa-trash"></i>
