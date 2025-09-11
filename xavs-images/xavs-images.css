@@ -1,3 +1,245 @@
+/* ===== Server File Browser Modal ===== */
+.modal {
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0,0,0,0.4);
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-content {
+  background: #fff;
+  padding: 24px;
+  border-radius: 8px;
+  min-width: 450px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow: auto;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+  position: relative;
+}
+
+.modal-content h3 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: var(--text);
+  font-size: 1.25rem;
+}
+
+/* File browser navigation */
+.file-browser-nav {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.nav-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-sm {
+  padding: 4px 8px;
+  font-size: 0.875rem;
+  line-height: 1.2;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+}
+
+/* Breadcrumb path styling */
+.file-path-breadcrumb {
+  font-size: 0.95em;
+  color: var(--muted);
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  border: 1px solid var(--border);
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.breadcrumb-segment {
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 3px;
+  transition: background-color 0.2s;
+  color: var(--brand);
+  text-decoration: none;
+}
+
+.breadcrumb-segment:hover {
+  background-color: rgba(25, 117, 96, 0.1);
+  text-decoration: underline;
+}
+
+.breadcrumb-separator {
+  color: var(--muted);
+  margin: 0 2px;
+}
+
+#server-file-path {
+  font-size: 0.95em;
+  color: var(--muted);
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  border: 1px solid var(--border);
+}
+
+#server-file-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 20px 0;
+  max-height: 40vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+#server-file-list li {
+  padding: 12px;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background-color 0.2s;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+#server-file-list li:last-child {
+  border-bottom: none;
+}
+
+#server-file-list li:hover {
+  background-color: #f8f9fa;
+}
+
+#server-file-list li[data-selectable="true"]:hover {
+  background-color: #e3f2fd;
+}
+
+#server-file-list li.loading {
+  color: #666;
+  font-style: italic;
+  cursor: default;
+}
+
+#server-file-list li.empty {
+  color: #999;
+  cursor: default;
+}
+
+#server-file-list li.parent-dir {
+  border-bottom: 1px solid #eee;
+}
+
+#server-file-list li.parent-dir:hover {
+  background-color: #f8f9fa;
+}
+
+#server-file-list li.file-selectable {
+  background-color: #f8f9fa;
+}
+
+#server-file-list li.file-selectable:hover {
+  background-color: #e3f2fd;
+}
+
+#server-file-list li.file-disabled {
+  color: #aaa;
+  cursor: not-allowed;
+}
+
+#server-file-list li.file-disabled:hover {
+  background-color: inherit;
+}
+
+#server-file-list li.error {
+  color: #dc3545;
+}
+
+.file-info {
+  font-size: 0.85em;
+  color: #666;
+}
+
+.file-icon {
+  margin-right: 8px;
+}
+
+.icon-folder {
+  color: #007acc;
+}
+
+.icon-file-archive {
+  color: #28a745;
+}
+
+.icon-file {
+  color: #6c757d;
+}
+
+.icon-link {
+  color: #6f42c1;
+}
+
+.icon-up {
+  color: #007acc;
+}
+
+.icon-info {
+  color: #999;
+}
+
+.icon-warning {
+  color: #dc3545;
+}
+
+.icon-chevron {
+  font-size: 0.8em;
+}
+
+.modal-actions {
+  text-align: right;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* File browser input group styling */
+.file-path-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.file-path-group input {
+  flex: 1 1 auto;
+}
+
+.file-path-group button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 /* ===== Brand tokens ===== */
 :root{
   --brand:#197560;

@@ -116,6 +116,329 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 2000); // Check every 2 seconds
   };
 
+  // ---- Server File Browser for Extract Tab ----
+  const serverFileModal = $('server-file-modal');
+  const serverFileList = $('server-file-list');
+  const serverFilePath = $('server-file-path');
+  const browseBtn = $('browse-server-btn');
+  const closeModalBtn = $('close-server-file-modal');
+  const filePathInput = $('file-path');
+  
+  // Navigation buttons
+  const navHomeBtn = $('nav-home-btn');
+  const navRootBtn = $('nav-root-btn');
+  const navTmpBtn = $('nav-tmp-btn');
+  const navVarBtn = $('nav-var-btn');
+
+  let currentServerDir = '/root';
+
+  // Backend implementation using shell commands via cockpit
+  async function listServerDir(path) {
+    try {
+      // Version check - if you see this, the new code is loaded
+      log(`🆕 Using updated parser v2.0 for directory listing`);
+      
+      // Validate and sanitize the path to prevent directory traversal attacks
+      const sanitizedPath = path.replace(/\.\.+/g, '').replace(/\/+/g, '/');
+      
+      log(`🔍 Trying to access directory: ${sanitizedPath}`);
+      
+      // Check if directory exists and is accessible
+      try {
+        await runCommand(['test', '-d', sanitizedPath]);
+        log(`✅ Directory ${sanitizedPath} exists and is accessible`);
+      } catch (e) {
+        log(`❌ Directory ${sanitizedPath} not accessible: ${e.message}`);
+        return [];
+      }
+      
+      // List directory contents with detailed info
+      log(`📋 Listing contents of ${sanitizedPath}...`);
+      const { stdout } = await runCommand([
+        'ls', '-la', '--time-style=+%Y-%m-%d %H:%M', sanitizedPath
+      ]);
+      
+      if (!stdout || !stdout.trim()) {
+        log(`📝 Directory ${sanitizedPath} is empty (no output from ls)`);
+        return [];
+      }
+      
+      log(`📄 Raw ls output:\n${stdout}`);
+      
+      const lines = stdout.trim().split('\n');
+      const items = [];
+      
+      log(`🔢 Processing ${lines.length} lines from ls output`);
+      
+      // Skip the first line (total) and parse each entry
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        log(`🔍 Parsing line: "${line}"`);
+        // Split by whitespace, but keep the last field (filename) even if it contains spaces
+        // ls -la --time-style=+%Y-%m-%d %H:%M output: perms, links, owner, group, size, date, time, name
+        // e.g. drwxr-x---  4 xloud xloud 4096 2025-09-11 05:28 xloud
+        const parts = line.split(/\s+/);
+        log(`📊 Split into ${parts.length} parts: [${parts.join(', ')}]`);
+        if (parts.length < 8) {
+          log(`⚠️ Skipping line with ${parts.length} parts (need at least 8): ${line}`);
+          continue;
+        }
+        // The filename is always the last field (or fields if spaces)
+        const name = parts.slice(7).join(' ');
+        if (name === '.' || name === '..') {
+          log(`⏭️ Skipping special directory: ${name}`);
+          continue;
+        }
+        const perms = parts[0];
+        const isDir = perms[0] === 'd';
+        const size = parseInt(parts[4], 10);
+        const date = parts[5];
+        const time = parts[6];
+        const item = {
+          name,
+          type: isDir ? 'dir' : (perms[0] === 'l' ? 'link' : 'file'),
+          size: !isDir ? size : null,
+          modified: `${date} ${time}`,
+          permissions: perms,
+          user: parts[2],
+          group: parts[3]
+        };
+        log(`✅ Added item: ${JSON.stringify(item)}`);
+        items.push(item);
+      }
+      
+      log(`✨ Found ${items.length} items in ${sanitizedPath}`);
+      
+      // Filter out hidden files (name starts with '.') and symlinks (type === 'link')
+      const visibleItems = items.filter(item => !item.name.startsWith('.') && item.type !== 'link');
+
+      // Sort: directories first, then files, both alphabetically
+      visibleItems.sort((a, b) => {
+        if (a.type === 'dir' && b.type !== 'dir') return -1;
+        if (a.type !== 'dir' && b.type === 'dir') return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      return visibleItems;
+      
+    } catch (error) {
+      console.error(`Error listing directory ${path}:`, error.message);
+      log(`🚨 Error accessing directory ${path}: ${error.message}`);
+      return [];
+    }
+  }
+
+  async function openServerFileModal(startPath = '/') {
+    try {
+      log('🚀 Opening server file browser...');
+      
+      // Test multiple common directories and log results
+      const testPaths = ['/home', '/root', '/tmp', '/var', '/opt', '/usr', '/'];
+      log('🔍 Testing directory accessibility...');
+      
+      let accessiblePaths = [];
+      for (const testPath of testPaths) {
+        try {
+          await runCommand(['test', '-d', testPath]);
+          log(`✅ ${testPath} - accessible`);
+          accessiblePaths.push(testPath);
+        } catch (e) {
+          log(`❌ ${testPath} - not accessible: ${e.message}`);
+        }
+      }
+      
+      log(`📊 Found ${accessiblePaths.length} accessible directories: ${accessiblePaths.join(', ')}`);
+      
+      // Try to start from the specified path, but have fallbacks
+      let initialPath = startPath;
+      
+      // Use the first accessible directory from our preferred list
+      const preferredPaths = [startPath, '/home', '/tmp', '/var', '/'];
+      for (const testPath of preferredPaths) {
+        if (accessiblePaths.includes(testPath)) {
+          initialPath = testPath;
+          break;
+        }
+      }
+      
+      if (initialPath !== startPath) {
+        log(`🔄 Directory ${startPath} not accessible, starting from ${initialPath}`);
+      }
+      
+      serverFileModal.style.display = 'flex';
+      await renderServerFileList(initialPath);
+    } catch (error) {
+      log(`🚨 Error opening file browser: ${error.message}`);
+      serverFileModal.style.display = 'none';
+    }
+  }
+
+  // Create breadcrumb navigation
+  function createBreadcrumb(path) {
+    const segments = path.split('/').filter(segment => segment !== '');
+    const breadcrumbHtml = [];
+    
+    // Add root
+    breadcrumbHtml.push(`<a class="breadcrumb-segment" data-path="/" title="Go to root">/</a>`);
+    
+    // Add each path segment
+    let currentPath = '';
+    segments.forEach((segment, index) => {
+      currentPath += '/' + segment;
+      breadcrumbHtml.push(`<span class="breadcrumb-separator">/</span>`);
+      breadcrumbHtml.push(`<a class="breadcrumb-segment" data-path="${currentPath}" title="Go to ${currentPath}">${segment}</a>`);
+    });
+    
+    return breadcrumbHtml.join('');
+  }
+
+  async function renderServerFileList(path) {
+    try {
+      currentServerDir = path;
+      
+      // Update breadcrumb navigation
+      serverFilePath.innerHTML = createBreadcrumb(path);
+      
+      // Add click handlers to breadcrumb segments
+      serverFilePath.querySelectorAll('.breadcrumb-segment').forEach(segment => {
+        segment.addEventListener('click', (e) => {
+          e.preventDefault();
+          const targetPath = segment.getAttribute('data-path');
+          renderServerFileList(targetPath);
+        });
+      });
+      
+      serverFileList.innerHTML = '<li class="loading">Loading...</li>';
+      
+      // Add parent directory navigation (except for root)
+      if (path !== '/') {
+        const parentPath = path.replace(/\/[^/]*$/, '') || '/';
+        const parentLi = document.createElement('li');
+        parentLi.className = 'parent-dir';
+        parentLi.innerHTML = '<div><i class="fa fa-level-up-alt file-icon icon-up"></i><strong>.. (Parent Directory)</strong></div><div></div>';
+        parentLi.title = `Go to ${parentPath}`;
+        parentLi.onclick = () => renderServerFileList(parentPath);
+        serverFileList.innerHTML = '';
+        serverFileList.appendChild(parentLi);
+      } else {
+        serverFileList.innerHTML = '';
+      }
+      
+      const items = await listServerDir(path);
+      
+      if (items.length === 0) {
+        const emptyLi = document.createElement('li');
+        emptyLi.className = 'empty';
+        emptyLi.innerHTML = '<div><i class="fa fa-info-circle file-icon icon-info"></i><em>Directory is empty or not accessible</em></div><div></div>';
+        serverFileList.appendChild(emptyLi);
+        return;
+      }
+      
+      for (const item of items) {
+        const li = document.createElement('li');
+        
+        let iconClass, colorClass, action;
+        
+        if (item.type === 'dir') {
+          iconClass = 'fa-folder';
+          colorClass = 'icon-folder';
+          action = () => renderServerFileList(path + '/' + item.name);
+          li.title = `Open directory: ${item.name}`;
+        } else if (item.type === 'link') {
+          iconClass = 'fa-link';
+          colorClass = 'icon-link';
+          li.title = `Symbolic link: ${item.name}`;
+          li.classList.add('file-disabled');
+        } else {
+          // Regular file
+          if (item.name.endsWith('.tar.gz')) {
+            iconClass = 'fa-file-archive';
+            colorClass = 'icon-file-archive';
+            li.classList.add('file-selectable');
+            action = () => {
+              const fullPath = path === '/' ? '/' + item.name : path + '/' + item.name;
+              filePathInput.value = fullPath;
+              serverFileModal.style.display = 'none';
+              log(`Selected archive: ${fullPath}`);
+            };
+            li.title = `Select this .tar.gz archive: ${item.name}`;
+          } else {
+            iconClass = 'fa-file';
+            colorClass = 'icon-file';
+            li.classList.add('file-disabled');
+            li.title = 'Only .tar.gz files can be selected';
+          }
+        }
+        
+        if (action) {
+          li.onclick = action;
+        }
+        
+        // Main content
+        const mainDiv = document.createElement('div');
+        mainDiv.innerHTML = `<i class="fa ${iconClass} file-icon ${colorClass}"></i><strong>${item.name}</strong>`;
+        
+        // File info (size and date for files)
+        const infoDiv = document.createElement('div');
+        infoDiv.className = 'file-info';
+        
+        if (item.type === 'file' && item.size && item.modified) {
+          const sizeFormatted = formatFileSize(parseInt(item.size));
+          infoDiv.textContent = `${sizeFormatted} • ${item.modified}`;
+        } else if (item.type === 'dir') {
+          infoDiv.innerHTML = '<i class="fa fa-chevron-right icon-chevron"></i>';
+        }
+        
+        li.appendChild(mainDiv);
+        li.appendChild(infoDiv);
+        serverFileList.appendChild(li);
+      }
+      
+    } catch (error) {
+      console.error('Error rendering server file list:', error);
+      serverFileList.innerHTML = `<li class="error"><div><i class="fa fa-exclamation-triangle file-icon icon-warning"></i>Error loading directory: ${error.message}</div><div></div></li>`;
+    }
+  }
+
+  // Helper function to format file sizes
+  function formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  }
+
+  // Initialize server file browser event listeners
+  if (browseBtn && serverFileModal && closeModalBtn) {
+    browseBtn.onclick = () => openServerFileModal('/');
+    closeModalBtn.onclick = () => { serverFileModal.style.display = 'none'; };
+    
+    // Navigation button handlers
+    if (navHomeBtn) navHomeBtn.onclick = () => {
+      log('🏠 Navigating to /home directory');
+      renderServerFileList('/home');
+    };
+    if (navRootBtn) navRootBtn.onclick = () => {
+      log('👤 Navigating to /root directory');
+      renderServerFileList('/root');
+    };
+    if (navTmpBtn) navTmpBtn.onclick = () => {
+      log('📁 Navigating to /tmp directory');
+      renderServerFileList('/tmp');
+    };
+    if (navVarBtn) navVarBtn.onclick = () => {
+      log('🗃️ Navigating to /var directory');
+      renderServerFileList('/var');
+    };
+    
+    // Optional: close modal on outside click
+    serverFileModal.addEventListener('click', (e) => {
+      if (e.target === serverFileModal) serverFileModal.style.display = 'none';
+    });
+  }
+
   // Cockpit API helper for running commands with superuser privileges
   async function runCommand(args, options = {}) {
     return new Promise((resolve, reject) => {

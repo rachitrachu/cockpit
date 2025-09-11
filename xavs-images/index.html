@@ -130,10 +130,33 @@
           <button id="toggle-pull" class="toggle-seg" type="button" aria-selected="false">Pull</button>
         </div>
 
+        <!-- USB Devices Section -->
+        <div id="usb-devices-section" class="usb-section">
+          <h4><i class="fa fa-usb"></i> USB Storage Devices</h4>
+          <div class="usb-devices-container">
+            <div id="usb-devices-list" class="usb-devices-list">
+              <div class="loading-state">Checking for USB devices...</div>
+            </div>
+            <div class="usb-controls">
+              <button id="refresh-usb-devices" class="btn btn-sm btn-outline-secondary">
+                <i class="fa fa-sync"></i> Refresh
+              </button>
+            </div>
+          </div>
+          <div id="no-usb-devices" class="alert alert-secondary" style="display: none;">
+            <i class="fa fa-info-circle"></i> No USB storage devices detected. Insert a USB drive and click Refresh.
+          </div>
+        </div>
+
         <!-- Extract block -->
         <div id="extract-block">
           <label class="form-label" for="file-path">Path to <code>.tar.gz</code> archive on server</label>
-          <input id="file-path" class="form-control" placeholder="/root/xdeploy/images-archive.tar.gz" />
+          <div class="file-path-group">
+            <input id="file-path" class="form-control" placeholder="/root/xdeploy/images-archive.tar.gz" />
+            <button class="btn btn-outline-secondary" id="browse-server-btn" type="button" title="Browse server for .tar.gz archive">
+              <i class="fa fa-folder-open"></i> Browse
+            </button>
+          </div>
           <div class="hint">Archive will be extracted to <code>/root/xdeploy/xdeploy-images/</code>, then all <code>.tar</code> images are <strong>docker load</strong>’ed and their tar files are removed.</div>
           <div class="actions">
             <button class="btn btn-brand" id="extract-btn">Extract & Load</button>
@@ -301,7 +324,38 @@
       </section>
     </main>
 
-    <!-- Status Bar -->
+        <!-- Modal for server file browser -->
+        <div id="server-file-modal" class="modal">
+          <div class="modal-content">
+            <h3><i class="fa fa-folder-open"></i> Browse Server Files</h3>
+            
+            <!-- Navigation bar -->
+            <div class="file-browser-nav">
+              <div class="nav-buttons">
+                <button class="btn btn-sm btn-outline-secondary" id="nav-home-btn" title="Go to /home">
+                  <i class="fa fa-home"></i> Home
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" id="nav-root-btn" title="Go to /root">
+                  <i class="fa fa-user"></i> Root
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" id="nav-tmp-btn" title="Go to /tmp">
+                  <i class="fa fa-folder"></i> Tmp
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" id="nav-var-btn" title="Go to /var">
+                  <i class="fa fa-database"></i> Var
+                </button>
+              </div>
+            </div>
+            
+            <!-- Breadcrumb path -->
+            <div id="server-file-path" class="file-path-breadcrumb"></div>
+            
+            <ul id="server-file-list"></ul>
+            <div class="modal-actions">
+              <button class="btn btn-outline-secondary" id="close-server-file-modal" type="button">Cancel</button>
+            </div>
+          </div>
+        </div>    <!-- Status Bar -->
     <div class="status-bar">
       <span id="status-text">Ready</span>
       <span class="status-actions">
