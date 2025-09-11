@@ -181,11 +181,24 @@
             </div>
           </div>
 
-          <!-- Extract Section (shown after successful copy) -->
-          <div id="extract-section" class="hidden mt-16">
+          <!-- Extract Section (always visible) -->
+          <div id="extract-section" class="mt-16">
             <h4><i class="fa-solid fa-magic"></i> Extract Archive</h4>
-            <p>Archive copied successfully. Ready to extract:</p>
-            <div id="extract-file-info" class="file-info-display" style="background: #f8f9fa; padding: 10px; border-radius: 5px; margin: 10px 0;">
+            <p>Select a <code>.tar.gz</code> archive to extract for image processing</p>
+            
+            <!-- File Selection -->
+            <div class="extract-file-selection">
+              <label class="form-label">Browse for Archive:</label>
+              <div class="file-path-group">
+                <button id="browse-extract-file-btn" class="btn btn-outline-secondary">
+                  <i class="fa fa-folder-open"></i> Browse for .tar.gz
+                </button>
+                <span id="browsed-extract-file-path" class="hint ml-10"></span>
+              </div>
+            </div>
+            
+            <!-- Selected File Info -->
+            <div id="extract-file-info" class="file-info-display hidden">
               <!-- File info will be populated here -->
             </div>
             

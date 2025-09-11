@@ -2,6 +2,35 @@ document.addEventListener('DOMContentLoaded', () => {
   const $ = (id) => document.getElementById(id);
 
   // ---- Helpers ----
+  // Format path to remove double slashes and clean up display
+  const formatPath = (path) => {
+    if (!path) return '';
+    return path.replace(/\/+/g, '/').replace(/^\//, '/');
+  };
+
+  // Format path with icon for better visual display
+  const formatPathWithIcon = (path, isFile = false) => {
+    if (!path) return '';
+    const cleanPath = formatPath(path);
+    
+    // Determine icon based on path and file type
+    let icon = '📁'; // Default folder icon
+    
+    if (isFile || cleanPath.includes('.')) {
+      if (cleanPath.endsWith('.tar.gz')) {
+        icon = '📦'; // Archive icon for tar.gz files
+      } else {
+        icon = '📄'; // Generic file icon
+      }
+    } else if (cleanPath === '/root' || cleanPath.startsWith('/root')) {
+      icon = '🏠'; // Home icon for root directory
+    } else if (cleanPath.includes('/home/')) {
+      icon = '👤'; // User icon for home directories
+    }
+    
+    return `${icon} ${cleanPath}`;
+  };
+
   const logEl = $("log");
   const log = (t="") => {
     if (!logEl) {
@@ -128,6 +157,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const destinationSelectBlock = document.getElementById('destination-select-block');
   const closeModalBtn = $('close-server-file-modal');
   
+  // Extract section elements (always visible)
+  const browseExtractFileBtn = $('browse-extract-file-btn');
+  const browsedExtractFilePathSpan = $('browsed-extract-file-path');
+  const extractFileInfo = $('extract-file-info');
+  const extractArchiveBtn = $('extract-archive-btn');
+  
   // Navigation buttons
   const navHomeBtn = $('nav-home-btn');
   const navRootBtn = $('nav-root-btn');
@@ -135,6 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const navVarBtn = $('nav-var-btn');
 
   let currentServerDir = '/root';
+  let selectedExtractFilePath = null;
 
   // Backend implementation using shell commands via cockpit
   async function listServerDir(path) {
@@ -351,7 +387,7 @@ document.addEventListener('DOMContentLoaded', () => {
   selectFolderBtn.innerHTML = `<i class=\"fa-solid fa-check-circle\"></i> Select this folder`;
         selectFolderBtn.onclick = () => {
           selectedDestPath = path;
-          selectedDestPathSpan.textContent = path;
+          selectedDestPathSpan.innerHTML = formatPathWithIcon(path);
           serverFileModal.style.display = 'none';
           if (selectedArchivePath && selectedDestPath) {
             copyArchiveBtn.disabled = false;
@@ -442,7 +478,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- Archive selection and destination selection logic ---
   let selectedArchivePath = null;
   let selectedDestPath = null;
-  let fileBrowserMode = null; // 'select-archive' or 'select-dest'
+  let fileBrowserMode = null; // 'select-archive', 'select-dest', or 'browse-extract'
 
   if (selectArchiveBtn && serverFileModal && closeModalBtn) {
     selectArchiveBtn.onclick = () => {
@@ -455,6 +491,15 @@ document.addEventListener('DOMContentLoaded', () => {
         openServerFileModal('/');
       };
     }
+    
+    // Browse extract file button handler
+    if (browseExtractFileBtn) {
+      browseExtractFileBtn.onclick = () => {
+        fileBrowserMode = 'browse-extract';
+        openServerFileModal('/');
+      };
+    }
+    
     closeModalBtn.onclick = () => {
       serverFileModal.style.display = 'none';
     };
@@ -477,11 +522,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const path = li.dataset.path;
       const isDir = li.dataset.isdir === 'true';
       const isSelectable = li.dataset.selectable === 'true';
+      
       if (fileBrowserMode === 'select-archive') {
         // Only allow .tar.gz files to be selected
         if (!isDir && isSelectable && path.endsWith('.tar.gz')) {
           selectedArchivePath = path;
-          selectedArchivePathSpan.textContent = path;
+          selectedArchivePathSpan.innerHTML = formatPathWithIcon(path, true);
           serverFileModal.style.display = 'none';
           // Show destination select block (remove .hidden class)
           destinationSelectBlock.classList.remove('hidden');
@@ -489,6 +535,33 @@ document.addEventListener('DOMContentLoaded', () => {
           selectedDestPath = null;
           selectedDestPathSpan.textContent = '';
           copyArchiveBtn.disabled = true;
+        }
+      } else if (fileBrowserMode === 'browse-extract') {
+        // Handle browse extract file selection
+        if (!isDir && isSelectable && path.endsWith('.tar.gz')) {
+          selectedExtractFilePath = path;
+          browsedExtractFilePathSpan.innerHTML = formatPathWithIcon(path, true);
+          serverFileModal.style.display = 'none';
+          
+          // Update extract file info and enable extract button
+          const fileName = path.split('/').pop();
+          extractFileInfo.innerHTML = `
+            <div class="file-info-item">
+              <i class="fa fa-file-archive text-blue"></i>
+              <div class="file-details">
+                <div class="file-name">${fileName}</div>
+                <div class="file-path">${formatPathWithIcon(path, true)}</div>
+                <div class="file-status"><i class="fa fa-check-circle text-green"></i> Ready for extraction</div>
+              </div>
+            </div>
+          `;
+          extractFileInfo.classList.remove('hidden');
+          extractArchiveBtn.disabled = false;
+          
+          // Set up extract button handler for browsed file
+          extractArchiveBtn.onclick = async () => {
+            await extractArchive(selectedExtractFilePath);
+          };
         }
       }
       // In destination select mode, do not select dir on click, only navigate (handled in renderServerFileList)
@@ -569,23 +642,30 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         log(`<span class="text-green">Archive copied successfully.</span>`);
         
-        // Show extract section after successful copy
-        const extractSection = document.getElementById('extract-section');
-        const extractFileInfo = document.getElementById('extract-file-info');
-        const extractBtn = document.getElementById('extract-archive-btn');
-        
-        if (extractSection && extractFileInfo && extractBtn) {
+        // Update extract section after successful copy
+        if (extractFileInfo && extractArchiveBtn) {
           const fileName = selectedArchivePath.split('/').pop();
-          extractFileInfo.innerHTML = `
-            <strong>Archive:</strong> ${fileName}<br>
-            <strong>Copied to:</strong> ${selectedDestPath}<br>
-            <strong>Will extract to:</strong> <span class="text-blue">/etc/xavs/xavs-images/</span>
-          `;
-          extractSection.classList.remove('hidden');
-          extractBtn.disabled = false;
           
-          // Set up extract button handler
-          extractBtn.onclick = async () => {
+          // Update the browsed file path to show the copied file
+          selectedExtractFilePath = destFile;
+          browsedExtractFilePathSpan.innerHTML = formatPathWithIcon(destFile, true);
+          
+          // Update extract file info
+          extractFileInfo.innerHTML = `
+            <div class="file-info-item">
+              <i class="fa fa-file-archive text-blue"></i>
+              <div class="file-details">
+                <div class="file-name">${fileName}</div>
+                <div class="file-path">Copied to: ${formatPathWithIcon(selectedDestPath)}</div>
+                <div class="file-status"><i class="fa fa-check-circle text-green"></i> Ready for extraction</div>
+              </div>
+            </div>
+          `;
+          extractFileInfo.classList.remove('hidden');
+          extractArchiveBtn.disabled = false;
+          
+          // Set up extract button handler for copied file
+          extractArchiveBtn.onclick = async () => {
             await extractArchive(destFile);
           };
         }
