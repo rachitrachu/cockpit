@@ -214,7 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const imagesList = await getImagesList();
       
       if (!imagesList || imagesList.trim() === '') {
-        listElement.innerHTML = '<li class="empty-state">No images configured in /etc/xavs/images.list</li>';
+        listElement.innerHTML = '<li class="empty-state">No images configured</li>';
         countElement.textContent = '(0 images)';
         return;
       }
@@ -224,7 +224,7 @@ document.addEventListener('DOMContentLoaded', () => {
         .filter(line => line && !line.startsWith('#'));
       
       if (images.length === 0) {
-        listElement.innerHTML = '<li class="empty-state">No images configured in /etc/xavs/images.list</li>';
+        listElement.innerHTML = '<li class="empty-state">No images configured</li>';
         countElement.textContent = '(0 images)';
         return;
       }
@@ -244,11 +244,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.message.includes('Images list file not found')) {
         listElement.innerHTML = `
           <li class="error-state">
-            <div class="error-title">❌ Images list file missing</div>
-            <div class="error-details">File not found: /etc/xavs/images.list</div>
-            <div class="error-hint">Create this file with one image per line</div>
+            <div class="error-title">❌ Images configuration missing</div>
+            <div class="error-details">Images configuration file not found</div>
+            <div class="error-hint">Create the configuration file with one image per line</div>
           </li>`;
-        countElement.textContent = '(Missing file)';
+        countElement.textContent = '(Missing config)';
       } else {
         listElement.innerHTML = `<li class="error-state">Error loading images: ${e.message}</li>`;
         countElement.textContent = '(Error)';
@@ -484,7 +484,7 @@ OS: ${imageData.Os}`;
       } catch (error) {
         console.log(`Could not read from ${imagePath}: ${error.message}`);
         // Prompt user about missing file
-        const errorMessage = `Images list file not found: ${imagePath}\n\nPlease create this file with one image per line.\nExample content:\nkeystone:2024.1-ubuntu-jammy\nnova-api:2024.1-ubuntu-jammy\nneutron-server:2024.1-ubuntu-jammy`;
+        const errorMessage = `Images list file not found. Please create the images configuration file with one image per line.\nExample content:\nkeystone:2024.1-ubuntu-jammy\nnova-api:2024.1-ubuntu-jammy\nneutron-server:2024.1-ubuntu-jammy`;
         log(`❌ ERROR: ${errorMessage}`);
         throw new Error(errorMessage);
       }
@@ -814,15 +814,14 @@ OS: ${imageData.Os}`;
         // Show user-friendly error for missing images list file
         log('❌ IMAGES LIST FILE MISSING\n');
         log('================================================================\n');
-        log('📂 Expected file: /etc/xavs/images.list\n');
-        log('❗ This file is required and must contain one image per line.\n\n');
-        log('📝 Example content for /etc/xavs/images.list:\n');
+        log('❗ The images configuration file is required and must contain one image per line.\n\n');
+        log('📝 Example content for the images list:\n');
         log('   keystone:2024.1-ubuntu-jammy\n');
         log('   nova-api:2024.1-ubuntu-jammy\n');
         log('   neutron-server:2024.1-ubuntu-jammy\n');
         log('   glance-api:2024.1-ubuntu-jammy\n');
         log('   horizon:2024.1-ubuntu-jammy\n\n');
-        log('💡 Solution: Create the file /etc/xavs/images.list with the required images\n');
+        log('💡 Solution: Create the images configuration file with the required images\n');
         log('================================================================\n');
         
         progressText.textContent = 'Error: Images list file missing';
@@ -845,8 +844,8 @@ OS: ${imageData.Os}`;
           .filter(line => line && !line.startsWith('#')) : [];
       
       if (images.length === 0) {
-        log('❌ No images found in /etc/xavs/images.list\n');
-        log('📝 Please add images to /etc/xavs/images.list (one per line)\n');
+        log('❌ No images found in the images configuration file\n');
+        log('📝 Please add images to the configuration file (one per line)\n');
         
         progressText.textContent = 'Error: No images configured';
         progressBar.style.backgroundColor = '#dc2626'; // Red color for error
@@ -1973,7 +1972,7 @@ ${volumeSize}
       }
     } catch (e) {
       if (e.message.includes('Images list file not found')) {
-        $('images-list-count').textContent = '/etc/xavs/images.list missing';
+        $('images-list-count').textContent = 'Images config missing';
       } else {
         $('images-list-count').textContent = 'Error reading images list';
       }
