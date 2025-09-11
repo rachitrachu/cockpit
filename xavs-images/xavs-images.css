@@ -240,6 +240,110 @@
   white-space: nowrap;
 }
 
+/* ===== USB Devices Section ===== */
+.usb-section {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.usb-section h4 {
+  margin: 0 0 12px 0;
+  color: var(--text);
+  font-size: 1.1rem;
+}
+
+.usb-devices-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.usb-devices-list {
+  flex: 1;
+}
+
+.usb-device-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background-color: var(--surface);
+  transition: all 0.2s ease;
+}
+
+.usb-device-item:hover {
+  background-color: #f8f9fa;
+  border-color: var(--brand);
+}
+
+.usb-device-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.usb-device-name {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--text);
+}
+
+.usb-device-details {
+  color: var(--muted);
+  font-size: 0.9em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.usb-device-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.8em;
+  font-weight: 500;
+}
+
+.status-mounted {
+  background-color: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.status-unmounted {
+  background-color: #f8f9fa;
+  color: #6c757d;
+  border: 1px solid #dee2e6;
+}
+
+.usb-device-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.usb-controls {
+  flex-shrink: 0;
+}
+
+.loading-state, .error-state {
+  padding: 12px;
+  text-align: center;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.error-state {
+  color: #dc3545;
+}
+
 /* ===== Brand tokens ===== */
 :root{
   --brand:#197560;

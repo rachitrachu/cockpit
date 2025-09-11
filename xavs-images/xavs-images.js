@@ -499,6 +499,214 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // ---- USB Device Management ----
+  async function detectUSBDevices() {
+    const usbList = $('usb-devices-list');
+    const noDevicesMsg = $('no-usb-devices');
+    
+    if (!usbList) return; // Element not found, exit gracefully
+    
+    usbList.innerHTML = '<div class="loading-state">Scanning for USB devices...</div>';
+    if (noDevicesMsg) noDevicesMsg.style.display = 'none';
+    
+    try {
+      log('🔍 Scanning for USB storage devices...\n');
+      
+      // Get device information using lsblk in JSON format
+      // TRAN=usb filters for USB devices only
+      const { stdout } = await runCommand([
+        'lsblk', '-J', '-o', 'NAME,SIZE,TRAN,FSTYPE,MOUNTPOINT,LABEL,MODEL'
+      ]);
+      
+      // Parse the JSON response
+      const deviceData = JSON.parse(stdout);
+      
+      // Filter for USB devices only (TRAN=usb)
+      const usbDevices = [];
+      
+      // Process and flatten device tree to find all USB-connected block devices
+      function processDevices(devices, isUSB = false) {
+        if (!devices) return;
+        
+        devices.forEach(device => {
+          // Check if this is a USB device or descended from one
+          const deviceIsUSB = isUSB || device.tran === 'usb';
+          
+          // If it's a USB device with a filesystem, add it to our list
+          if (deviceIsUSB && device.fstype && !device.name.startsWith('loop')) {
+            usbDevices.push({
+              name: device.name,
+              path: `/dev/${device.name}`,
+              size: device.size,
+              fstype: device.fstype,
+              mountpoint: device.mountpoint || null,
+              label: device.label || device.name,
+              model: device.model || 'USB Storage Device'
+            });
+          }
+          
+          // Recursively process children with the USB flag
+          if (device.children) {
+            processDevices(device.children, deviceIsUSB);
+          }
+        });
+      }
+      
+      processDevices(deviceData.blockdevices);
+      
+      // Update UI based on results
+      if (usbDevices.length === 0) {
+        usbList.innerHTML = '';
+        if (noDevicesMsg) noDevicesMsg.style.display = 'block';
+        log('No USB storage devices detected\n');
+      } else {
+        if (noDevicesMsg) noDevicesMsg.style.display = 'none';
+        usbList.innerHTML = '';
+        
+        log(`Found ${usbDevices.length} USB storage devices:\n`);
+        
+        usbDevices.forEach(device => {
+          const isMounted = !!device.mountpoint;
+          const mountStatus = isMounted ? 
+            `<span class="usb-device-status status-mounted">Mounted at ${device.mountpoint}</span>` : 
+            '<span class="usb-device-status status-unmounted">Not mounted</span>';
+          
+          const deviceDiv = document.createElement('div');
+          deviceDiv.className = 'usb-device-item';
+          deviceDiv.innerHTML = `
+            <div class="usb-device-info">
+              <div class="usb-device-name">
+                <i class="fa fa-hdd"></i> ${device.label || device.name}
+              </div>
+              <div class="usb-device-details">
+                ${device.path} • ${device.size} • ${device.fstype || 'Unknown filesystem'}
+                ${mountStatus}
+              </div>
+            </div>
+            <div class="usb-device-actions">
+              ${isMounted ? `
+                <button class="btn btn-sm btn-outline-primary browse-device" 
+                  data-path="${device.mountpoint}" title="Browse files">
+                  <i class="fa fa-folder-open"></i> Browse
+                </button>
+                <button class="btn btn-sm btn-outline-secondary unmount-device" 
+                  data-device="${device.path}" title="Unmount device">
+                  <i class="fa fa-eject"></i> Unmount
+                </button>
+              ` : `
+                <button class="btn btn-sm btn-primary mount-device" 
+                  data-device="${device.path}" data-fstype="${device.fstype}" title="Mount device">
+                  <i class="fa fa-plug"></i> Mount
+                </button>
+              `}
+            </div>
+          `;
+          usbList.appendChild(deviceDiv);
+          
+          log(`• ${device.name} (${device.size}, ${device.fstype}): ${isMounted ? 'Mounted at ' + device.mountpoint : 'Not mounted'}\n`);
+        });
+        
+        // Add event listeners to the buttons
+        document.querySelectorAll('.mount-device').forEach(btn => {
+          btn.addEventListener('click', () => mountUSBDevice(btn.dataset.device, btn.dataset.fstype));
+        });
+        
+        document.querySelectorAll('.unmount-device').forEach(btn => {
+          btn.addEventListener('click', () => unmountUSBDevice(btn.dataset.device));
+        });
+        
+        document.querySelectorAll('.browse-device').forEach(btn => {
+          btn.addEventListener('click', () => openServerFileModal(btn.dataset.path));
+        });
+      }
+      
+    } catch (error) {
+      usbList.innerHTML = `<div class="error-state">Error scanning for USB devices: ${error.message}</div>`;
+      log(`Error detecting USB devices: ${error.message}\n`);
+      console.error('USB device detection error:', error);
+    }
+  }
+
+  async function mountUSBDevice(devicePath, fstype) {
+    try {
+      log(`🔌 Mounting USB device ${devicePath}...\n`);
+      
+      // Create mount point directory if it doesn't exist
+      // Using a consistent naming scheme based on device name
+      const deviceName = devicePath.split('/').pop();
+      const mountPoint = `/mnt/usb-${deviceName}`;
+      
+      // Create mount directory
+      await runCommand(['mkdir', '-p', mountPoint]);
+      log(`Created mount point: ${mountPoint}\n`);
+      
+      // Build mount options based on filesystem type
+      let mountOptions = [];
+      
+      if (fstype === 'ntfs') {
+        // For NTFS, use ntfs-3g if available
+        try {
+          await runCommand(['which', 'ntfs-3g']);
+          // If we get here, ntfs-3g is available
+          mountOptions = ['-t', 'ntfs-3g', '-o', 'uid=1000,gid=1000,dmask=027,fmask=137'];
+        } catch {
+          // Fall back to regular mount
+          mountOptions = ['-t', 'ntfs', '-o', 'uid=1000,gid=1000'];
+        }
+      } else if (fstype === 'vfat' || fstype === 'fat' || fstype === 'exfat') {
+        // FAT/exFAT options for better permissions
+        mountOptions = ['-o', 'uid=1000,gid=1000,dmask=027,fmask=137'];
+      }
+      
+      // Mount the device
+      await runCommand(['mount', ...mountOptions, devicePath, mountPoint]);
+      log(`✅ Device mounted successfully at ${mountPoint}\n`);
+      
+      // Refresh the device list after a short delay
+      setTimeout(detectUSBDevices, 500);
+      
+    } catch (error) {
+      log(`❌ Failed to mount device: ${error.message}\n`);
+      
+      // Show user-friendly error dialog
+      alert(`Failed to mount USB device: ${error.message}`);
+    }
+  }
+
+  async function unmountUSBDevice(devicePath) {
+    try {
+      log(`📤 Unmounting USB device ${devicePath}...\n`);
+      
+      // Unmount the device
+      await runCommand(['umount', devicePath]);
+      log(`✅ Device unmounted successfully\n`);
+      
+      // Refresh the device list after a short delay
+      setTimeout(detectUSBDevices, 500);
+      
+    } catch (error) {
+      log(`❌ Failed to unmount device: ${error.message}\n`);
+      
+      if (error.message.includes('target is busy')) {
+        log(`💡 Device is busy. Make sure no files are open on the device.\n`);
+        alert('Cannot unmount device: Device is busy. Close any open files or programs using this device.');
+      } else {
+        alert(`Failed to unmount USB device: ${error.message}`);
+      }
+    }
+  }
+
+  // Initialize USB device detection
+  function initUSBDevices() {
+    detectUSBDevices();
+    
+    // Add refresh button handler
+    const refreshBtn = $('refresh-usb-devices');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', detectUSBDevices);
+    }
+  }
+
   // ---- Tabs ----
   document.querySelectorAll('.nav-link').forEach((link) => {
     link.addEventListener('click', (e) => {
@@ -525,6 +733,8 @@ document.addEventListener('DOMContentLoaded', () => {
         loadLocalDockerImages();
         countImagesList();
         startLocalImagesAutoRefresh(); // Start auto-refresh for local images
+        // Initialize USB device detection with a small delay to ensure DOM is ready
+        setTimeout(initUSBDevices, 100);
       }
     });
   });
@@ -2493,6 +2703,11 @@ ${volumeSize}
   
   // Load stored logs after DOM is ready
   setTimeout(loadStoredLogs, 100);
+  
+  // Initialize USB devices if Extract tab is already active on page load
+  if (document.querySelector('[data-tab="tab-extract"]').classList.contains('active')) {
+    setTimeout(initUSBDevices, 500);
+  }
   
   // Clear log functionality
   const clearLogBtn = $("btn-clear-log");
