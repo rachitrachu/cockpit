@@ -191,12 +191,17 @@ document.addEventListener('DOMContentLoaded', () => {
       if (link.dataset.tab === 'tab-registry') {
         checkStatus();
         checkDockerConfig();
+        stopLocalImagesAutoRefresh(); // Stop auto-refresh when leaving extract tab
       }
-      if (link.dataset.tab === 'tab-catalog') refreshCatalog();
+      if (link.dataset.tab === 'tab-catalog') {
+        refreshCatalog();
+        stopLocalImagesAutoRefresh(); // Stop auto-refresh when leaving extract tab
+      }
       if (link.dataset.tab === 'tab-extract') {
         loadCurrentImagesList();
         loadLocalDockerImages();
         countImagesList();
+        startLocalImagesAutoRefresh(); // Start auto-refresh for local images
       }
     });
   });
@@ -256,6 +261,34 @@ document.addEventListener('DOMContentLoaded', () => {
         countElement.textContent = '(Error)';
       }
     }
+  }
+
+  // ---- Auto-refresh functionality for local images ----
+  function startLocalImagesAutoRefresh(interval = AUTO_REFRESH_INTERVAL) {
+    // Stop any existing interval
+    stopLocalImagesAutoRefresh();
+    
+    isAutoRefreshActive = true;
+    localImagesRefreshInterval = setInterval(async () => {
+      if (isAutoRefreshActive) {
+        try {
+          await loadLocalDockerImages();
+        } catch (e) {
+          console.warn('Auto-refresh failed:', e.message);
+        }
+      }
+    }, interval);
+    
+    console.log(`Local images auto-refresh started (${interval}ms interval)`);
+  }
+
+  function stopLocalImagesAutoRefresh() {
+    if (localImagesRefreshInterval) {
+      clearInterval(localImagesRefreshInterval);
+      localImagesRefreshInterval = null;
+    }
+    isAutoRefreshActive = false;
+    console.log('Local images auto-refresh stopped');
   }
 
   // ---- Local Docker Images Management ----
@@ -385,7 +418,21 @@ OS: ${imageData.Os}`;
   // Event listeners for local Docker images management
   safeAddEventListener('refresh-local-images-btn', 'click', async () => {
     await loadLocalDockerImages();
-    log('Local Docker images refreshed');
+    log('🔄 Local Docker images refreshed manually\n');
+  });
+
+  // Cleanup auto-refresh on page unload
+  window.addEventListener('beforeunload', () => {
+    stopLocalImagesAutoRefresh();
+  });
+
+  // Also stop auto-refresh if user navigates away from extract tab
+  window.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      stopLocalImagesAutoRefresh();
+    } else if (document.querySelector('[data-tab="tab-extract"]').classList.contains('active')) {
+      startLocalImagesAutoRefresh();
+    }
   });
 
   // Event delegation for dynamically created buttons
@@ -496,6 +543,12 @@ OS: ${imageData.Os}`;
   // Global variable to track current pull process
   let currentPullProcess = null;
   let isPulling = false;
+
+  // Auto-refresh variables for local images
+  let localImagesRefreshInterval = null;
+  let isAutoRefreshActive = false;
+  const AUTO_REFRESH_INTERVAL = 60000; // 1 minute (60 seconds)
+  const PULL_REFRESH_INTERVAL = 30000; // 30 seconds during pull operations
 
   const DOCKER_CONFIG_TEMPLATE = {
     "bridge": "none",
@@ -766,10 +819,13 @@ OS: ${imageData.Os}`;
       return;
     }
 
-    log(' Checking prerequisites...\n');
+    log('📋 Checking prerequisites...\n');
     isPulling = true;
     $('pull-btn').textContent = 'Stop Pull';
     $('pull-btn').className = 'btn btn-danger';
+    
+    // Start faster auto-refresh during pull operation
+    startLocalImagesAutoRefresh(PULL_REFRESH_INTERVAL);
     
     // Show and initialize progress bar
     const progressContainer = $('pull-progress-container');
@@ -933,10 +989,13 @@ OS: ${imageData.Os}`;
         log(` Total processed: ${successCount + failCount}/${images.length} images`);
         $('push-btn').disabled = false;
         
-        // Refresh images list and counts
+        // Refresh images list and counts with final update
         setTimeout(async () => {
           await loadCurrentImagesList();
           await countImagesList();
+          await loadLocalDockerImages(); // Final refresh of local images
+          
+          log('📊 Updated images lists and counts\n');
           
           // Hide progress bar after a delay
           setTimeout(() => {
@@ -962,6 +1021,11 @@ OS: ${imageData.Os}`;
       currentPullProcess = null;
       $('pull-btn').textContent = 'Pull Images';
       $('pull-btn').className = 'btn btn-primary';
+      
+      // Restore normal auto-refresh interval after pull operation
+      if (document.querySelector('[data-tab="tab-extract"]').classList.contains('active')) {
+        startLocalImagesAutoRefresh(AUTO_REFRESH_INTERVAL);
+      }
     }
   });
 
