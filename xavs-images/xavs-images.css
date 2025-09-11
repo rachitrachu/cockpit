@@ -1,3 +1,57 @@
+/* Modal footer for file browser */
+#server-file-modal-footer.modal-footer {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px 8px 24px;
+  background: transparent;
+  border-top: none;
+}
+
+#server-file-modal-footer .btn {
+  min-width: 120px;
+  font-weight: 600;
+  font-size: 1rem;
+  border-radius: 20px;
+  box-shadow: none;
+  margin: 0;
+}
+
+#server-file-modal-footer .btn-primary {
+  background: #1976d2;
+  color: #fff;
+  border: none;
+  transition: background 0.2s;
+}
+#server-file-modal-footer .btn-primary:hover {
+  background: #1565c0;
+}
+
+#server-file-modal-footer .btn[disabled],
+#server-file-modal-footer .btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+/* Utility class for left margin (replaces inline style for CSP) */
+.ml-10 {
+  margin-left: 10px;
+}
+
+/* Utility class for margin-top (replaces inline style for CSP) */
+.mt-16 {
+  margin-top: 16px;
+}
+
+/* Utility class for hidden (replaces inline style for CSP) */
+.hidden {
+  display: none !important;
+}
+/* Utility class for left margin (replaces inline style for CSP) */
+.ml-10 {
+  margin-left: 10px;
+}
 /* ===== Server File Browser Modal ===== */
 .modal {
   position: fixed;

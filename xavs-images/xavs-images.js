@@ -120,9 +120,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const serverFileModal = $('server-file-modal');
   const serverFileList = $('server-file-list');
   const serverFilePath = $('server-file-path');
-  const browseBtn = $('browse-server-btn');
+  const selectArchiveBtn = $('select-archive-btn');
+  const selectedArchivePathSpan = $('selected-archive-path');
+  const selectDestBtn = $('select-dest-btn');
+  const selectedDestPathSpan = $('selected-dest-path');
+  const copyArchiveBtn = $('copy-archive-btn');
+  const destinationSelectBlock = document.getElementById('destination-select-block');
   const closeModalBtn = $('close-server-file-modal');
-  const filePathInput = $('file-path');
   
   // Navigation buttons
   const navHomeBtn = $('nav-home-btn');
@@ -296,10 +300,8 @@ document.addEventListener('DOMContentLoaded', () => {
   async function renderServerFileList(path) {
     try {
       currentServerDir = path;
-      
       // Update breadcrumb navigation
       serverFilePath.innerHTML = createBreadcrumb(path);
-      
       // Add click handlers to breadcrumb segments
       serverFilePath.querySelectorAll('.breadcrumb-segment').forEach(segment => {
         segment.addEventListener('click', (e) => {
@@ -308,88 +310,114 @@ document.addEventListener('DOMContentLoaded', () => {
           renderServerFileList(targetPath);
         });
       });
-      
-      serverFileList.innerHTML = '<li class="loading">Loading...</li>';
-      
+      serverFileList.innerHTML = '';
       // Add parent directory navigation (except for root)
       if (path !== '/') {
         const parentPath = path.replace(/\/[^/]*$/, '') || '/';
         const parentLi = document.createElement('li');
         parentLi.className = 'parent-dir';
-        parentLi.innerHTML = '<div><i class="fa fa-level-up-alt file-icon icon-up"></i><strong>.. (Parent Directory)</strong></div><div></div>';
+  parentLi.innerHTML = '<div><i class="fa-solid fa-level-up-alt file-icon icon-up"></i><strong>.. (Parent Directory)</strong></div><div></div>';
         parentLi.title = `Go to ${parentPath}`;
         parentLi.onclick = () => renderServerFileList(parentPath);
-        serverFileList.innerHTML = '';
         serverFileList.appendChild(parentLi);
-      } else {
-        serverFileList.innerHTML = '';
       }
-      
+
+      // Ensure modal footer exists
+      // Prefer to use .modal-actions if it exists, else fallback to #server-file-modal-footer
+      let modalFooter = serverFileModal.querySelector('.modal-actions');
+      if (!modalFooter) {
+        modalFooter = document.getElementById('server-file-modal-footer');
+      }
+      if (!modalFooter) {
+        // Try to find the modal and append a footer if missing
+        if (serverFileModal) {
+          modalFooter = document.createElement('div');
+          modalFooter.id = 'server-file-modal-footer';
+          modalFooter.className = 'modal-footer';
+          let modalContent = serverFileModal.querySelector('.modal-content') || serverFileModal;
+          modalContent.appendChild(modalFooter);
+        }
+      }
+      // Remove any existing select-folder-footer button
+      if (modalFooter) {
+        const oldBtn = document.getElementById('select-folder-footer-btn');
+        if (oldBtn) oldBtn.remove();
+      }
+      if (fileBrowserMode === 'select-dest' && modalFooter) {
+        // Add 'Select this folder' button to modal footer
+        const selectFolderBtn = document.createElement('button');
+        selectFolderBtn.id = 'select-folder-footer-btn';
+        selectFolderBtn.className = 'btn btn-brand'; // Use brand color class
+  selectFolderBtn.innerHTML = `<i class=\"fa-solid fa-check-circle\"></i> Select this folder`;
+        selectFolderBtn.onclick = () => {
+          selectedDestPath = path;
+          selectedDestPathSpan.textContent = path;
+          serverFileModal.style.display = 'none';
+          if (selectedArchivePath && selectedDestPath) {
+            copyArchiveBtn.disabled = false;
+          }
+        };
+        // Always insert before the Cancel/Close button if it exists
+        const cancelBtn = modalFooter.querySelector('#close-server-file-modal');
+        if (cancelBtn) {
+          modalFooter.insertBefore(selectFolderBtn, cancelBtn);
+        } else {
+          modalFooter.appendChild(selectFolderBtn);
+        }
+      }
+
       const items = await listServerDir(path);
-      
       if (items.length === 0) {
         const emptyLi = document.createElement('li');
         emptyLi.className = 'empty';
-        emptyLi.innerHTML = '<div><i class="fa fa-info-circle file-icon icon-info"></i><em>Directory is empty or not accessible</em></div><div></div>';
+  emptyLi.innerHTML = '<div><i class="fa-solid fa-info-circle file-icon icon-info"></i><em>Directory is empty or not accessible</em></div><div></div>';
         serverFileList.appendChild(emptyLi);
         return;
       }
-      
       for (const item of items) {
         const li = document.createElement('li');
-        
-        let iconClass, colorClass, action;
-        
+        let iconClass, colorClass;
+        li.dataset.path = path === '/' ? '/' + item.name : path + '/' + item.name;
+        li.dataset.isdir = item.type === 'dir' ? 'true' : 'false';
         if (item.type === 'dir') {
-          iconClass = 'fa-folder';
+    iconClass = 'fa-solid fa-folder';
           colorClass = 'icon-folder';
-          action = () => renderServerFileList(path + '/' + item.name);
           li.title = `Open directory: ${item.name}`;
+          li.dataset.selectable = 'true';
+          // In destination select mode, only navigate into directory on click (do not select)
+          li.onclick = () => renderServerFileList(path + '/' + item.name);
         } else if (item.type === 'link') {
-          iconClass = 'fa-link';
+    iconClass = 'fa-solid fa-link';
           colorClass = 'icon-link';
           li.title = `Symbolic link: ${item.name}`;
           li.classList.add('file-disabled');
+          li.dataset.selectable = 'false';
         } else {
-          // Regular file
           if (item.name.endsWith('.tar.gz')) {
-            iconClass = 'fa-file-archive';
+            iconClass = 'fa-solid fa-file-archive';
             colorClass = 'icon-file-archive';
             li.classList.add('file-selectable');
-            action = () => {
-              const fullPath = path === '/' ? '/' + item.name : path + '/' + item.name;
-              filePathInput.value = fullPath;
-              serverFileModal.style.display = 'none';
-              log(`Selected archive: ${fullPath}`);
-            };
             li.title = `Select this .tar.gz archive: ${item.name}`;
+            li.dataset.selectable = 'true';
           } else {
-            iconClass = 'fa-file';
+            iconClass = 'fa-solid fa-file';
             colorClass = 'icon-file';
             li.classList.add('file-disabled');
             li.title = 'Only .tar.gz files can be selected';
+            li.dataset.selectable = 'false';
           }
         }
-        
-        if (action) {
-          li.onclick = action;
-        }
-        
         // Main content
         const mainDiv = document.createElement('div');
-        mainDiv.innerHTML = `<i class="fa ${iconClass} file-icon ${colorClass}"></i><strong>${item.name}</strong>`;
-        
-        // File info (size and date for files)
+  mainDiv.innerHTML = `<i class="${iconClass} file-icon ${colorClass}"></i><strong>${item.name}</strong>`;
         const infoDiv = document.createElement('div');
         infoDiv.className = 'file-info';
-        
         if (item.type === 'file' && item.size && item.modified) {
           const sizeFormatted = formatFileSize(parseInt(item.size));
           infoDiv.textContent = `${sizeFormatted} • ${item.modified}`;
         } else if (item.type === 'dir') {
-          infoDiv.innerHTML = '<i class="fa fa-chevron-right icon-chevron"></i>';
+    infoDiv.innerHTML = '<i class="fa-solid fa-chevron-right icon-chevron"></i>';
         }
-        
         li.appendChild(mainDiv);
         li.appendChild(infoDiv);
         serverFileList.appendChild(li);
@@ -397,7 +425,7 @@ document.addEventListener('DOMContentLoaded', () => {
       
     } catch (error) {
       console.error('Error rendering server file list:', error);
-      serverFileList.innerHTML = `<li class="error"><div><i class="fa fa-exclamation-triangle file-icon icon-warning"></i>Error loading directory: ${error.message}</div><div></div></li>`;
+  serverFileList.innerHTML = `<li class="error"><div><i class="fa-solid fa-exclamation-triangle file-icon icon-warning"></i>Error loading directory: ${error.message}</div><div></div></li>`;
     }
   }
 
@@ -411,32 +439,301 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Initialize server file browser event listeners
-  if (browseBtn && serverFileModal && closeModalBtn) {
-    browseBtn.onclick = () => openServerFileModal('/');
-    closeModalBtn.onclick = () => { serverFileModal.style.display = 'none'; };
-    
-    // Navigation button handlers
-    if (navHomeBtn) navHomeBtn.onclick = () => {
-      log('🏠 Navigating to /home directory');
-      renderServerFileList('/home');
+  // --- Archive selection and destination selection logic ---
+  let selectedArchivePath = null;
+  let selectedDestPath = null;
+  let fileBrowserMode = null; // 'select-archive' or 'select-dest'
+
+  if (selectArchiveBtn && serverFileModal && closeModalBtn) {
+    selectArchiveBtn.onclick = () => {
+      fileBrowserMode = 'select-archive';
+      openServerFileModal('/');
     };
-    if (navRootBtn) navRootBtn.onclick = () => {
-      log('👤 Navigating to /root directory');
-      renderServerFileList('/root');
+    if (selectDestBtn) {
+      selectDestBtn.onclick = () => {
+        fileBrowserMode = 'select-dest';
+        openServerFileModal('/');
+      };
+    }
+    closeModalBtn.onclick = () => {
+      serverFileModal.style.display = 'none';
     };
-    if (navTmpBtn) navTmpBtn.onclick = () => {
-      log('📁 Navigating to /tmp directory');
-      renderServerFileList('/tmp');
-    };
-    if (navVarBtn) navVarBtn.onclick = () => {
-      log('🗃️ Navigating to /var directory');
-      renderServerFileList('/var');
-    };
-    
+    // Navigation button handlers for modal
+    if (navHomeBtn) navHomeBtn.onclick = () => renderServerFileList('/home');
+    if (navRootBtn) navRootBtn.onclick = () => renderServerFileList('/root');
+    if (navTmpBtn) navTmpBtn.onclick = () => renderServerFileList('/tmp');
+    if (navVarBtn) navVarBtn.onclick = () => renderServerFileList('/var');
     // Optional: close modal on outside click
     serverFileModal.addEventListener('click', (e) => {
       if (e.target === serverFileModal) serverFileModal.style.display = 'none';
     });
+  }
+
+  // Patch: handle file selection in modal for archive and destination
+  if (serverFileList) {
+    serverFileList.onclick = async (e) => {
+      const li = e.target.closest('li');
+      if (!li) return;
+      const path = li.dataset.path;
+      const isDir = li.dataset.isdir === 'true';
+      const isSelectable = li.dataset.selectable === 'true';
+      if (fileBrowserMode === 'select-archive') {
+        // Only allow .tar.gz files to be selected
+        if (!isDir && isSelectable && path.endsWith('.tar.gz')) {
+          selectedArchivePath = path;
+          selectedArchivePathSpan.textContent = path;
+          serverFileModal.style.display = 'none';
+          // Show destination select block (remove .hidden class)
+          destinationSelectBlock.classList.remove('hidden');
+          // Reset destination selection
+          selectedDestPath = null;
+          selectedDestPathSpan.textContent = '';
+          copyArchiveBtn.disabled = true;
+        }
+      }
+      // In destination select mode, do not select dir on click, only navigate (handled in renderServerFileList)
+    };
+  }
+
+  // Copy archive button logic
+  if (copyArchiveBtn) {
+    const copyProgressContainer = document.getElementById('copy-progress-container');
+    const copyProgressBar = document.getElementById('copy-progress-bar');
+    const copyProgressText = document.getElementById('copy-progress-text');
+    const copyProgressCount = document.getElementById('copy-progress-count');
+    copyArchiveBtn.onclick = async () => {
+      if (!selectedArchivePath || !selectedDestPath) return;
+      copyArchiveBtn.disabled = true;
+      log(`Copying archive <span class="text-blue">${selectedArchivePath}</span> to <span class="text-blue">${selectedDestPath}</span> ...`);
+      // Show progress bar
+      copyProgressContainer.classList.remove('hidden');
+      copyProgressBar.style.width = '0%';
+      copyProgressText.textContent = 'Preparing copy...';
+      copyProgressCount.textContent = '';
+      try {
+        // Check if pv is available
+        let pvAvailable = false;
+        try {
+          await runCommand(['which', 'pv']);
+          pvAvailable = true;
+        } catch {}
+        const destFile = selectedDestPath.replace(/\/+$/, '') + '/' + selectedArchivePath.split('/').pop();
+        if (pvAvailable) {
+          // Get file size (in bytes)
+          let fileSize = 0;
+          try {
+            const { stdout } = await runCommand(['stat', '-c', '%s', selectedArchivePath]);
+            fileSize = parseInt(stdout.trim(), 10);
+          } catch {}
+          copyProgressText.textContent = 'Copying...';
+          // Use cockpit.spawn directly for streaming
+          const process = cockpit.spawn(['pv', '-n', selectedArchivePath], { superuser: 'require', err: 'message' });
+          let copied = 0;
+          process.stream(data => {
+            // pv -n outputs bytes copied as a number per line
+            const lines = data.split(/\r?\n/).filter(Boolean);
+            for (const line of lines) {
+              const val = parseInt(line.trim(), 10);
+              if (!isNaN(val) && fileSize > 0) {
+                copied = val;
+                const percent = Math.min(100, Math.round((copied / fileSize) * 100));
+                copyProgressBar.style.width = percent + '%';
+                copyProgressCount.textContent = `${percent}%`;
+              }
+            }
+          });
+          // Pipe pv output to destination file
+          await new Promise((resolve, reject) => {
+            const destProc = cockpit.spawn(['sh', '-c', `pv -n '${selectedArchivePath.replace(/'/g, "'\\''")}' > '${destFile.replace(/'/g, "'\\''")}'`], { superuser: 'require', err: 'message' });
+            destProc.stream(data => {
+              const lines = data.split(/\r?\n/).filter(Boolean);
+              for (const line of lines) {
+                const val = parseInt(line.trim(), 10);
+                if (!isNaN(val) && fileSize > 0) {
+                  const percent = Math.min(100, Math.round((val / fileSize) * 100));
+                  copyProgressBar.style.width = percent + '%';
+                  copyProgressCount.textContent = `${percent}%`;
+                }
+              }
+            });
+            destProc.then(resolve).catch(reject);
+          });
+          copyProgressBar.style.width = '100%';
+          copyProgressCount.textContent = '100%';
+        } else {
+          // Fallback: cp without progress
+          copyProgressText.textContent = 'Copying (no progress info)...';
+          await runCommand(['cp', '-f', selectedArchivePath, destFile], { superuser: true });
+          copyProgressBar.style.width = '100%';
+          copyProgressCount.textContent = '100%';
+        }
+        log(`<span class="text-green">Archive copied successfully.</span>`);
+        
+        // Show extract section after successful copy
+        const extractSection = document.getElementById('extract-section');
+        const extractFileInfo = document.getElementById('extract-file-info');
+        const extractBtn = document.getElementById('extract-archive-btn');
+        
+        if (extractSection && extractFileInfo && extractBtn) {
+          const fileName = selectedArchivePath.split('/').pop();
+          extractFileInfo.innerHTML = `
+            <strong>Archive:</strong> ${fileName}<br>
+            <strong>Copied to:</strong> ${selectedDestPath}<br>
+            <strong>Will extract to:</strong> <span class="text-blue">/etc/xavs/xavs-images/</span>
+          `;
+          extractSection.classList.remove('hidden');
+          extractBtn.disabled = false;
+          
+          // Set up extract button handler
+          extractBtn.onclick = async () => {
+            await extractArchive(destFile);
+          };
+        }
+        
+      } catch (e) {
+        log(`<span class="text-red">Failed to copy archive: ${e.message || e}</span>`);
+      } finally {
+        copyArchiveBtn.disabled = false;
+        setTimeout(() => {
+          copyProgressContainer.classList.add('hidden');
+        }, 1200);
+      }
+    };
+  }
+
+  // Extract archive function with hardcoded destination
+  async function extractArchive(archivePath) {
+    const EXTRACT_DESTINATION = '/etc/xavs/xavs-images/';
+    
+    const extractBtn = document.getElementById('extract-archive-btn');
+    const extractProgressContainer = document.getElementById('extract-progress-container');
+    const extractProgressBar = document.getElementById('extract-progress-bar');
+    const extractProgressText = document.getElementById('extract-progress-text');
+    const extractProgressCount = document.getElementById('extract-progress-count');
+    
+    if (!extractBtn || !extractProgressContainer) return;
+    
+    extractBtn.disabled = true;
+    extractBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Extracting...';
+    
+    // Show progress bar
+    extractProgressContainer.classList.remove('hidden');
+    extractProgressBar.style.width = '0%';
+    extractProgressText.textContent = 'Preparing extraction...';
+    extractProgressCount.textContent = '';
+    
+    const fileName = archivePath.split('/').pop();
+    log(`Extracting archive <span class="text-blue">${fileName}</span> to <span class="text-blue">${EXTRACT_DESTINATION}</span>...`);
+    
+    try {
+      // Ensure destination directory exists
+      await runCommand(['mkdir', '-p', EXTRACT_DESTINATION]);
+      
+      // Check if pv is available for progress monitoring
+      let pvAvailable = false;
+      try {
+        await runCommand(['which', 'pv']);
+        pvAvailable = true;
+      } catch {}
+      
+      if (pvAvailable) {
+        // Get archive size for progress calculation
+        let archiveSize = 0;
+        try {
+          const { stdout } = await runCommand(['stat', '-c', '%s', archivePath]);
+          archiveSize = parseInt(stdout.trim(), 10);
+        } catch {}
+        
+        extractProgressText.textContent = 'Extracting with progress...';
+        
+        // Use pv to monitor extraction progress
+        const extractCommand = `pv -n '${archivePath.replace(/'/g, "'\\''")}' | tar -xzf - -C '${EXTRACT_DESTINATION}' --verbose`;
+        
+        const process = cockpit.spawn(['sh', '-c', extractCommand], { 
+          superuser: 'require', 
+          err: 'message' 
+        });
+        
+        let lastFile = '';
+        process.stream(data => {
+          const lines = data.split(/\r?\n/);
+          for (const line of lines) {
+            const trimmed = line.trim();
+            
+            // pv progress line (numeric percentage)
+            const progressMatch = trimmed.match(/^(\d+(?:\.\d+)?)$/);
+            if (progressMatch) {
+              const percent = Math.min(100, Math.round(parseFloat(progressMatch[1])));
+              extractProgressBar.style.width = percent + '%';
+              extractProgressCount.textContent = `${percent}%`;
+            }
+            
+            // Log extracted files (tar verbose output)
+            if (trimmed && !progressMatch && (trimmed.includes('/') || trimmed.length > 3)) {
+              lastFile = trimmed;
+              const shortPath = trimmed.length > 50 ? '...' + trimmed.slice(-47) : trimmed;
+              extractProgressText.textContent = `Extracting: ${shortPath}`;
+            }
+          }
+        });
+        
+        await process;
+        
+        extractProgressBar.style.width = '100%';
+        extractProgressCount.textContent = '100%';
+        extractProgressText.textContent = 'Extraction completed!';
+        
+      } else {
+        // Fallback: tar without progress monitoring
+        extractProgressText.textContent = 'Extracting (no progress info)...';
+        extractProgressBar.style.width = '50%';
+        
+        const tarProcess = cockpit.spawn([
+          'tar', '-xzf', archivePath, '-C', EXTRACT_DESTINATION, '--verbose'
+        ], { superuser: 'require', err: 'message' });
+        
+        // Show some file names being extracted
+        tarProcess.stream(data => {
+          const lines = data.split(/\r?\n/).filter(Boolean);
+          for (const line of lines) {
+            if (line.trim()) {
+              const shortPath = line.length > 50 ? '...' + line.slice(-47) : line;
+              extractProgressText.textContent = `Extracting: ${shortPath}`;
+            }
+          }
+        });
+        
+        await tarProcess;
+        
+        extractProgressBar.style.width = '100%';
+        extractProgressCount.textContent = '100%';
+        extractProgressText.textContent = 'Extraction completed!';
+      }
+      
+      log(`<span class="text-green">Archive extracted successfully!</span>`);
+      log(`Contents extracted to: <span class="text-blue">${EXTRACT_DESTINATION}</span>`);
+      
+      // List extracted contents
+      try {
+        const { stdout } = await runCommand(['ls', '-la', EXTRACT_DESTINATION]);
+        log(`\nExtracted contents in ${EXTRACT_DESTINATION}:\n<pre>${stdout}</pre>`);
+      } catch (e) {
+        log(`\nCould not list extracted contents: ${e.message}`);
+      }
+      
+    } catch (e) {
+      log(`<span class="text-red">Failed to extract archive: ${e.message || e}</span>`);
+      extractProgressText.textContent = `Error: ${e.message}`;
+      extractProgressBar.style.backgroundColor = '#dc2626';
+    } finally {
+      extractBtn.disabled = false;
+      extractBtn.innerHTML = '<i class="fa-solid fa-magic"></i> Extract Archive';
+      
+      setTimeout(() => {
+        extractProgressContainer.classList.add('hidden');
+        extractProgressBar.style.backgroundColor = '';
+      }, 3000);
+    }
   }
 
   // Cockpit API helper for running commands with superuser privileges
@@ -576,7 +873,7 @@ document.addEventListener('DOMContentLoaded', () => {
           deviceDiv.innerHTML = `
             <div class="usb-device-info">
               <div class="usb-device-name">
-                <i class="fa fa-hdd"></i> ${device.label || device.name}
+                <i class="fab fa-usb"></i> ${device.label || device.name}
               </div>
               <div class="usb-device-details">
                 ${device.path} • ${device.size} • ${device.fstype || 'Unknown filesystem'}
@@ -587,16 +884,16 @@ document.addEventListener('DOMContentLoaded', () => {
               ${isMounted ? `
                 <button class="btn btn-sm btn-outline-primary browse-device" 
                   data-path="${device.mountpoint}" title="Browse files">
-                  <i class="fa fa-folder-open"></i> Browse
+                  <i class="fa-solid fa-folder-open"></i> Browse
                 </button>
                 <button class="btn btn-sm btn-outline-secondary unmount-device" 
                   data-device="${device.path}" title="Unmount device">
-                  <i class="fa fa-eject"></i> Unmount
+                  <i class="fa-solid fa-eject"></i> Unmount
                 </button>
               ` : `
                 <button class="btn btn-sm btn-primary mount-device" 
                   data-device="${device.path}" data-fstype="${device.fstype}" title="Mount device">
-                  <i class="fa fa-plug"></i> Mount
+                  <i class="fa-solid fa-plug"></i> Mount
                 </button>
               `}
             </div>
@@ -877,10 +1174,10 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
           <div class="image-actions">
             <button class="btn-icon inspect" data-action="inspect-local" data-image-id="${imageId}" title="Inspect Image">
-              <i class="fa fa-info"></i>
+              <i class="fa-solid fa-info"></i>
             </button>
             <button class="btn-icon delete" data-action="delete-local" data-image-id="${imageId}" data-image-name="${repoTag}" title="Delete Image">
-              <i class="fa fa-trash"></i>
+              <i class="fa-solid fa-trash"></i>
             </button>
           </div>
         `;
@@ -1006,9 +1303,17 @@ OS: ${imageData.Os}`;
       if (extractMode) {
         $('extract-block').classList.remove('pull-block-hidden');
         $('pull-block').classList.add('pull-block-hidden');
+        // Show USB section only in Extract mode
+        if ($('usb-devices-section')) {
+          $('usb-devices-section').style.display = '';
+        }
       } else {
         $('extract-block').classList.add('pull-block-hidden');
         $('pull-block').classList.remove('pull-block-hidden');
+        // Hide USB section in Pull mode
+        if ($('usb-devices-section')) {
+          $('usb-devices-section').style.display = 'none';
+        }
       }
       log('Ready.');
     });
@@ -1094,47 +1399,11 @@ OS: ${imageData.Os}`;
     }
   };
   // ---- Actions ----
-  safeAddEventListener('extract-btn', 'click', async () => {
-    const path = $('file-path').value.trim();
-    if (!path || !path.endsWith('.tar.gz')) {
-      return log('Please enter a valid .tar.gz path.');
-    }
-    
-    log('Extracting and loading images...');
-    try {
-      // Create xdeploy directory
-      await runCommand(['mkdir', '-p', '/root/xdeploy/xdeploy-images']);
-      log('Created directory: /root/xdeploy/xdeploy-images\n');
-      
-      // Extract tar.gz
-      await runCommand(['tar', '-xzf', path, '-C', '/root/xdeploy/xdeploy-images']);
-      log(`Extracted archive: ${path}\n`);
-      
-      // Find and load all .tar files
-      const { stdout: files } = await runCommand(['find', '/root/xdeploy/xdeploy-images', '-name', '*.tar']);
-      const tarFiles = files && files.trim() ? files.split('\n').filter(f => f.trim()) : [];
-      
-      if (tarFiles.length === 0) {
-        log('No .tar files found in the extracted archive\n');
-      } else {
-        for (const tarFile of tarFiles) {
-          log(`Loading ${tarFile}...\n`);
-          await runCommand(['docker', 'load', '-i', tarFile]);
-          await runCommand(['rm', tarFile]);
-          log(`Removed ${tarFile}\n`);
-        }
-      }
-      
-      log('Extract and load completed successfully!');
-      $('push-btn').disabled = false;
-    } catch (e) {
-      log(`Error: ${e.message}`);
-    }
-  });
+  // Removed obsolete extract-btn event listener and logic (now handled by new copy/archive flow)
 
   // Test connectivity button
   $('test-connectivity-btn').addEventListener('click', async () => {
-    log('<i class="fas fa-flask text-blue"></i> CONNECTIVITY & PREREQUISITES TEST\n');
+  log('<i class="fa-solid fa-flask text-blue"></i> CONNECTIVITY & PREREQUISITES TEST\n');
     log('================================================================\n\n');
     
     const testResults = {
@@ -1152,13 +1421,13 @@ OS: ${imageData.Os}`;
       const result = await runCommand(['docker', 'version']);
       const dockerVersion = result.stdout.split('\n')[0];
       testResults.docker = { status: 'pass', details: dockerVersion };
-      log('<i class="fas fa-check text-green"></i> PASS: Docker daemon is running and accessible\n');
+  log('<i class="fa-solid fa-check text-green"></i> PASS: Docker daemon is running and accessible\n');
       log(`    Version: ${dockerVersion}\n\n`);
     } catch (e) {
       testResults.docker = { status: 'fail', details: e.message };
-      log('<i class="fas fa-times text-red"></i> FAIL: Docker daemon is not running or not accessible\n');
-      log(`   <i class="fas fa-exclamation-triangle text-yellow"></i> Error: ${e.message}\n`);
-      log('   <i class="fas fa-lightbulb text-blue"></i> Solution: Start Docker Desktop or run "systemctl start docker"\n\n');
+  log('<i class="fa-solid fa-times text-red"></i> FAIL: Docker daemon is not running or not accessible\n');
+  log(`   <i class="fa-solid fa-exclamation-triangle text-yellow"></i> Error: ${e.message}\n`);
+  log('   <i class="fa-solid fa-lightbulb text-blue"></i> Solution: Start Docker Desktop or run "systemctl start docker"\n\n');
       
       // If Docker fails, show summary and exit
       showTestSummary(testResults);
