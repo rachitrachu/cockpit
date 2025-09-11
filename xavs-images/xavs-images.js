@@ -246,7 +246,9 @@ document.addEventListener('DOMContentLoaded', () => {
           <li class="error-state">
             <div class="error-title">❌ Images configuration missing</div>
             <div class="error-details">Images configuration file not found</div>
-            <div class="error-hint">Create the configuration file with one image per line</div>
+            <div class="error-hint">Create the configuration file with image names (one per line)<br>
+            <small>Example: keystone, nova-api, neutron-server<br>
+            Tag :2024.1-ubuntu-jammy will be auto-added</small></div>
           </li>`;
         countElement.textContent = '(Missing config)';
       } else {
@@ -473,7 +475,6 @@ OS: ${imageData.Os}`;
       try {
         const content = await readFile(imagePath);
         if (content && content.trim()) {
-          console.log(`Reading images list from: ${imagePath}`);
           // Cache the result
           imageListCache = content.trim();
           imageListCacheTime = now;
@@ -482,9 +483,8 @@ OS: ${imageData.Os}`;
           throw new Error('File is empty');
         }
       } catch (error) {
-        console.log(`Could not read from ${imagePath}: ${error.message}`);
         // Prompt user about missing file
-        const errorMessage = `Images list file not found. Please create the images configuration file with one image per line.\nExample content:\nkeystone:2024.1-ubuntu-jammy\nnova-api:2024.1-ubuntu-jammy\nneutron-server:2024.1-ubuntu-jammy`;
+        const errorMessage = `Images list file not found. Please create the images configuration file with one image per line.\nExample content:\nkeystone\nnova-api\nneutron-server\n(Tags will be auto-added as :2024.1-ubuntu-jammy)`;
         log(`❌ ERROR: ${errorMessage}`);
         throw new Error(errorMessage);
       }
@@ -816,11 +816,12 @@ OS: ${imageData.Os}`;
         log('================================================================\n');
         log('❗ The images configuration file is required and must contain one image per line.\n\n');
         log('📝 Example content for the images list:\n');
-        log('   keystone:2024.1-ubuntu-jammy\n');
-        log('   nova-api:2024.1-ubuntu-jammy\n');
-        log('   neutron-server:2024.1-ubuntu-jammy\n');
-        log('   glance-api:2024.1-ubuntu-jammy\n');
-        log('   horizon:2024.1-ubuntu-jammy\n\n');
+        log('   keystone\n');
+        log('   nova-api\n');
+        log('   neutron-server\n');
+        log('   glance-api\n');
+        log('   horizon\n\n');
+        log('ℹ️  Note: The :2024.1-ubuntu-jammy tag will be automatically added\n');
         log('💡 Solution: Create the images configuration file with the required images\n');
         log('================================================================\n');
         
@@ -871,11 +872,18 @@ OS: ${imageData.Os}`;
       
       for (let i = 0; i < images.length; i++) {
         if (!isPulling) {
-          log('\n� Pull operation was stopped by user.\n');
+          log('\n🛑 Pull operation was stopped by user.\n');
           break;
         }
         
-        const image = images[i];
+        let image = images[i];
+        
+        // Auto-append :2024.1-ubuntu-jammy tag if no tag is specified
+        if (!image.includes(':')) {
+          image = `${image}:2024.1-ubuntu-jammy`;
+          log(`📝 Auto-appending tag: ${images[i]} → ${image}\n`);
+        }
+        
         const ref = `${PUBLIC_REG}/xavs.images/${image}`;
         
         // Update progress
@@ -884,27 +892,27 @@ OS: ${imageData.Os}`;
         progressText.textContent = `Pulling ${image}...`;
         progressCount.textContent = `${i}/${images.length}`;
         
-        log(` [${i + 1}/${images.length}] Pulling ${image}...\n`);
-        log(` Full reference: ${ref}\n`);
+        log(`🐳 [${i + 1}/${images.length}] Pulling ${image}...\n`);
+        log(`📍 Full reference: ${ref}\n`);
         
         try {
           await runCommand(['docker', 'pull', ref]);
           successCount++;
-          log(` [${i + 1}/${images.length}] Successfully pulled ${image}\n\n`);
+          log(`✅ [${i + 1}/${images.length}] Successfully pulled ${image}\n\n`);
         } catch (error) {
           failCount++;
-          log(` [${i + 1}/${images.length}] Failed to pull ${image}\n`);
-          log(` Error details: ${error.message}\n`);
+          log(`❌ [${i + 1}/${images.length}] Failed to pull ${image}\n`);
+          log(`🔍 Error details: ${error.message}\n`);
           
           // Provide specific error diagnostics
           if (error.message.includes('manifest unknown') || error.message.includes('not found')) {
-            log(` This image may not exist in the registry. Check: https://quay.io/repository/xavs.images/${image.split(':')[0]}\n`);
+            log(`💡 This image may not exist in the registry. Check: https://quay.io/repository/xavs.images/${image.split(':')[0]}\n`);
           } else if (error.message.includes('connection') || error.message.includes('network')) {
-            log(` Network connectivity issue. Check internet connection and registry access.\n`);
+            log(`🌐 Network connectivity issue. Check internet connection and registry access.\n`);
           } else if (error.message.includes('unauthorized') || error.message.includes('authentication')) {
-            log(` Authentication issue. You may need to login: docker login quay.io\n`);
+            log(`🔐 Authentication issue. You may need to login: docker login quay.io\n`);
           } else if (error.message.includes('timeout')) {
-            log(` Request timeout. The registry may be slow or overloaded.\n`);
+            log(`⏱️ Request timeout. The registry may be slow or overloaded.\n`);
           }
           log('\n');
           // Continue with next image instead of stopping
