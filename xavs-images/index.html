@@ -132,7 +132,6 @@
 
         <!-- Unified Extract Workflow (only visible in Extract mode) -->
         <div id="extract-workflow" class="extract-workflow">
-          
           <!-- Step 1: Source Selection -->
           <div class="workflow-step" id="step-source-selection">
             <div class="step-header">
@@ -141,7 +140,6 @@
             </div>
             <div class="step-content">
               <p>Choose how you want to select your .tar.gz archive file:</p>
-              
               <!-- Source Options -->
               <div class="source-options">
                 <div class="source-option" id="usb-source-option">
@@ -167,7 +165,6 @@
                     <div id="no-usb-devices" class="alert alert-secondary hidden">
                       <i class="fa fa-info-circle"></i> No USB storage devices detected. Insert a USB drive and click Refresh.
                     </div>
-                    
                     <!-- USB File Selection -->
                     <div class="file-selection-section">
                       <label class="form-label">Select .tar.gz archive from USB:</label>
@@ -178,7 +175,6 @@
                         <span id="selected-archive-path" class="hint ml-10"></span>
                       </div>
                     </div>
-                    
                     <!-- Destination Selection -->
                     <div id="destination-select-block" class="file-selection-section hidden">
                       <label class="form-label">Select destination folder to copy archive to:</label>
@@ -189,17 +185,14 @@
                         <span id="selected-dest-path" class="hint ml-10"></span>
                       </div>
                     </div>
-                    
                     <!-- Separate Copy Action Container - Outside file-selection-section to avoid CSS conflicts -->
                     <div class="usb-copy-container" style="margin-top: 50px; padding-top: 30px; border-top: 1px solid #e0e0e0;">
                       <button class="btn btn-brand" id="copy-archive-btn" disabled>
                         <i class="fa fa-copy"></i> Copy Archive to Server
                       </button>
                     </div>
-                    </div>
                   </div>
                 </div>
-                
                 <div class="source-option" id="browse-source-option">
                   <div class="option-header">
                     <input type="radio" name="source-type" value="browse" id="browse-radio">
@@ -217,31 +210,25 @@
                         </button>
                         <span id="browsed-extract-file-path" class="hint ml-10"></span>
                       </div>
-                      
-                      <!-- Spacer for browse workflow -->
-                      <div style="height: 30px;"></div>
-                      
-                      <!-- Browse Action - Only for server browse workflow -->
-                      <div class="browse-action" style="margin-top: 25px; padding-top: 15px;">
-                        <button class="btn btn-brand" id="proceed-to-extract-btn" disabled>
-                          <i class="fa fa-arrow-right"></i> Proceed to Extract
-                        </button>
-                      </div>
+                    </div>
+                    
+                    <!-- Browse Action - Separate container for vertical separation -->
+                    <div class="browse-action-section" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0;">
+                      <button class="btn btn-brand" id="proceed-to-extract-btn" disabled>
+                        <i class="fa fa-arrow-right"></i> Proceed to Extract
+                      </button>
                     </div>
                   </div>
                 </div>
               </div>
-              
               <!-- Selected File Info -->
               <div id="source-file-info" class="file-info-display hidden">
                 <!-- File info will be populated here -->
               </div>
-              
               <!-- Step 1 Actions -->
               <div class="step-actions">
                 <!-- Actions moved to specific workflow sections -->
               </div>
-              
               <!-- Copy Progress (for USB option) -->
               <div id="copy-progress-container" class="progress-container hidden">
                 <div class="progress-info">
@@ -255,106 +242,100 @@
             </div>
           </div>
 
-          <!-- Step 2: Extract Archive -->
-          <div class="workflow-step disabled" id="step-extract-archive">
-            <div class="step-header">
-              <div class="step-number">2</div>
-              <h3>Extract Archive</h3>
-            </div>
-            <div class="step-content">
-              <p>Extract your .tar.gz archive to access Docker image files:</p>
-              
-              <!-- Existing Extracted Files Info -->
-              <div id="existing-files-info" class="existing-files-info hidden">
-                <div class="alert alert-info">
-                  <i class="fa fa-info-circle"></i>
-                  <span id="existing-files-message">Found existing extracted files from a previous session.</span>
-                  <button id="cleanup-existing-btn" class="btn btn-sm btn-outline-danger ml-2">
-                    <i class="fa fa-trash"></i> Clean Up
+          <!-- Extract Steps: Only visible in Extract mode -->
+          <div id="extract-steps-container">
+            <!-- Step 2: Extract Archive -->
+            <div class="workflow-step disabled" id="step-extract-archive">
+              <div class="step-header">
+                <div class="step-number">2</div>
+                <h3>Extract Archive</h3>
+              </div>
+              <div class="step-content">
+                <p>Extract your .tar.gz archive to access Docker image files:</p>
+                <!-- Existing Extracted Files Info -->
+                <div id="existing-files-info" class="existing-files-info hidden">
+                  <div class="alert alert-info">
+                    <i class="fa fa-info-circle"></i>
+                    <span id="existing-files-message">Found existing extracted files from a previous session.</span>
+                    <button id="cleanup-existing-btn" class="btn btn-sm btn-outline-danger ml-2">
+                      <i class="fa fa-trash"></i> Clean Up
+                    </button>
+                  </div>
+                </div>
+                <div id="extract-file-display" class="current-file-display">
+                  <!-- Current file info will be shown here -->
+                </div>
+                <div class="step-actions">
+                  <button id="extract-archive-btn" class="btn btn-brand" disabled>
+                    <i class="fa-solid fa-magic"></i> Extract Archive
                   </button>
                 </div>
-              </div>
-              
-              <div id="extract-file-display" class="current-file-display">
-                <!-- Current file info will be shown here -->
-              </div>
-              
-              <div class="step-actions">
-                <button id="extract-archive-btn" class="btn btn-brand" disabled>
-                  <i class="fa-solid fa-magic"></i> Extract Archive
-                </button>
-              </div>
-              
-              <!-- Extract Progress Bar -->
-              <div id="extract-progress-container" class="progress-container hidden">
-                <div class="progress-info">
-                  <span id="extract-progress-text">Preparing extraction...</span>
-                  <span id="extract-progress-count">0%</span>
-                </div>
-                <div class="progress-bar-container">
-                  <div id="extract-progress-bar" class="progress-bar"></div>
+                <!-- Extract Progress Bar -->
+                <div id="extract-progress-container" class="progress-container hidden">
+                  <div class="progress-info">
+                    <span id="extract-progress-text">Preparing extraction...</span>
+                    <span id="extract-progress-count">0%</span>
+                  </div>
+                  <div class="progress-bar-container">
+                    <div id="extract-progress-bar" class="progress-bar"></div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <!-- Step 3: Load Images -->
-          <div class="workflow-step disabled" id="step-load-images">
-            <div class="step-header">
-              <div class="step-number">3</div>
-              <h3>Load Docker Images</h3>
-            </div>
-            <div class="step-content">
-              <p>Load extracted Docker image files into your local Docker daemon:</p>
-              
-              <!-- Extracted Files List -->
-              <div id="extracted-files-list" class="extracted-files-container">
-                <!-- Will be populated with extracted .tar files -->
+            <!-- Step 3: Load Images -->
+            <div class="workflow-step disabled" id="step-load-images">
+              <div class="step-header">
+                <div class="step-number">3</div>
+                <h3>Load Docker Images</h3>
               </div>
-              
-              <div class="step-actions">
-                <button id="load-images-btn" class="btn btn-brand" disabled>
-                  <i class="fa-solid fa-download"></i> Load Images into Docker
-                </button>
-                <button id="refresh-extracted-files-btn" class="btn btn-outline-secondary">
-                  <i class="fa-solid fa-sync"></i> Refresh List
-                </button>
-              </div>
-              
-              <!-- Load Images Progress Bar -->
-              <div id="load-images-progress-container" class="progress-container hidden">
-                <div class="progress-info">
-                  <span id="load-images-progress-text">Preparing to load images...</span>
-                  <span id="load-images-progress-count">0/0</span>
+              <div class="step-content">
+                <p>Load extracted Docker image files into your local Docker daemon:</p>
+                <!-- Extracted Files List -->
+                <div id="extracted-files-list" class="extracted-files-container">
+                  <!-- Will be populated with extracted .tar files -->
                 </div>
-                <div class="progress-bar-container">
-                  <div id="load-images-progress-bar" class="progress-bar"></div>
+                <div class="step-actions">
+                  <button id="load-images-btn" class="btn btn-brand" disabled>
+                    <i class="fa-solid fa-download"></i> Load Images into Docker
+                  </button>
+                  <button id="refresh-extracted-files-btn" class="btn btn-outline-secondary">
+                    <i class="fa-solid fa-sync"></i> Refresh List
+                  </button>
+                </div>
+                <!-- Load Images Progress Bar -->
+                <div id="load-images-progress-container" class="progress-container hidden">
+                  <div class="progress-info">
+                    <span id="load-images-progress-text">Preparing to load images...</span>
+                    <span id="load-images-progress-count">0/0</span>
+                  </div>
+                  <div class="progress-bar-container">
+                    <div id="load-images-progress-bar" class="progress-bar"></div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <!-- Step 4: Ready to Push -->
-          <div class="workflow-step disabled" id="step-ready-to-push">
-            <div class="step-header">
-              <div class="step-number">4</div>
-              <h3>Images Ready</h3>
-            </div>
-            <div class="step-content">
-              <p>Your Docker images are now loaded and ready to be pushed to a registry:</p>
-              
-              <!-- Loaded Images List -->
-              <div id="loaded-images-list" class="loaded-images-container">
-                <!-- Will be populated with loaded Docker images -->
+            <!-- Step 4: Ready to Push -->
+            <div class="workflow-step disabled" id="step-ready-to-push">
+              <div class="step-header">
+                <div class="step-number">4</div>
+                <h3>Images Ready</h3>
               </div>
-              
-              <div class="step-actions">
-                <button id="refresh-loaded-images-btn" class="btn btn-outline-secondary">
-                  <i class="fa-solid fa-sync"></i> Refresh Images
-                </button>
-                <button id="goto-registry-btn" class="btn btn-brand">
-                  <i class="fa-solid fa-arrow-right"></i> Go to Registry Management to Push Images
-                </button>
+              <div class="step-content">
+                <p>Your Docker images are now loaded and ready to be pushed to a registry:</p>
+                <!-- Loaded Images List -->
+                <div id="loaded-images-list" class="loaded-images-container">
+                  <!-- Will be populated with loaded Docker images -->
+                </div>
+                <div class="step-actions">
+                  <button id="refresh-loaded-images-btn" class="btn btn-outline-secondary">
+                    <i class="fa-solid fa-sync"></i> Refresh Images
+                  </button>
+                  <button id="goto-registry-btn" class="btn btn-brand">
+                    <i class="fa-solid fa-arrow-right"></i> Go to Registry Management to Push Images
+                  </button>
+                </div>
               </div>
             </div>
           </div>
