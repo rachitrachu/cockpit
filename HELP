@@ -1,0 +1,25 @@
+
+Install cockpit
+
+
+. /etc/os-release
+sudo apt update
+sudo apt install -y software-properties-common
+sudo add-apt-repository ${VERSION_CODENAME}-backports -y
+sudo apt update
+
+ 
+sudo apt install -t ${VERSION_CODENAME}-backports cockpit -y
+
+ 
+sudo systemctl enable --now cockpit.socket
+
+ 
+cockpit-bridge --version
+
+ 
+
+install cockpit and after that 
+sudo sed -i '/^root$/d' /etc/cockpit/disallowed-users
+
+ 
