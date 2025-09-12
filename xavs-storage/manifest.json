@@ -6,7 +6,7 @@
     "content-security-policy": "default-src 'self'; connect-src 'self' blob:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src 'self'",
     
     "system": {
-        "xavs-storage": {
+        "index": {
             "label": "XAVS Storage",
             "path": "index.html",
             "order": 91,
@@ -14,7 +14,7 @@
         }
     },
     "menu": {
-        "xavs-storage": {
+        "index": {
             "label": "XAVS Storage",
             "order": 91
         }
