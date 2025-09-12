@@ -6,7 +6,7 @@
     "xavs-networking": {
       "label": "XAVS Networking",
       "path": "index.html",
-      "order": 10,
+      "order": 90,
       "docs": [
         {
           "label": "Network Management",
@@ -18,7 +18,7 @@
   "menu": {
     "xavs-networking": {
       "label": "XAVS Networking",
-      "order": 50
+      "order": 90
     }
   }
 }
