@@ -176,58 +176,46 @@ document.addEventListener('DOMContentLoaded', () => {
   async function listServerDir(path) {
     try {
       // Version check - if you see this, the new code is loaded
-      log(`🆕 Using updated parser v2.0 for directory listing`);
       
       // Validate and sanitize the path to prevent directory traversal attacks
       const sanitizedPath = path.replace(/\.\.+/g, '').replace(/\/+/g, '/');
       
-      log(`🔍 Trying to access directory: ${sanitizedPath}`);
       
       // Check if directory exists and is accessible
       try {
         await runCommand(['test', '-d', sanitizedPath]);
-        log(`✅ Directory ${sanitizedPath} exists and is accessible`);
       } catch (e) {
-        log(`❌ Directory ${sanitizedPath} not accessible: ${e.message}`);
         return [];
       }
       
       // List directory contents with detailed info
-      log(`📋 Listing contents of ${sanitizedPath}...`);
       const { stdout } = await runCommand([
         'ls', '-la', '--time-style=+%Y-%m-%d %H:%M', sanitizedPath
       ]);
       
       if (!stdout || !stdout.trim()) {
-        log(`📝 Directory ${sanitizedPath} is empty (no output from ls)`);
         return [];
       }
       
-      log(`📄 Raw ls output:\n${stdout}`);
       
       const lines = stdout.trim().split('\n');
       const items = [];
       
-      log(`🔢 Processing ${lines.length} lines from ls output`);
       
       // Skip the first line (total) and parse each entry
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
-        log(`🔍 Parsing line: "${line}"`);
         // Split by whitespace, but keep the last field (filename) even if it contains spaces
         // ls -la --time-style=+%Y-%m-%d %H:%M output: perms, links, owner, group, size, date, time, name
         // e.g. drwxr-x---  4 xloud xloud 4096 2025-09-11 05:28 xloud
         const parts = line.split(/\s+/);
-        log(`📊 Split into ${parts.length} parts: [${parts.join(', ')}]`);
         if (parts.length < 8) {
-          log(`⚠️ Skipping line with ${parts.length} parts (need at least 8): ${line}`);
           continue;
         }
         // The filename is always the last field (or fields if spaces)
         const name = parts.slice(7).join(' ');
         if (name === '.' || name === '..') {
-          log(`⏭️ Skipping special directory: ${name}`);
           continue;
         }
         const perms = parts[0];
@@ -244,11 +232,9 @@ document.addEventListener('DOMContentLoaded', () => {
           user: parts[2],
           group: parts[3]
         };
-        log(`✅ Added item: ${JSON.stringify(item)}`);
         items.push(item);
       }
       
-      log(`✨ Found ${items.length} items in ${sanitizedPath}`);
       
       // Filter out hidden files (name starts with '.') and symlinks (type === 'link')
       const visibleItems = items.filter(item => !item.name.startsWith('.') && item.type !== 'link');
@@ -264,31 +250,25 @@ document.addEventListener('DOMContentLoaded', () => {
       
     } catch (error) {
       console.error(`Error listing directory ${path}:`, error.message);
-      log(`🚨 Error accessing directory ${path}: ${error.message}`);
       return [];
     }
   }
 
   async function openServerFileModal(startPath = '/') {
     try {
-      log('🚀 Opening server file browser...');
       
       // Test multiple common directories and log results
       const testPaths = ['/home', '/root', '/tmp', '/var', '/opt', '/usr', '/'];
-      log('🔍 Testing directory accessibility...');
       
       let accessiblePaths = [];
       for (const testPath of testPaths) {
         try {
           await runCommand(['test', '-d', testPath]);
-          log(`✅ ${testPath} - accessible`);
           accessiblePaths.push(testPath);
         } catch (e) {
-          log(`❌ ${testPath} - not accessible: ${e.message}`);
         }
       }
       
-      log(`📊 Found ${accessiblePaths.length} accessible directories: ${accessiblePaths.join(', ')}`);
       
       // Try to start from the specified path, but have fallbacks
       let initialPath = startPath;
@@ -303,7 +283,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       
       if (initialPath !== startPath) {
-        log(`🔄 Directory ${startPath} not accessible, starting from ${initialPath}`);
       }
       
       serverFileModal.style.display = 'flex';
