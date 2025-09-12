@@ -130,106 +130,190 @@
           <button id="toggle-pull" class="toggle-seg" type="button" aria-selected="false">Pull</button>
         </div>
 
-        <!-- USB Devices Section -->
-        <div id="usb-devices-section" class="usb-section">
-          <h4><i class="fab fa-usb"></i> USB Storage Devices</h4>
-          <div class="usb-devices-container">
-            <div id="usb-devices-list" class="usb-devices-list">
-              <div class="loading-state">Checking for USB devices...</div>
+        <!-- Unified Extract Workflow (only visible in Extract mode) -->
+        <div id="extract-workflow" class="extract-workflow">
+          
+          <!-- Step 1: Source Selection -->
+          <div class="workflow-step" id="step-source-selection">
+            <div class="step-header">
+              <div class="step-number">1</div>
+              <h3>Select Archive Source</h3>
             </div>
-            <div class="usb-controls">
-              <button id="refresh-usb-devices" class="btn btn-sm btn-outline-secondary">
-                <i class="fa fa-sync"></i> Refresh
-              </button>
-            </div>
-          </div>
-          <div id="no-usb-devices" class="alert alert-secondary hidden">
-            <i class="fa fa-info-circle"></i> No USB storage devices detected. Insert a USB drive and click Refresh.
-          </div>
-        </div>
-
-        <!-- Extract block -->
-        <div id="extract-block">
-          <label class="form-label">Select <code>.tar.gz</code> archive to copy from USB or mounted device</label>
-          <div class="file-path-group">
-            <button class="btn btn-outline-secondary" id="select-archive-btn" type="button" title="Select .tar.gz archive">
-              <i class="fa fa-folder-open"></i> Select Archive
-            </button>
-            <span id="selected-archive-path" class="hint ml-10"></span>
-          </div>
-          <div id="destination-select-block" class="hidden mt-16">
-            <label class="form-label">Select destination folder to copy archive to</label>
-            <div class="file-path-group">
-              <button class="btn btn-outline-secondary" id="select-dest-btn" type="button" title="Select destination folder">
-                <i class="fa fa-folder-open"></i> Select Destination
-              </button>
-              <span id="selected-dest-path" class="hint ml-10"></span>
-            </div>
-          </div>
-          <div class="hint">Selected archive will be copied to your chosen server directory for further processing.</div>
-          <div class="actions">
-            <button class="btn btn-brand" id="copy-archive-btn" disabled>Copy Archive</button>
-          </div>
-          <!-- Progress bar for file copy -->
-          <div id="copy-progress-container" class="progress-container hidden">
-            <div class="progress-info">
-              <span id="copy-progress-text">Preparing copy...</span>
-              <span id="copy-progress-count" class="progress-count"></span>
-            </div>
-            <div class="progress-bar-container">
-              <div id="copy-progress-bar" class="progress-bar"></div>
-            </div>
-          </div>
-
-          <!-- Extract Section (always visible) -->
-          <div id="extract-section" class="mt-16">
-            <h4><i class="fa-solid fa-magic"></i> Extract Archive</h4>
-            <p>Select a <code>.tar.gz</code> archive to extract for image processing</p>
-            
-            <!-- File Selection -->
-            <div class="extract-file-selection">
-              <label class="form-label">Browse for Archive:</label>
-              <div class="file-path-group">
-                <button id="browse-extract-file-btn" class="btn btn-outline-secondary">
-                  <i class="fa fa-folder-open"></i> Browse for .tar.gz
-                </button>
-                <span id="browsed-extract-file-path" class="hint ml-10"></span>
-              </div>
-            </div>
-            
-            <!-- Selected File Info -->
-            <div id="extract-file-info" class="file-info-display hidden">
-              <!-- File info will be populated here -->
-            </div>
-            
-            <div class="actions">
-              <button id="extract-archive-btn" class="btn btn-primary" disabled>
-                <i class="fa-solid fa-magic"></i> Extract Archive
-              </button>
-            </div>
-            
-            <!-- Extract Progress Bar -->
-            <div id="extract-progress-container" class="progress-container hidden">
-              <div class="progress-info">
-                <span id="extract-progress-text">Preparing extraction...</span>
-                <span id="extract-progress-count">0%</span>
-              </div>
-              <div class="progress-bar-container">
-                <div id="extract-progress-bar" class="progress-bar"></div>
-              </div>
-            </div>
-
-            <!-- Extracted Files Section (shown after successful extraction) -->
-            <div id="extracted-files-section" class="hidden mt-16">
-              <h4><i class="fa-solid fa-list"></i> Extracted Image Files</h4>
-              <p>Docker image files found in the extracted archive:</p>
+            <div class="step-content">
+              <p>Choose how you want to select your .tar.gz archive file:</p>
               
+              <!-- Source Options -->
+              <div class="source-options">
+                <div class="source-option" id="usb-source-option">
+                  <div class="option-header">
+                    <input type="radio" name="source-type" value="usb" id="usb-radio">
+                    <label for="usb-radio">
+                      <i class="fab fa-usb"></i>
+                      <strong>Copy from USB/Mounted Device</strong>
+                    </label>
+                  </div>
+                  <div class="option-content" id="usb-content">
+                    <!-- USB Devices Section -->
+                    <div class="usb-devices-container">
+                      <div id="usb-devices-list" class="usb-devices-list">
+                        <div class="loading-state">Checking for USB devices...</div>
+                      </div>
+                      <div class="usb-controls">
+                        <button id="refresh-usb-devices" class="btn btn-sm btn-outline-secondary">
+                          <i class="fa fa-sync"></i> Refresh
+                        </button>
+                      </div>
+                    </div>
+                    <div id="no-usb-devices" class="alert alert-secondary hidden">
+                      <i class="fa fa-info-circle"></i> No USB storage devices detected. Insert a USB drive and click Refresh.
+                    </div>
+                    
+                    <!-- USB File Selection -->
+                    <div class="file-selection-section">
+                      <label class="form-label">Select .tar.gz archive from USB:</label>
+                      <div class="file-path-group">
+                        <button class="btn btn-outline-secondary" id="select-archive-btn" type="button" title="Select .tar.gz archive">
+                          <i class="fa fa-folder-open"></i> Select Archive
+                        </button>
+                        <span id="selected-archive-path" class="hint ml-10"></span>
+                      </div>
+                    </div>
+                    
+                    <!-- Destination Selection -->
+                    <div id="destination-select-block" class="file-selection-section hidden">
+                      <label class="form-label">Select destination folder to copy archive to:</label>
+                      <div class="file-path-group">
+                        <button class="btn btn-outline-secondary" id="select-dest-btn" type="button" title="Select destination folder">
+                          <i class="fa fa-folder-open"></i> Select Destination
+                        </button>
+                        <span id="selected-dest-path" class="hint ml-10"></span>
+                      </div>
+                    </div>
+                    
+                    <!-- Separate Copy Action Container - Outside file-selection-section to avoid CSS conflicts -->
+                    <div class="usb-copy-container" style="margin-top: 50px; padding-top: 30px; border-top: 1px solid #e0e0e0;">
+                      <button class="btn btn-brand" id="copy-archive-btn" disabled>
+                        <i class="fa fa-copy"></i> Copy Archive to Server
+                      </button>
+                    </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <div class="source-option" id="browse-source-option">
+                  <div class="option-header">
+                    <input type="radio" name="source-type" value="browse" id="browse-radio">
+                    <label for="browse-radio">
+                      <i class="fa fa-folder-open"></i>
+                      <strong>Browse Server for .tar.gz</strong>
+                    </label>
+                  </div>
+                  <div class="option-content" id="browse-content">
+                    <div class="file-selection-section">
+                      <label class="form-label">Browse for archive file:</label>
+                      <div class="file-path-group">
+                        <button id="browse-extract-file-btn" class="btn btn-outline-secondary">
+                          <i class="fa fa-folder-open"></i> Browse for .tar.gz
+                        </button>
+                        <span id="browsed-extract-file-path" class="hint ml-10"></span>
+                      </div>
+                      
+                      <!-- Spacer for browse workflow -->
+                      <div style="height: 30px;"></div>
+                      
+                      <!-- Browse Action - Only for server browse workflow -->
+                      <div class="browse-action" style="margin-top: 25px; padding-top: 15px;">
+                        <button class="btn btn-brand" id="proceed-to-extract-btn" disabled>
+                          <i class="fa fa-arrow-right"></i> Proceed to Extract
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Selected File Info -->
+              <div id="source-file-info" class="file-info-display hidden">
+                <!-- File info will be populated here -->
+              </div>
+              
+              <!-- Step 1 Actions -->
+              <div class="step-actions">
+                <!-- Actions moved to specific workflow sections -->
+              </div>
+              
+              <!-- Copy Progress (for USB option) -->
+              <div id="copy-progress-container" class="progress-container hidden">
+                <div class="progress-info">
+                  <span id="copy-progress-text">Preparing copy...</span>
+                  <span id="copy-progress-count" class="progress-count"></span>
+                </div>
+                <div class="progress-bar-container">
+                  <div id="copy-progress-bar" class="progress-bar"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 2: Extract Archive -->
+          <div class="workflow-step disabled" id="step-extract-archive">
+            <div class="step-header">
+              <div class="step-number">2</div>
+              <h3>Extract Archive</h3>
+            </div>
+            <div class="step-content">
+              <p>Extract your .tar.gz archive to access Docker image files:</p>
+              
+              <!-- Existing Extracted Files Info -->
+              <div id="existing-files-info" class="existing-files-info hidden">
+                <div class="alert alert-info">
+                  <i class="fa fa-info-circle"></i>
+                  <span id="existing-files-message">Found existing extracted files from a previous session.</span>
+                  <button id="cleanup-existing-btn" class="btn btn-sm btn-outline-danger ml-2">
+                    <i class="fa fa-trash"></i> Clean Up
+                  </button>
+                </div>
+              </div>
+              
+              <div id="extract-file-display" class="current-file-display">
+                <!-- Current file info will be shown here -->
+              </div>
+              
+              <div class="step-actions">
+                <button id="extract-archive-btn" class="btn btn-brand" disabled>
+                  <i class="fa-solid fa-magic"></i> Extract Archive
+                </button>
+              </div>
+              
+              <!-- Extract Progress Bar -->
+              <div id="extract-progress-container" class="progress-container hidden">
+                <div class="progress-info">
+                  <span id="extract-progress-text">Preparing extraction...</span>
+                  <span id="extract-progress-count">0%</span>
+                </div>
+                <div class="progress-bar-container">
+                  <div id="extract-progress-bar" class="progress-bar"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 3: Load Images -->
+          <div class="workflow-step disabled" id="step-load-images">
+            <div class="step-header">
+              <div class="step-number">3</div>
+              <h3>Load Docker Images</h3>
+            </div>
+            <div class="step-content">
+              <p>Load extracted Docker image files into your local Docker daemon:</p>
+              
+              <!-- Extracted Files List -->
               <div id="extracted-files-list" class="extracted-files-container">
                 <!-- Will be populated with extracted .tar files -->
               </div>
               
-              <div class="actions">
-                <button id="load-images-btn" class="btn btn-success" disabled>
+              <div class="step-actions">
+                <button id="load-images-btn" class="btn btn-brand" disabled>
                   <i class="fa-solid fa-download"></i> Load Images into Docker
                 </button>
                 <button id="refresh-extracted-files-btn" class="btn btn-outline-secondary">
@@ -248,37 +332,29 @@
                 </div>
               </div>
             </div>
+          </div>
 
-            <!-- Loaded Images Section (shown after successful loading) -->
-            <div id="loaded-images-section" class="hidden mt-16">
-              <h4><i class="fa-brands fa-docker"></i> Loaded Docker Images</h4>
-              <p>Docker images now available in your local Docker daemon:</p>
+          <!-- Step 4: Ready to Push -->
+          <div class="workflow-step disabled" id="step-ready-to-push">
+            <div class="step-header">
+              <div class="step-number">4</div>
+              <h3>Images Ready</h3>
+            </div>
+            <div class="step-content">
+              <p>Your Docker images are now loaded and ready to be pushed to a registry:</p>
               
+              <!-- Loaded Images List -->
               <div id="loaded-images-list" class="loaded-images-container">
                 <!-- Will be populated with loaded Docker images -->
               </div>
               
-              <div class="actions">
-                <button id="push-to-registry-btn" class="btn btn-brand" disabled>
-                  <i class="fa-solid fa-upload"></i> Push to Local Registry
-                </button>
-                <button id="cleanup-extracted-btn" class="btn btn-outline-warning">
-                  <i class="fa-solid fa-trash"></i> Cleanup Extracted Files
-                </button>
+              <div class="step-actions">
                 <button id="refresh-loaded-images-btn" class="btn btn-outline-secondary">
                   <i class="fa-solid fa-sync"></i> Refresh Images
                 </button>
-              </div>
-              
-              <!-- Push Progress Bar -->
-              <div id="push-progress-container" class="progress-container hidden">
-                <div class="progress-info">
-                  <span id="push-progress-text">Preparing to push images...</span>
-                  <span id="push-progress-count">0/0</span>
-                </div>
-                <div class="progress-bar-container">
-                  <div id="push-progress-bar" class="progress-bar"></div>
-                </div>
+                <button id="goto-registry-btn" class="btn btn-brand">
+                  <i class="fa-solid fa-arrow-right"></i> Go to Registry Management to Push Images
+                </button>
               </div>
             </div>
           </div>
@@ -323,7 +399,7 @@
           </div>
           
           <div class="actions">
-            <button class="btn btn-primary" id="test-connectivity-btn">🧪 Test Connectivity</button>
+            <button class="btn btn-brand" id="test-connectivity-btn">🧪 Test Connectivity</button>
             <button class="btn btn-outline-brand" id="pull-btn">Pull from Xloud</button>
           </div>
         </div>
@@ -339,7 +415,7 @@
             <div>Status: <span id="registry-status">Checking…</span></div>
           </div>
           <div class="actions">
-            <button class="btn btn-success" id="toggle-registry-btn">Run Registry</button>
+            <button class="btn btn-brand" id="toggle-registry-btn">Run Registry</button>
             <button class="btn btn-outline-muted" id="restart-docker-btn" disabled>Restart Docker</button>
             <button class="btn btn-outline-brand" id="check-status-btn">Re-check Status</button>
           </div>

@@ -38,26 +38,20 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     const timestamp = new Date().toLocaleTimeString();
-    const logEntry = `[${timestamp}] ${t}`;
     
-    // Handle HTML content by checking if it contains HTML tags
-    if (t.includes('<i class=') || t.includes('<span') || t.includes('<div')) {
-      // For HTML content, create a new div element
-      const logDiv = document.createElement('div');
-      logDiv.innerHTML = logEntry;
-      logEl.appendChild(logDiv);
-    } else {
-      // For plain text, use textContent
-      logEl.textContent += logEntry + "\n";
-    }
+    // Strip HTML tags and use plain text with emoji/symbols
+    const cleanText = t.replace(/<[^>]*>/g, '').trim();
+    const logEntry = `[${timestamp}] ${cleanText}`;
     
+    // Always use plain text for consistency
+    logEl.textContent += logEntry + "\n";
     logEl.scrollTop = logEl.scrollHeight;
     
-    // Update status bar (strip HTML for status bar)
+    // Update status bar
     const statusElement = $('status-text');
     if (statusElement) {
-      const cleanText = t.replace(/<[^>]*>/g, '').trim() || "Ready";
-      statusElement.textContent = cleanText;
+      const statusText = cleanText || "Ready";
+      statusElement.textContent = statusText;
     }
     
     // Store logs for persistence across tabs (localStorage for better cross-tab sync)
@@ -366,11 +360,15 @@ document.addEventListener('DOMContentLoaded', () => {
   selectFolderBtn.innerHTML = `<i class=\"fa-solid fa-check-circle\"></i> Select this folder`;
         selectFolderBtn.onclick = () => {
           selectedDestPath = path;
+          currentDestinationPath = path; // Update workflow variable
           selectedDestPathSpan.innerHTML = formatPathWithIcon(path);
           serverFileModal.style.display = 'none';
           if (selectedArchivePath && selectedDestPath) {
             copyArchiveBtn.disabled = false;
           }
+          
+          // Update workflow step buttons
+          updateStepOneButtons();
         };
         // Always insert before the Cancel/Close button if it exists
         const cancelBtn = modalFooter.querySelector('#close-server-file-modal');
@@ -506,6 +504,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Only allow .tar.gz files to be selected
         if (!isDir && isSelectable && path.endsWith('.tar.gz')) {
           selectedArchivePath = path;
+          currentArchiveFile = path; // Update workflow variable
           selectedArchivePathSpan.innerHTML = formatPathWithIcon(path, true);
           serverFileModal.style.display = 'none';
           // Show destination select block (remove .hidden class)
@@ -519,7 +518,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // Handle browse extract file selection
         if (!isDir && isSelectable && path.endsWith('.tar.gz')) {
           selectedExtractFilePath = path;
+          currentArchiveFile = path; // Update workflow variable
           browsedExtractFilePathSpan.innerHTML = formatPathWithIcon(path, true);
+          
+          // Update workflow step buttons
+          updateStepOneButtons();
           serverFileModal.style.display = 'none';
           
           // Update extract file info and enable extract button
@@ -556,7 +559,7 @@ document.addEventListener('DOMContentLoaded', () => {
     copyArchiveBtn.onclick = async () => {
       if (!selectedArchivePath || !selectedDestPath) return;
       copyArchiveBtn.disabled = true;
-      log(`Copying archive <span class="text-blue">${selectedArchivePath}</span> to <span class="text-blue">${selectedDestPath}</span> ...`);
+      log(`📋 Copying archive ${selectedArchivePath} to ${selectedDestPath} ...`);
       // Show progress bar
       copyProgressContainer.classList.remove('hidden');
       copyProgressBar.style.width = '0%';
@@ -619,7 +622,19 @@ document.addEventListener('DOMContentLoaded', () => {
           copyProgressBar.style.width = '100%';
           copyProgressCount.textContent = '100%';
         }
-        log(`<span class="text-green">Archive copied successfully.</span>`);
+        log(`✅ Archive copied successfully to ${destFile}`);
+        
+        // Call unified workflow handler
+        handleCopySuccess(selectedArchivePath, destFile);
+        
+        // Show success message in progress bar
+        copyProgressText.textContent = '✅ Copy completed successfully!';
+        copyProgressText.className = 'text-success';
+        copyProgressText.style.fontWeight = 'bold';
+        
+        // Update copy button to show success
+        copyArchiveBtn.innerHTML = '<i class="fa fa-check-circle"></i> Copy Completed';
+        copyArchiveBtn.className = copyArchiveBtn.className.replace(/bg-\w+/g, '') + ' bg-success';
         
         // Update extract section after successful copy
         if (extractFileInfo && extractArchiveBtn) {
@@ -650,12 +665,24 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
       } catch (e) {
-        log(`<span class="text-red">Failed to copy archive: ${e.message || e}</span>`);
+        log(`❌ Failed to copy archive: ${e.message || e}`);
+        copyProgressText.textContent = '❌ Copy failed!';
+        copyProgressText.className = 'text-error';
+        copyProgressText.style.fontWeight = 'bold';
       } finally {
         copyArchiveBtn.disabled = false;
+        
+        // Reset button appearance after delay
+        setTimeout(() => {
+          copyArchiveBtn.innerHTML = '<i class="fa fa-copy"></i> Copy Archive';
+          copyArchiveBtn.className = copyArchiveBtn.className.replace(/bg-\w+/g, '') + ' btn-brand';
+          copyProgressText.className = '';
+          copyProgressText.style.fontWeight = '';
+        }, 3000);
+        
         setTimeout(() => {
           copyProgressContainer.classList.add('hidden');
-        }, 1200);
+        }, 5000); // Show success/error message longer
       }
     };
   }
@@ -682,100 +709,113 @@ document.addEventListener('DOMContentLoaded', () => {
     extractProgressCount.textContent = '';
     
     const fileName = archivePath.split('/').pop();
-    log(`Extracting archive <span class="text-blue">${fileName}</span> to <span class="text-blue">${EXTRACT_DESTINATION}</span>...`);
+    log(`📦 Extracting archive ${fileName} to ${EXTRACT_DESTINATION}...`);
     
     try {
       // Ensure destination directory exists
       await runCommand(['mkdir', '-p', EXTRACT_DESTINATION]);
-      
-      // Check if pv is available for progress monitoring
-      let pvAvailable = false;
+
+      // Use pv for byte-level progress
+      extractProgressText.textContent = 'Extracting archive (live byte progress)...';
+      extractProgressBar.style.width = '0%';
+      extractProgressCount.textContent = '';
+
+      // Get archive size for progress calculation
+      // 1. Get file list and sizes from archive
+      extractProgressText.textContent = 'Scanning archive contents...';
+      extractProgressBar.style.width = '0%';
+      extractProgressCount.textContent = '';
+
+      let fileList = [];
+      let totalSize = 0;
       try {
-        await runCommand(['which', 'pv']);
-        pvAvailable = true;
-      } catch {}
-      
-      if (pvAvailable) {
-        // Get archive size for progress calculation
-        let archiveSize = 0;
-        try {
-          const { stdout } = await runCommand(['stat', '-c', '%s', archivePath]);
-          archiveSize = parseInt(stdout.trim(), 10);
-        } catch {}
-        
-        extractProgressText.textContent = 'Extracting with progress...';
-        
-        // Use pv to monitor extraction progress
-        const extractCommand = `pv -n '${archivePath.replace(/'/g, "'\\''")}' | tar -xzf - -C '${EXTRACT_DESTINATION}' --verbose`;
-        
-        const process = cockpit.spawn(['sh', '-c', extractCommand], { 
-          superuser: 'require', 
-          err: 'message' 
-        });
-        
-        let lastFile = '';
-        process.stream(data => {
-          const lines = data.split(/\r?\n/);
-          for (const line of lines) {
-            const trimmed = line.trim();
-            
-            // pv progress line (numeric percentage)
-            const progressMatch = trimmed.match(/^(\d+(?:\.\d+)?)$/);
-            if (progressMatch) {
-              const percent = Math.min(100, Math.round(parseFloat(progressMatch[1])));
-              extractProgressBar.style.width = percent + '%';
-              extractProgressCount.textContent = `${percent}%`;
-            }
-            
-            // Log extracted files (tar verbose output)
-            if (trimmed && !progressMatch && (trimmed.includes('/') || trimmed.length > 3)) {
-              lastFile = trimmed;
-              const shortPath = trimmed.length > 50 ? '...' + trimmed.slice(-47) : trimmed;
-              extractProgressText.textContent = `Extracting: ${shortPath}`;
-            }
+        const { stdout } = await runCommand(['tar', '-tvzf', archivePath]);
+        // tar -tvzf output: -rw------- user group size date time filename
+        // Example: -rw------- root root 1157900288 2025-09-12 06:46 quay.io_xavs.images_horizon_2024.1-ubuntu-jammy.tar
+        fileList = stdout.split('\n').map(line => {
+          const parts = line.trim().split(/\s+/);
+          if (parts.length < 6) return null;
+          const size = parseInt(parts[2], 10);
+          const name = parts.slice(5).join(' ');
+          if (!isNaN(size) && name && !name.endsWith('/')) {
+            return { name, size };
           }
-        });
-        
-        await process;
-        
-        extractProgressBar.style.width = '100%';
-        extractProgressCount.textContent = '100%';
-        extractProgressText.textContent = 'Extraction completed!';
-        
-      } else {
-        // Fallback: tar without progress monitoring
-        extractProgressText.textContent = 'Extracting (no progress info)...';
-        extractProgressBar.style.width = '50%';
-        
-        const tarProcess = cockpit.spawn([
-          'tar', '-xzf', archivePath, '-C', EXTRACT_DESTINATION, '--verbose'
-        ], { superuser: 'require', err: 'message' });
-        
-        // Show some file names being extracted
-        tarProcess.stream(data => {
-          const lines = data.split(/\r?\n/).filter(Boolean);
-          for (const line of lines) {
-            if (line.trim()) {
-              const shortPath = line.length > 50 ? '...' + line.slice(-47) : line;
-              extractProgressText.textContent = `Extracting: ${shortPath}`;
-            }
-          }
-        });
-        
-        await tarProcess;
-        
-        extractProgressBar.style.width = '100%';
-        extractProgressCount.textContent = '100%';
-        extractProgressText.textContent = 'Extraction completed!';
+          return null;
+        }).filter(Boolean);
+        totalSize = fileList.reduce((sum, f) => sum + f.size, 0);
+      } catch (e) {
+        log(`⚠️ Warning: Could not scan archive for file sizes. Progress bar may be less accurate.`);
+        fileList = [];
+        totalSize = 0;
       }
-      
-      log(`<span class="text-green">Archive extracted successfully!</span>`);
-      log(`Contents extracted to: <span class="text-blue">${EXTRACT_DESTINATION}</span>`);
-      
-      // List extracted contents
+
+      // 2. Start extraction and track extracted file sizes
+      let extractedFiles = 0;
+      let extractedSize = 0;
+      let extractedFileMap = {};
+      let lastPercent = 0;
+      let animationFrame = null;
+      const updateProgressBar = (percent) => {
+        extractProgressBar.style.width = percent + '%';
+        extractProgressCount.textContent = `${percent}%`;
+      };
+      const smoothTo100 = () => {
+        if (animationFrame) cancelAnimationFrame(animationFrame);
+        const from = lastPercent;
+        const to = 100;
+        const duration = 400;
+        const start = performance.now();
+        function step(now) {
+          const elapsed = now - start;
+          const progress = Math.min(1, elapsed / duration);
+          const value = from + (to - from) * progress;
+          updateProgressBar(Math.round(value));
+          if (progress < 1) {
+            animationFrame = requestAnimationFrame(step);
+          }
+        }
+        animationFrame = requestAnimationFrame(step);
+      };
+
+      const tarProcess = cockpit.spawn([
+        'tar', '-xzf', archivePath, '-C', EXTRACT_DESTINATION, '--verbose'
+      ], { superuser: 'require', err: 'message' });
+
+      tarProcess.stream(async data => {
+        const lines = data.split(/\r?\n/).filter(Boolean);
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.endsWith('/')) continue;
+          extractedFiles++;
+          const shortPath = trimmed.length > 50 ? '...' + trimmed.slice(-47) : trimmed;
+          extractProgressText.textContent = `Extracting: ${shortPath}`;
+          // Find file in fileList
+          const fileInfo = fileList.find(f => f.name === trimmed || trimmed.endsWith('/' + f.name));
+          if (fileInfo && !extractedFileMap[fileInfo.name]) {
+            extractedFileMap[fileInfo.name] = true;
+            extractedSize += fileInfo.size;
+          } else {
+            // Fallback: stat the file on disk
+            try {
+              const { stdout } = await runCommand(['stat', '-c', '%s', EXTRACT_DESTINATION + trimmed]);
+              const size = parseInt(stdout.trim(), 10);
+              if (!isNaN(size)) extractedSize += size;
+            } catch {}
+          }
+          if (totalSize > 0) {
+            const percent = Math.min(100, Math.round((extractedSize / totalSize) * 100));
+            updateProgressBar(percent);
+            lastPercent = percent;
+          }
+        }
+      });
+
+      await tarProcess;
+      smoothTo100();
+      extractProgressText.textContent = `Extraction completed! (${extractedFiles} files extracted)`;
       try {
         const { stdout } = await runCommand(['ls', '-la', EXTRACT_DESTINATION]);
-        log(`\nExtracted contents in ${EXTRACT_DESTINATION}:\n<pre>${stdout}</pre>`);
+        log(`\nExtracted contents in ${EXTRACT_DESTINATION}:\n${stdout}`);
       } catch (e) {
         log(`\nCould not list extracted contents: ${e.message}`);
       }
@@ -783,41 +823,147 @@ document.addEventListener('DOMContentLoaded', () => {
       // Show extracted files section and scan for Docker images
       await showExtractedFiles();
       
+      // Call unified workflow handler
+      handleExtractionSuccess();
+      
     } catch (e) {
-      log(`<span class="text-red">Failed to extract archive: ${e.message || e}</span>`);
+      log(`❌ Failed to extract archive: ${e.message || e}`);
       extractProgressText.textContent = `Error: ${e.message}`;
-      extractProgressBar.style.backgroundColor = '#dc2626';
+      extractProgressBar.className += ' error';
     } finally {
       extractBtn.disabled = false;
       extractBtn.innerHTML = '<i class="fa-solid fa-magic"></i> Extract Archive';
       
       setTimeout(() => {
         extractProgressContainer.classList.add('hidden');
-        extractProgressBar.style.backgroundColor = '';
+        extractProgressBar.className = extractProgressBar.className.replace(/\s*(error|success)/g, '');
       }, 3000);
+    }
+  }
+
+  // Check for existing extracted files and show them if found
+  async function checkExistingExtractedFiles() {
+    const EXTRACT_DESTINATION = '/etc/xavs/xavs-images/';
+    
+    try {
+      // First check if directory exists
+      try {
+        await runCommand(['test', '-d', EXTRACT_DESTINATION]);
+      } catch {
+        // Directory doesn't exist, no files to show
+        console.log('Extract destination directory does not exist yet');
+        return;
+      }
+      
+      // Check if the extract destination directory has .tar files
+      const { stdout } = await runCommand(['find', EXTRACT_DESTINATION, '-name', '*.tar', '-type', 'f']);
+      
+      const tarFiles = stdout.trim().split('\n').filter(line => line.trim() && line.endsWith('.tar'));
+      
+      if (tarFiles.length > 0) {
+        console.log(`Found ${tarFiles.length} existing extracted files, enabling workflow steps`);
+        
+        // Show existing files info in step 2
+        const existingFilesInfo = document.getElementById('existing-files-info');
+        const existingFilesMessage = document.getElementById('existing-files-message');
+        
+        if (existingFilesInfo && existingFilesMessage) {
+          existingFilesMessage.textContent = `Found ${tarFiles.length} existing extracted Docker image file(s) from a previous session.`;
+          existingFilesInfo.classList.remove('hidden');
+        }
+        
+        // If we have existing files, enable steps up to 3
+        if (currentWorkflowStep < 2) {
+          enableStep(2);
+          completeStep(2);
+        }
+        if (currentWorkflowStep < 3) {
+          enableStep(3);
+          currentWorkflowStep = 3;
+        }
+        
+        // Show the files
+        await showExtractedFiles();
+        log(`📁 Found ${tarFiles.length} existing extracted file(s) in ${EXTRACT_DESTINATION}`);
+        
+        // Check if Docker images are already loaded and ready
+        try {
+          const { stdout: registryImages } = await runCommand(['docker', 'images', '--format', '{{.Repository}}:{{.Tag}}', '--filter', `reference=${LOCAL_REG_HOST}/*`]);
+          const readyImages = registryImages.trim().split('\n').filter(line => line.trim() && line !== '<none>:<none>');
+          
+          if (readyImages.length > 0) {
+            console.log(`Found ${readyImages.length} images already loaded and ready for registry`);
+            
+            // Auto-advance to step 4 since images are ready
+            if (currentWorkflowStep < 4) {
+              completeStep(3);
+              enableStep(4);
+              currentWorkflowStep = 4;
+              
+              // Show loaded images immediately
+              await showLoadedImages();
+              
+              log(`🚀 Auto-detected ${readyImages.length} image(s) already loaded and ready for registry push!`);
+              log(`ℹ️ Workflow automatically advanced to Step 4 - Images Ready`);
+            }
+          }
+        } catch (e) {
+          console.log('Error checking for ready images:', e.message);
+        }
+      } else {
+        console.log('No .tar files found in extract destination');
+        
+        // Hide existing files info if no files found
+        const existingFilesInfo = document.getElementById('existing-files-info');
+        if (existingFilesInfo) {
+          existingFilesInfo.classList.add('hidden');
+        }
+      }
+      
+    } catch (e) {
+      // Log the error for debugging
+      console.log('Error checking existing extracted files:', e.message);
+      log(`ℹ️ Note: No existing extracted files found.`);
     }
   }
 
   // Show extracted files section and scan for Docker images
   async function showExtractedFiles() {
     const EXTRACT_DESTINATION = '/etc/xavs/xavs-images/';
-    const extractedFilesSection = document.getElementById('extracted-files-section');
     const extractedFilesList = document.getElementById('extracted-files-list');
     const loadImagesBtn = document.getElementById('load-images-btn');
     const refreshExtractedFilesBtn = document.getElementById('refresh-extracted-files-btn');
     
-    if (!extractedFilesSection || !extractedFilesList) return;
+    console.log('showExtractedFiles called');
+    console.log('extractedFilesList found:', !!extractedFilesList);
+    
+    if (!extractedFilesList) {
+      console.error('Required DOM elements not found: extracted-files-list');
+      return;
+    }
     
     try {
       // Scan for .tar files in the extract destination
       const { stdout } = await runCommand(['find', EXTRACT_DESTINATION, '-name', '*.tar', '-type', 'f']);
       
+      console.log('find command result:', stdout);
+      
       const tarFiles = stdout.trim().split('\n').filter(line => line.trim() && line.endsWith('.tar'));
+      
+      console.log('Filtered tar files:', tarFiles);
       
       if (tarFiles.length === 0) {
         extractedFilesList.innerHTML = '<div class="no-extracted-files">No Docker image files (.tar) found in extracted archive.</div>';
-        loadImagesBtn.disabled = true;
+        if (loadImagesBtn) loadImagesBtn.disabled = true;
+        console.log('No tar files found, disabled load button');
       } else {
+        // If we found files and we're not in step 3 yet, enable step 3
+        if (currentWorkflowStep < 3) {
+          console.log('Found existing extracted files, enabling step 3');
+          enableStep(3);
+          currentWorkflowStep = 3;
+        }
+        
         // Display found .tar files
         let filesHtml = '';
         for (const filePath of tarFiles) {
@@ -846,18 +992,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         extractedFilesList.innerHTML = filesHtml;
-        loadImagesBtn.disabled = false;
+        if (loadImagesBtn) {
+          loadImagesBtn.disabled = false;
+          console.log('Files found, enabled load button');
+        }
         
-        log(`<span class="text-green">Found ${tarFiles.length} Docker image file(s) ready to load.</span>`);
+        console.log('Files HTML set, showing files');
+        log(`✅ Found ${tarFiles.length} Docker image file(s) ready to load.`);
       }
       
-      // Show the section
-      extractedFilesSection.classList.remove('hidden');
-      
     } catch (e) {
+      console.error('Error in showExtractedFiles:', e);
       extractedFilesList.innerHTML = `<div class="no-extracted-files">Error scanning extracted files: ${e.message}</div>`;
-      loadImagesBtn.disabled = true;
-      extractedFilesSection.classList.remove('hidden');
+      if (loadImagesBtn) loadImagesBtn.disabled = true;
     }
     
     // Set up refresh button
@@ -896,8 +1043,34 @@ document.addEventListener('DOMContentLoaded', () => {
     const tarFiles = Array.from(fileItems).map(item => item.dataset.filePath);
     
     if (tarFiles.length === 0) {
-      log('<span class="text-red">No Docker image files found to load.</span>');
+      log('❌ No Docker image files found to load.');
       return;
+    }
+
+    // Check if images are already loaded by looking for registry-tagged images
+    try {
+      const { stdout } = await runCommand(['docker', 'images', '--format', '{{.Repository}}:{{.Tag}}', '--filter', `reference=${LOCAL_REG_HOST}/*`]);
+      const registryImages = stdout.trim().split('\n').filter(line => line.trim() && line !== '<none>:<none>');
+      
+      if (registryImages.length > 0) {
+        // Images already loaded - ask user what to do
+        const reload = confirm(`Found ${registryImages.length} images already loaded and tagged for registry.\n\nDo you want to reload them from the tar files?\n\nClick "OK" to reload, or "Cancel" to skip loading and use existing images.`);
+        
+        if (!reload) {
+          log(`🔄 Skipping load - using ${registryImages.length} existing registry-tagged image(s)`);
+          log('ℹ️ Images already loaded and ready for push to registry');
+          
+          // Show loaded images and advance workflow
+          await showLoadedImages();
+          handleLoadImagesSuccess();
+          return;
+        } else {
+          log(`🔄 Reloading ${tarFiles.length} Docker image(s) from tar files...`);
+        }
+      }
+    } catch (e) {
+      // If checking fails, proceed with normal loading
+      log('ℹ️ Unable to check existing images, proceeding with load...');
     }
     
     loadImagesBtn.disabled = true;
@@ -909,7 +1082,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadImagesProgressText.textContent = 'Starting image load process...';
     loadImagesProgressCount.textContent = `0/${tarFiles.length}`;
     
-    log(`<span class="text-blue">Loading ${tarFiles.length} Docker image(s) into Docker...</span>`);
+    log(`🐳 Loading ${tarFiles.length} Docker image(s) into Docker...`);
     
     let loadedCount = 0;
     let errorCount = 0;
@@ -937,7 +1110,7 @@ document.addEventListener('DOMContentLoaded', () => {
           statusSpan.className = 'extracted-file-status status-loaded';
           
           loadedCount++;
-          log(`<span class="text-green">✅ Loaded: ${fileName}</span>`);
+          log(`✅ Loaded: ${fileName}`);
           
         } catch (e) {
           // Update file status to error
@@ -945,7 +1118,7 @@ document.addEventListener('DOMContentLoaded', () => {
           statusSpan.className = 'extracted-file-status status-error';
           
           errorCount++;
-          log(`<span class="text-red">❌ Failed to load ${fileName}: ${e.message}</span>`);
+          log(`❌ Failed to load ${fileName}: ${e.message}`);
         }
         
         // Update progress bar
@@ -958,18 +1131,23 @@ document.addEventListener('DOMContentLoaded', () => {
       loadImagesProgressCount.textContent = `${tarFiles.length}/${tarFiles.length}`;
       
       if (loadedCount > 0) {
-        log(`<span class="text-green">Successfully loaded ${loadedCount} Docker image(s)!</span>`);
+        log(`✅ Successfully loaded ${loadedCount} Docker image(s)!`);
+        
+        console.log('Images loaded successfully, showing loaded images and calling success handler');
         
         // Show loaded images section
         await showLoadedImages();
+        
+        // Call unified workflow handler
+        handleLoadImagesSuccess();
       }
       
       if (errorCount > 0) {
-        log(`<span class="text-red">${errorCount} image(s) failed to load. Check the logs above for details.</span>`);
+        log(`❌ ${errorCount} image(s) failed to load. Check the logs above for details.`);
       }
       
     } catch (e) {
-      log(`<span class="text-red">Error during image loading: ${e.message}</span>`);
+      log(`❌ Error during image loading: ${e.message}`);
     } finally {
       loadImagesBtn.disabled = false;
       loadImagesBtn.innerHTML = '<i class="fa-solid fa-download"></i> Load Images into Docker';
@@ -982,36 +1160,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Show loaded images in UI
   async function showLoadedImages() {
-    const loadedImagesSection = document.getElementById('loaded-images-section');
     const loadedImagesList = document.getElementById('loaded-images-list');
-    const pushToRegistryBtn = document.getElementById('push-to-registry-btn');
-    const cleanupExtractedBtn = document.getElementById('cleanup-extracted-btn');
     const refreshLoadedImagesBtn = document.getElementById('refresh-loaded-images-btn');
     
-    if (!loadedImagesSection || !loadedImagesList) return;
+    console.log('showLoadedImages called');
+    console.log('loadedImagesList found:', !!loadedImagesList);
     
-    log('<span class="text-blue">Refreshing local images list...</span>');
+    if (!loadedImagesList) {
+      console.error('Required DOM elements not found: loaded-images-list');
+      return;
+    }
     
+    log('🔄 Refreshing local images list...');
     try {
       // Get Docker images with detailed format
       const { stdout } = await runCommand(['docker', 'images', '--format', '{{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}\t{{.ID}}']);
-      
       if (!stdout.trim()) {
         loadedImagesList.innerHTML = '<div class="no-loaded-images">No Docker images found in local daemon.</div>';
-        pushToRegistryBtn.disabled = true;
       } else {
         const lines = stdout.trim().split('\n');
-        let imagesHtml = '';
-        
+        // Build a map of imageId to all tags
+        const imageIdToTags = {};
+        const imageData = [];
         for (const line of lines) {
           const [repository, tag, size, createdAt, imageId] = line.split('\t');
-          
-          // Skip <none> images for cleaner display
           if (repository === '<none>' || tag === '<none>') continue;
-          
+          if (!imageIdToTags[imageId]) imageIdToTags[imageId] = [];
+          imageIdToTags[imageId].push({ repository, tag });
+          imageData.push({ repository, tag, size, createdAt, imageId });
+        }
+        let imagesHtml = '';
+        for (const img of imageData) {
+          const { repository, tag, size, createdAt, imageId } = img;
           const imageName = `${repository}:${tag}`;
           const shortId = imageId.substring(0, 12);
-          
           imagesHtml += `
             <div class="loaded-image-item" data-image-name="${imageName}" data-image-id="${imageId}">
               <div class="loaded-image-info">
@@ -1025,151 +1207,45 @@ document.addEventListener('DOMContentLoaded', () => {
                   </div>
                 </div>
               </div>
-              <span class="loaded-image-tag">Ready</span>
+              <span class="loaded-image-tag">Ready to Push</span>
             </div>
           `;
         }
-        
         if (imagesHtml) {
           loadedImagesList.innerHTML = imagesHtml;
-          pushToRegistryBtn.disabled = false;
-          log(`<span class="text-green">Found ${lines.length} Docker image(s) in local daemon.</span>`);
+          console.log('Images HTML set successfully');
+          log(`✅ Found ${lines.length} Docker image(s) in local daemon.`);
         } else {
           loadedImagesList.innerHTML = '<div class="no-loaded-images">No named Docker images found in local daemon.</div>';
-          pushToRegistryBtn.disabled = true;
         }
       }
       
-      // Show the section
-      loadedImagesSection.classList.remove('hidden');
-      
     } catch (e) {
+      console.error('Error in showLoadedImages:', e);
       loadedImagesList.innerHTML = `<div class="no-loaded-images">Error loading Docker images: ${e.message}</div>`;
-      pushToRegistryBtn.disabled = true;
-      loadedImagesSection.classList.remove('hidden');
-      log(`<span class="text-red">Could not list Docker images: ${e.message}</span>`);
+      log(`❌ Could not list Docker images: ${e.message}`);
     }
-    
     // Set up button handlers
     if (refreshLoadedImagesBtn) {
       refreshLoadedImagesBtn.onclick = () => showLoadedImages();
     }
-    
-    if (pushToRegistryBtn) {
-      pushToRegistryBtn.onclick = () => pushImagesToRegistry();
-    }
-    
-    if (cleanupExtractedBtn) {
-      cleanupExtractedBtn.onclick = () => cleanupExtractedFiles();
+    // Go to Registry Management tab button
+    const gotoRegistryBtn = document.getElementById('goto-registry-btn');
+    if (gotoRegistryBtn) {
+      gotoRegistryBtn.onclick = () => {
+        // Find the registry tab and trigger click
+        const tabs = document.querySelectorAll('.nav-link[data-tab]');
+        for (const tab of tabs) {
+          if (tab.getAttribute('data-tab') === 'tab-registry') {
+            tab.click();
+            break;
+          }
+        }
+      };
     }
   }
 
-  // Push images to local registry
-  async function pushImagesToRegistry() {
-    const pushToRegistryBtn = document.getElementById('push-to-registry-btn');
-    const pushProgressContainer = document.getElementById('push-progress-container');
-    const pushProgressBar = document.getElementById('push-progress-bar');
-    const pushProgressText = document.getElementById('push-progress-text');
-    const pushProgressCount = document.getElementById('push-progress-count');
-    const loadedImagesList = document.getElementById('loaded-images-list');
-    
-    if (!pushToRegistryBtn || !pushProgressContainer) return;
-    
-    // Get all loaded images
-    const imageItems = loadedImagesList.querySelectorAll('.loaded-image-item');
-    const images = Array.from(imageItems).map(item => ({
-      name: item.dataset.imageName,
-      id: item.dataset.imageId
-    }));
-    
-    if (images.length === 0) {
-      log('<span class="text-red">No Docker images found to push.</span>');
-      return;
-    }
-    
-    pushToRegistryBtn.disabled = true;
-    pushToRegistryBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Pushing to Registry...';
-    
-    // Show progress bar
-    pushProgressContainer.classList.remove('hidden');
-    pushProgressBar.style.width = '0%';
-    pushProgressText.textContent = 'Starting push to local registry...';
-    pushProgressCount.textContent = `0/${images.length}`;
-    
-    log(`<span class="text-blue">Pushing ${images.length} Docker image(s) to local registry...</span>`);
-    
-    let pushedCount = 0;
-    let errorCount = 0;
-    
-    try {
-      for (let i = 0; i < images.length; i++) {
-        const image = images[i];
-        const imageItem = imageItems[i];
-        const tagSpan = imageItem.querySelector('.loaded-image-tag');
-        
-        pushProgressText.textContent = `Pushing: ${image.name}`;
-        pushProgressCount.textContent = `${i + 1}/${images.length}`;
-        
-        // Update image status to pushing
-        tagSpan.textContent = 'Pushing...';
-        tagSpan.className = 'loaded-image-tag';
-        tagSpan.style.backgroundColor = '#fff3cd';
-        tagSpan.style.color = '#856404';
-        
-        try {
-          // Tag image for local registry
-          const registryTag = `docker-registry:4000/${image.name}`;
-          await runCommand(['docker', 'tag', image.name, registryTag]);
-          
-          // Push to registry
-          await runCommand(['docker', 'push', registryTag]);
-          
-          // Update image status to pushed
-          tagSpan.textContent = 'Pushed';
-          tagSpan.style.backgroundColor = '#d1ecf1';
-          tagSpan.style.color = '#0c5460';
-          
-          pushedCount++;
-          log(`<span class="text-green">✅ Pushed: ${image.name}</span>`);
-          
-        } catch (e) {
-          // Update image status to error
-          tagSpan.textContent = 'Push failed';
-          tagSpan.style.backgroundColor = '#f8d7da';
-          tagSpan.style.color = '#721c24';
-          
-          errorCount++;
-          log(`<span class="text-red">❌ Failed to push ${image.name}: ${e.message}</span>`);
-        }
-        
-        // Update progress bar
-        const progress = Math.round(((i + 1) / images.length) * 100);
-        pushProgressBar.style.width = progress + '%';
-      }
-      
-      // Final status
-      pushProgressText.textContent = `Completed: ${pushedCount} pushed, ${errorCount} failed`;
-      pushProgressCount.textContent = `${images.length}/${images.length}`;
-      
-      if (pushedCount > 0) {
-        log(`<span class="text-green">Successfully pushed ${pushedCount} Docker image(s) to local registry!</span>`);
-      }
-      
-      if (errorCount > 0) {
-        log(`<span class="text-red">${errorCount} image(s) failed to push. Check the logs above for details.</span>`);
-      }
-      
-    } catch (e) {
-      log(`<span class="text-red">Error during push operation: ${e.message}</span>`);
-    } finally {
-      pushToRegistryBtn.disabled = false;
-      pushToRegistryBtn.innerHTML = '<i class="fa-solid fa-upload"></i> Push to Local Registry';
-      
-      setTimeout(() => {
-        pushProgressContainer.classList.add('hidden');
-      }, 3000);
-    }
-  }
+  // ...push to registry logic removed for Extract tab...
 
   // Cleanup extracted files
   async function cleanupExtractedFiles() {
@@ -1190,7 +1266,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Remove all files from extract destination
       await runCommand(['rm', '-rf', EXTRACT_DESTINATION + '*']);
       
-      log(`<span class="text-green">Successfully cleaned up extracted files from ${EXTRACT_DESTINATION}</span>`);
+      log(`🧹 Successfully cleaned up extracted files from ${EXTRACT_DESTINATION}`);
       
       // Refresh the extracted files list
       await showExtractedFiles();
@@ -1202,7 +1278,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       
     } catch (e) {
-      log(`<span class="text-red">Error during cleanup: ${e.message}</span>`);
+      log(`❌ Error during cleanup: ${e.message}`);
     } finally {
       cleanupExtractedBtn.disabled = false;
       cleanupExtractedBtn.innerHTML = '<i class="fa-solid fa-trash"></i> Cleanup Extracted Files';
@@ -1274,10 +1350,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const usbList = $('usb-devices-list');
     const noDevicesMsg = $('no-usb-devices');
     
+    console.log('detectUSBDevices called');
+    console.log('usbList found:', !!usbList);
+    console.log('noDevicesMsg found:', !!noDevicesMsg);
+    
     if (!usbList) return; // Element not found, exit gracefully
     
     usbList.innerHTML = '<div class="loading-state">Scanning for USB devices...</div>';
-    if (noDevicesMsg) noDevicesMsg.style.display = 'none';
+    if (noDevicesMsg) {
+      noDevicesMsg.style.display = 'none';
+      noDevicesMsg.classList.add('hidden');
+    }
     
     try {
       log('🔍 Scanning for USB storage devices...\n');
@@ -1326,11 +1409,24 @@ document.addEventListener('DOMContentLoaded', () => {
       
       // Update UI based on results
       if (usbDevices.length === 0) {
-        usbList.innerHTML = '';
-        if (noDevicesMsg) noDevicesMsg.style.display = 'block';
+        console.log('No USB devices found, showing no devices message in USB list');
+        usbList.innerHTML = `
+          <div class="alert alert-secondary">
+            <i class="fa fa-info-circle"></i> No USB storage devices detected. Insert a USB drive and click Refresh.
+          </div>
+        `;
+        // Hide the separate no devices message since we're showing it in the list
+        if (noDevicesMsg) {
+          noDevicesMsg.style.display = 'none';
+          noDevicesMsg.classList.add('hidden');
+        }
         log('No USB storage devices detected\n');
       } else {
-        if (noDevicesMsg) noDevicesMsg.style.display = 'none';
+        console.log(`Found ${usbDevices.length} USB devices, hiding no devices message`);
+        if (noDevicesMsg) {
+          noDevicesMsg.style.display = 'none';
+          noDevicesMsg.classList.add('hidden');
+        }
         usbList.innerHTML = '';
         
         log(`Found ${usbDevices.length} USB storage devices:\n`);
@@ -1355,10 +1451,6 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div class="usb-device-actions">
               ${isMounted ? `
-                <button class="btn btn-sm btn-outline-primary browse-device" 
-                  data-path="${device.mountpoint}" title="Browse files">
-                  <i class="fa-solid fa-folder-open"></i> Browse
-                </button>
                 <button class="btn btn-sm btn-outline-secondary unmount-device" 
                   data-device="${device.path}" title="Unmount device">
                   <i class="fa-solid fa-eject"></i> Unmount
@@ -1384,14 +1476,14 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.unmount-device').forEach(btn => {
           btn.addEventListener('click', () => unmountUSBDevice(btn.dataset.device));
         });
-        
-        document.querySelectorAll('.browse-device').forEach(btn => {
-          btn.addEventListener('click', () => openServerFileModal(btn.dataset.path));
-        });
       }
       
     } catch (error) {
-      usbList.innerHTML = `<div class="error-state">Error scanning for USB devices: ${error.message}</div>`;
+      usbList.innerHTML = `
+        <div class="alert alert-danger">
+          <i class="fa fa-exclamation-triangle"></i> Error scanning for USB devices: ${error.message}
+        </div>
+      `;
       log(`Error detecting USB devices: ${error.message}\n`);
       console.error('USB device detection error:', error);
     }
@@ -1492,6 +1584,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (link.dataset.tab === 'tab-registry') {
         checkStatus();
         checkDockerConfig();
+        refreshCatalog(); // Refresh catalog when switching to registry tab
         stopLocalImagesAutoRefresh(); // Stop auto-refresh when leaving extract tab
       }
       if (link.dataset.tab === 'tab-catalog') {
@@ -1499,12 +1592,15 @@ document.addEventListener('DOMContentLoaded', () => {
         stopLocalImagesAutoRefresh(); // Stop auto-refresh when leaving extract tab
       }
       if (link.dataset.tab === 'tab-extract') {
-        loadCurrentImagesList();
-        loadLocalDockerImages();
+        loadCurrentImagesList(); // Refresh registry contents list
+        loadLocalDockerImages(); // Refresh local Docker images
         countImagesList();
+        showLoadedImages(); // Refresh images ready list
         startLocalImagesAutoRefresh(); // Start auto-refresh for local images
         // Initialize USB device detection with a small delay to ensure DOM is ready
         setTimeout(initUSBDevices, 100);
+        // Check for existing extracted files when switching to Extract tab
+        setTimeout(checkExistingExtractedFiles, 200);
       }
     });
   });
@@ -1772,25 +1868,405 @@ OS: ${imageData.Os}`;
       btn.classList.add('active');
       const extractMode = btn.id === 'toggle-extract';
       
-      // Use CSS classes instead of inline styles
       if (extractMode) {
-        $('extract-block').classList.remove('pull-block-hidden');
+        // Show unified extract workflow
+        const extractWorkflow = document.getElementById('extract-workflow');
+        if (extractWorkflow) extractWorkflow.style.display = 'block';
+        
         $('pull-block').classList.add('pull-block-hidden');
-        // Show USB section only in Extract mode
-        if ($('usb-devices-section')) {
-          $('usb-devices-section').style.display = '';
-        }
+        
+        // Always refresh extracted files and loaded images list when switching to Extract mode
+        showExtractedFiles();
+        showLoadedImages();
       } else {
-        $('extract-block').classList.add('pull-block-hidden');
+        // Hide unified extract workflow  
+        const extractWorkflow = document.getElementById('extract-workflow');
+        if (extractWorkflow) extractWorkflow.style.display = 'none';
+        
         $('pull-block').classList.remove('pull-block-hidden');
-        // Hide USB section in Pull mode
-        if ($('usb-devices-section')) {
-          $('usb-devices-section').style.display = 'none';
-        }
       }
       log('Ready.');
     });
   });
+
+  // ---- Unified Extract Workflow Logic ----
+  
+  // Workflow state tracking
+  let currentWorkflowStep = 1;
+  let selectedSourceType = null;
+  let currentArchiveFile = null;
+  let currentDestinationPath = null;
+  
+  // Workflow step management
+  const enableStep = (stepNumber) => {
+    const step = document.getElementById(`step-${getStepId(stepNumber)}`);
+    if (step) {
+      step.classList.remove('disabled');
+      step.classList.add('active');
+    }
+  };
+  
+  const disableStep = (stepNumber) => {
+    const step = document.getElementById(`step-${getStepId(stepNumber)}`);
+    if (step) {
+      step.classList.add('disabled');
+      step.classList.remove('active');
+    }
+  };
+  
+  const completeStep = (stepNumber) => {
+    const step = document.getElementById(`step-${getStepId(stepNumber)}`);
+    if (step) {
+      step.classList.remove('active');
+      step.classList.add('completed');
+    }
+  };
+  
+  const getStepId = (stepNumber) => {
+    const stepIds = ['source-selection', 'extract-archive', 'load-images', 'ready-to-push'];
+    return stepIds[stepNumber - 1];
+  };
+  
+  // Radio button source selection
+  const usbRadio = document.getElementById('usb-radio');
+  const browseRadio = document.getElementById('browse-radio');
+  const usbSourceOption = document.getElementById('usb-source-option');
+  const browseSourceOption = document.getElementById('browse-source-option');
+  
+  if (usbRadio && browseRadio) {
+    usbRadio.addEventListener('change', () => {
+      if (usbRadio.checked) {
+        selectedSourceType = 'usb';
+        usbSourceOption.classList.add('selected');
+        browseSourceOption.classList.remove('selected');
+        updateStepOneButtons();
+        log('USB/Mounted Device mode selected');
+        // Trigger USB device detection when switching to USB mode
+        setTimeout(() => {
+          detectUSBDevices();
+        }, 100);
+      }
+    });
+    
+    browseRadio.addEventListener('change', () => {
+      if (browseRadio.checked) {
+        selectedSourceType = 'browse';
+        usbSourceOption.classList.remove('selected');
+        browseSourceOption.classList.add('selected');
+        updateStepOneButtons();
+        log('Browse Server mode selected');
+      }
+    });
+    
+    // Set default selection
+    usbRadio.checked = true;
+    selectedSourceType = 'usb';
+    usbSourceOption.classList.add('selected');
+    browseSourceOption.classList.remove('selected');
+    
+    // Hide the separate no-usb-devices div since we show messages in the list
+    const noDevicesMsg = document.getElementById('no-usb-devices');
+    if (noDevicesMsg) {
+      noDevicesMsg.style.display = 'none';
+      noDevicesMsg.classList.add('hidden');
+    }
+    
+    // Trigger USB device detection when USB is selected initially
+    setTimeout(() => {
+      detectUSBDevices();
+    }, 100);
+  }
+  
+  // Update Step 1 buttons based on current selections
+  const updateStepOneButtons = () => {
+    const copyBtn = document.getElementById('copy-archive-btn');
+    const proceedBtn = document.getElementById('proceed-to-extract-btn');
+    
+    if (selectedSourceType === 'usb') {
+      // USB workflow: show copy button, hide proceed button
+      if (copyBtn) {
+        copyBtn.style.display = 'inline-block';
+        copyBtn.disabled = !currentArchiveFile || !currentDestinationPath;
+      }
+      if (proceedBtn) proceedBtn.style.display = 'none';
+    } else if (selectedSourceType === 'browse') {
+      // Browse workflow: hide copy button, show proceed button
+      if (copyBtn) copyBtn.style.display = 'none';
+      if (proceedBtn) {
+        proceedBtn.style.display = 'inline-block';
+        proceedBtn.disabled = !currentArchiveFile;
+      }
+    }
+  };
+  
+  // Proceed to Step 2 button (for browse workflow)
+  const proceedBtn = document.getElementById('proceed-to-extract-btn');
+  if (proceedBtn) {
+    proceedBtn.addEventListener('click', () => {
+      if (currentArchiveFile && selectedSourceType === 'browse') {
+        // Update Step 2 with current file info
+        updateStepTwoFileDisplay();
+        
+        // Complete Step 1 and enable Step 2
+        completeStep(1);
+        enableStep(2);
+        currentWorkflowStep = 2;
+        
+        // Enable extract button
+        const extractBtn = document.getElementById('extract-archive-btn');
+        if (extractBtn) extractBtn.disabled = false;
+        
+        log(`Proceeding to extraction with file: ${currentArchiveFile}`);
+      }
+    });
+  }
+  
+  // Update Step 2 file display
+  const updateStepTwoFileDisplay = () => {
+    const fileDisplay = document.getElementById('extract-file-display');
+    if (fileDisplay && currentArchiveFile) {
+      fileDisplay.innerHTML = `
+        <div class="file-name">${currentArchiveFile.split('/').pop()}</div>
+        <div class="file-path">${currentArchiveFile}</div>
+      `;
+      fileDisplay.classList.remove('hidden');
+    }
+  };
+  
+  // After successful copy (for USB workflow), automatically proceed to Step 2
+  const handleCopySuccess = (sourceFile, destinationFile) => {
+    // Set the destination file as current archive for extraction
+    currentArchiveFile = destinationFile;
+    
+    // Update Step 2 with copied file info
+    updateStepTwoFileDisplay();
+    
+    // Complete Step 1 and enable Step 2
+    completeStep(1);
+    enableStep(2);
+    currentWorkflowStep = 2;
+    
+    // Enable extract button
+    const extractBtn = document.getElementById('extract-archive-btn');
+    if (extractBtn) extractBtn.disabled = false;
+    
+    log(`Archive copied successfully. Ready for extraction: ${destinationFile}`);
+  };
+  
+  // After successful extraction, enable Step 3
+  const handleExtractionSuccess = () => {
+    // Complete Step 2 and enable Step 3
+    completeStep(2);
+    enableStep(3);
+    currentWorkflowStep = 3;
+    
+    // Refresh extracted files list and enable load button if files found
+    showExtractedFiles();
+    
+    log('Extraction completed. Ready to load Docker images.');
+  };
+  
+  // After successful image loading, enable Step 4
+  const handleLoadImagesSuccess = () => {
+    console.log('handleLoadImagesSuccess called');
+    
+    // Complete Step 3 and enable Step 4
+    completeStep(3);
+    enableStep(4);
+    currentWorkflowStep = 4;
+    
+    console.log('Step 4 enabled, calling showLoadedImages');
+    
+    // Refresh loaded images list
+    showLoadedImages();
+    
+    log('Docker images loaded successfully. Ready for registry push.');
+  };
+  
+  // Initialize workflow - enable Step 1 by default
+  enableStep(1);
+  updateStepOneButtons();
+
+  // Add cleanup existing files button handler
+  const cleanupExistingBtn = document.getElementById('cleanup-existing-btn');
+  if (cleanupExistingBtn) {
+    cleanupExistingBtn.addEventListener('click', async () => {
+      if (confirm('Are you sure you want to delete all existing extracted files? This action cannot be undone.')) {
+        try {
+          const EXTRACT_DESTINATION = '/etc/xavs/xavs-images/';
+          
+          cleanupExistingBtn.disabled = true;
+          cleanupExistingBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Cleaning...';
+          
+          // Remove all files from extract destination
+          await runCommand(['rm', '-rf', EXTRACT_DESTINATION + '*']);
+          
+          // Hide existing files info
+          const existingFilesInfo = document.getElementById('existing-files-info');
+          if (existingFilesInfo) {
+            existingFilesInfo.classList.add('hidden');
+          }
+          
+          // Reset workflow to step 1
+          disableStep(2);
+          disableStep(3);
+          disableStep(4);
+          enableStep(1);
+          currentWorkflowStep = 1;
+          
+          // Clear extracted and loaded images lists
+          const extractedFilesList = document.getElementById('extracted-files-list');
+          const loadedImagesList = document.getElementById('loaded-images-list');
+          
+          if (extractedFilesList) {
+            extractedFilesList.innerHTML = '<div class="no-extracted-files">No Docker image files (.tar) found in extracted archive.</div>';
+          }
+          
+          if (loadedImagesList) {
+            loadedImagesList.innerHTML = '<div class="no-loaded-images">No Docker images found in local daemon.</div>';
+          }
+          
+          log('🧹 Cleaned up existing extracted files. Starting fresh workflow.');
+          
+        } catch (e) {
+          log(`❌ Failed to cleanup existing files: ${e.message}`);
+        } finally {
+          cleanupExistingBtn.disabled = false;
+          cleanupExistingBtn.innerHTML = '<i class="fa fa-trash"></i> Clean Up & Start Fresh';
+        }
+      }
+    });
+  }
+
+  // Add a manual check function for debugging
+  window.manualCheckExtractedFiles = async () => {
+    console.log('Manual check triggered...');
+    await checkExistingExtractedFiles();
+  };
+
+  // Add a test function to create dummy files for testing
+  window.createTestExtractedFiles = async () => {
+    try {
+      const EXTRACT_DESTINATION = '/etc/xavs/xavs-images/';
+      console.log('Creating test directory and files...');
+      
+      // Create directory
+      await runCommand(['mkdir', '-p', EXTRACT_DESTINATION]);
+      
+      // Create a dummy .tar file for testing
+      await runCommand(['touch', EXTRACT_DESTINATION + 'test-image.tar']);
+      
+      console.log('Test files created, checking...');
+      await checkExistingExtractedFiles();
+      
+      log('✅ Test files created and checked successfully!');
+    } catch (e) {
+      console.error('Error creating test files:', e);
+      log(`❌ Error creating test files: ${e.message}`);
+    }
+  };
+
+  // Add a test function to cleanup test files
+  window.cleanupTestFiles = async () => {
+    try {
+      const EXTRACT_DESTINATION = '/etc/xavs/xavs-images/';
+      await runCommand(['rm', '-rf', EXTRACT_DESTINATION + 'test-image.tar']);
+      console.log('Test files cleaned up');
+      await showExtractedFiles(); // Refresh the display
+      log('🧹 Test files cleaned up');
+    } catch (e) {
+      console.error('Error cleaning up test files:', e);
+      log(`❌ Failed to cleanup test files: ${e.message}`);
+    }
+  };
+
+  // Add a test function to simulate successful image loading
+  window.testImageLoadingSuccess = async () => {
+    console.log('Testing image loading success simulation...');
+    try {
+      // Enable step 3 first if not already enabled
+      if (currentWorkflowStep < 3) {
+        enableStep(3);
+        currentWorkflowStep = 3;
+      }
+      
+      // Call the success handler
+      handleLoadImagesSuccess();
+      
+      log('✅ Image loading success simulation completed');
+    } catch (e) {
+      console.error('Error in test simulation:', e);
+      log(`❌ Test simulation failed: ${e.message}`);
+    }
+  };
+
+  // Add a test function to simulate no USB devices detected
+  window.testNoUSBDevices = async () => {
+    console.log('Testing no USB devices scenario...');
+    try {
+      const usbList = document.getElementById('usb-devices-list');
+      const noDevicesMsg = document.getElementById('no-usb-devices');
+      
+      if (usbList) {
+        usbList.innerHTML = `
+          <div class="alert alert-secondary">
+            <i class="fa fa-info-circle"></i> No USB storage devices detected. Insert a USB drive and click Refresh.
+          </div>
+        `;
+        console.log('Showed no devices message in USB list');
+      }
+      
+      // Ensure the separate div is hidden
+      if (noDevicesMsg) {
+        noDevicesMsg.style.display = 'none';
+        noDevicesMsg.classList.add('hidden');
+        console.log('Ensured separate no devices message is hidden');
+      }
+      
+      log('📱 Test: No USB storage devices detected');
+    } catch (e) {
+      console.error('Error in no USB test:', e);
+      log(`❌ No USB test failed: ${e.message}`);
+    }
+  };
+
+  // Add a test function to simulate USB devices found  
+  window.testUSBDevicesFound = async () => {
+    console.log('Testing USB devices found scenario...');
+    try {
+      const usbList = document.getElementById('usb-devices-list');
+      
+      if (usbList) {
+        usbList.innerHTML = `
+          <div class="usb-device-item">
+            <div class="usb-device-info">
+              <div class="usb-device-name">
+                <i class="fab fa-usb"></i> USB Drive
+              </div>
+              <div class="usb-device-details">
+                /dev/sdb1 • 8GB • ext4
+                <span class="usb-device-status status-mounted">Mounted at /mnt/usb-sdb1</span>
+              </div>
+            </div>
+            <div class="usb-device-actions">
+              <button class="btn btn-sm btn-outline-primary">
+                <i class="fa-solid fa-folder-open"></i> Browse
+              </button>
+              <button class="btn btn-sm btn-outline-secondary">
+                <i class="fa-solid fa-eject"></i> Unmount
+              </button>
+            </div>
+          </div>
+        `;
+        console.log('Showed sample USB device');
+      }
+      
+      log('📱 Test: USB storage device found');
+    } catch (e) {
+      console.error('Error in USB test:', e);
+      log(`❌ USB test failed: ${e.message}`);
+    }
+  };
 
   // ---- Constants ----
   const IMAGE_LIST_PATH = '/etc/xavs/images.list';
@@ -1876,7 +2352,7 @@ OS: ${imageData.Os}`;
 
   // Test connectivity button
   $('test-connectivity-btn').addEventListener('click', async () => {
-  log('<i class="fa-solid fa-flask text-blue"></i> CONNECTIVITY & PREREQUISITES TEST\n');
+  log('🧪 CONNECTIVITY & PREREQUISITES TEST\n');
     log('================================================================\n\n');
     
     const testResults = {
@@ -1894,13 +2370,13 @@ OS: ${imageData.Os}`;
       const result = await runCommand(['docker', 'version']);
       const dockerVersion = result.stdout.split('\n')[0];
       testResults.docker = { status: 'pass', details: dockerVersion };
-  log('<i class="fa-solid fa-check text-green"></i> PASS: Docker daemon is running and accessible\n');
+  log('✅ PASS: Docker daemon is running and accessible\n');
       log(`    Version: ${dockerVersion}\n\n`);
     } catch (e) {
       testResults.docker = { status: 'fail', details: e.message };
-  log('<i class="fa-solid fa-times text-red"></i> FAIL: Docker daemon is not running or not accessible\n');
-  log(`   <i class="fa-solid fa-exclamation-triangle text-yellow"></i> Error: ${e.message}\n`);
-  log('   <i class="fa-solid fa-lightbulb text-blue"></i> Solution: Start Docker Desktop or run "systemctl start docker"\n\n');
+  log('❌ FAIL: Docker daemon is not running or not accessible\n');
+  log(`   ⚠️ Error: ${e.message}\n`);
+  log('   💡 Solution: Start Docker Desktop or run "systemctl start docker"\n\n');
       
       // If Docker fails, show summary and exit
       showTestSummary(testResults);
@@ -1918,7 +2394,7 @@ OS: ${imageData.Os}`;
       log('    Testing registry connectivity (quay.io via nslookup)...\n');
       await runCommand(['nslookup', 'quay.io'], { timeout: 10000 });
       testResults.network = { status: 'pass', details: 'Internet and registry DNS resolved' };
-      log('<i class="fas fa-check text-green"></i> PASS: Internet connectivity and registry DNS resolution working\n');
+      log('✅ PASS: Internet connectivity and registry DNS resolution working\n');
       log('   � Can reach Google DNS and resolve quay.io hostname\n\n');
     } catch (e) {
       // Try alternative connectivity tests
@@ -1926,7 +2402,7 @@ OS: ${imageData.Os}`;
         log('    Fallback: Testing with curl to Google...\n');
         await runCommand(['curl', '-s', '--connect-timeout', '5', '--max-time', '10', 'http://google.com'], { timeout: 15000 });
         testResults.network = { status: 'pass', details: 'Internet reachable via HTTP' };
-        log('<i class="fas fa-check text-green"></i> PASS: Internet connectivity confirmed via HTTP\n');
+        log('✅ PASS: Internet connectivity confirmed via HTTP\n');
         log('   � Alternative connectivity test successful\n\n');
       } catch (e2) {
         testResults.network = { status: 'fail', details: `Ping failed: ${e.message}, HTTP failed: ${e2.message}` };
@@ -2157,13 +2633,13 @@ OS: ${imageData.Os}`;
         log('================================================================\n');
         
         progressText.textContent = 'Error: Images list file missing';
-        progressBar.style.backgroundColor = '#dc2626'; // Red color for error
+        progressBar.className += ' error'; // Error styling
         progressBar.style.width = '100%';
         
         // Hide progress bar after delay
         setTimeout(() => {
           progressContainer.classList.add('hidden');
-          progressBar.style.backgroundColor = ''; // Reset color
+          progressBar.className = progressBar.className.replace(/\s*(error|success)/g, ''); // Reset styling
         }, 5000);
         
         return;
@@ -2180,13 +2656,13 @@ OS: ${imageData.Os}`;
         log('📝 Please add images to the configuration file (one per line)\n');
         
         progressText.textContent = 'Error: No images configured';
-        progressBar.style.backgroundColor = '#dc2626'; // Red color for error
+        progressBar.className += ' error'; // Error styling
         progressBar.style.width = '100%';
         
         // Hide progress bar after delay
         setTimeout(() => {
           progressContainer.classList.add('hidden');
-          progressBar.style.backgroundColor = ''; // Reset color
+          progressBar.className = progressBar.className.replace(/\s*(error|success)/g, ''); // Reset styling
         }, 3000);
         
         return;
@@ -2284,12 +2760,12 @@ OS: ${imageData.Os}`;
       // Update progress bar to show error
       progressText.textContent = `Error: ${e.message}`;
       progressBar.style.width = '100%';
-      progressBar.style.backgroundColor = '#dc2626'; // Red color for error
+      progressBar.className += ' error'; // Error styling
       
       // Hide progress bar after delay
       setTimeout(() => {
         progressContainer.classList.add('hidden');
-        progressBar.style.backgroundColor = ''; // Reset color
+        progressBar.className = progressBar.className.replace(/\s*(error|success)/g, ''); // Reset styling
       }, 3000);
     } finally {
       isPulling = false;
@@ -3446,9 +3922,31 @@ ${volumeSize}
   // Load stored logs after DOM is ready
   setTimeout(loadStoredLogs, 100);
   
+  // Check for existing extracted files if we're starting on the Extract tab
+  setTimeout(async () => {
+    const extractToggle = $('toggle-extract');
+    if (extractToggle && extractToggle.classList.contains('active')) {
+      await checkExistingExtractedFiles();
+      showLoadedImages();
+    }
+  }, 200);
+  
   // Initialize USB devices if Extract tab is already active on page load
   if (document.querySelector('[data-tab="tab-extract"]').classList.contains('active')) {
-    setTimeout(initUSBDevices, 500);
+  setTimeout(initUSBDevices, 500);
+  // Also check for existing extracted files and refresh loaded images list on page load
+  setTimeout(checkExistingExtractedFiles, 600);
+  setTimeout(showLoadedImages, 700);
+  }
+  
+  // Unified Extract Archive Button Handler
+  const unifiedExtractBtn = document.getElementById('extract-archive-btn');
+  if (unifiedExtractBtn) {
+    unifiedExtractBtn.addEventListener('click', async () => {
+      if (currentArchiveFile) {
+        await extractArchive(currentArchiveFile);
+      }
+    });
   }
   
   // Clear log functionality

@@ -20,13 +20,13 @@
 }
 
 #server-file-modal-footer .btn-primary {
-  background: #1976d2;
+  background: var(--brand);
   color: #fff;
   border: none;
   transition: background 0.2s;
 }
 #server-file-modal-footer .btn-primary:hover {
-  background: #1565c0;
+  background: var(--brand-600);
 }
 
 #server-file-modal-footer .btn[disabled],
@@ -47,6 +47,37 @@
 /* Utility class for hidden (replaces inline style for CSP) */
 .hidden {
   display: none !important;
+}
+
+/* Brand-consistent success and error states */
+.text-success {
+  color: var(--brand) !important;
+}
+
+.text-error {
+  color: #dc3545 !important;
+}
+
+.bg-success {
+  background-color: var(--brand) !important;
+  border-color: var(--brand) !important;
+  color: #fff !important;
+}
+
+.bg-error {
+  background-color: #dc3545 !important;
+  border-color: #dc3545 !important;
+  color: #fff !important;
+}
+
+/* Progress bar error state */
+.progress-bar.error {
+  background-color: #dc3545 !important;
+}
+
+/* Progress bar success state */
+.progress-bar.success {
+  background-color: var(--brand) !important;
 }
 /* Utility class for left margin (replaces inline style for CSP) */
 .ml-10 {
@@ -312,7 +343,7 @@
 .usb-devices-container {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
 }
 
@@ -396,6 +427,38 @@
 
 .error-state {
   color: #dc3545;
+}
+
+/* Alert messages within USB devices list */
+.usb-devices-list .alert {
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.usb-devices-list .alert i {
+  flex-shrink: 0;
+}
+
+/* Existing files info in step 2 */
+.existing-files-info {
+  margin-bottom: 16px;
+}
+
+.existing-files-info .alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  margin: 0;
+}
+
+.existing-files-info .alert .btn {
+  margin-left: auto;
 }
 
 /* ===== Brand tokens ===== */
@@ -1477,4 +1540,283 @@ pre.yaml-terminal {
   color: #6c757d;
   font-style: italic;
   padding: 20px;
+}
+
+/* Source Selection Toggle Buttons */
+.source-toggle {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  justify-content: center;
+}
+
+.source-toggle .btn {
+  padding: 10px 20px;
+  border-radius: 25px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  transition: all 0.3s ease;
+  min-width: 200px;
+  text-align: center;
+}
+
+.source-toggle .btn.active {
+  box-shadow: 0 2px 8px rgba(25, 118, 210, 0.3);
+  transform: translateY(-1px);
+}
+
+.source-toggle .btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* ==============================================
+   UNIFIED WORKFLOW STYLING
+   ============================================== */
+
+/* Workflow container */
+.extract-workflow {
+  margin-top: 24px;
+}
+
+/* Individual workflow steps */
+.workflow-step {
+  background: #ffffff;
+  border: 2px solid #e0e0e0;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.workflow-step.disabled {
+  opacity: 0.6;
+  background: #f8f9fa;
+  border-color: #dee2e6;
+}
+
+.workflow-step.active {
+  border-color: var(--brand);
+  box-shadow: 0 4px 16px rgba(25, 117, 96, 0.15);
+}
+
+.workflow-step.completed {
+  border-color: #4caf50;
+  background: #f9fff9;
+}
+
+/* Step header */
+.step-header {
+  display: flex;
+  align-items: center;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.workflow-step.active .step-header {
+  background: linear-gradient(135deg, #e8f4f1 0%, #d0ede6 100%);
+}
+
+.workflow-step.completed .step-header {
+  background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%);
+}
+
+.step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #6c757d;
+  color: white;
+  font-weight: bold;
+  font-size: 14px;
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+
+.workflow-step.active .step-number {
+  background: var(--brand);
+}
+
+.workflow-step.completed .step-number {
+  background: #4caf50;
+}
+
+.step-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+}
+
+/* Step content */
+.step-content {
+  padding: 20px;
+}
+
+.workflow-step.disabled .step-content {
+  color: #6c757d;
+}
+
+/* Source options (radio buttons) */
+.source-options {
+  margin: 16px 0;
+}
+
+.source-option {
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.source-option:hover {
+  border-color: var(--brand);
+}
+
+.option-header {
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e0e0e0;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.option-header:hover {
+  background: #e9ecef;
+}
+
+.option-header input[type="radio"] {
+  margin-right: 10px;
+  transform: scale(1.2);
+}
+
+.option-header label {
+  cursor: pointer;
+  margin: 0;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+}
+
+.option-header label i {
+  margin-right: 8px;
+  color: var(--brand);
+}
+
+.option-content {
+  padding: 16px;
+  display: none;
+}
+
+/* Show content when radio is checked - using JavaScript control */
+.source-option.selected .option-content {
+  display: block;
+}
+
+.source-option.selected {
+  border-color: var(--brand);
+  background: #f0f8f5;
+}
+
+.source-option.selected .option-header {
+  background: #e8f4f1;
+}
+
+/* File selection sections */
+.file-selection-section {
+  margin: 16px 0;
+}
+
+.file-selection-section .form-label {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+/* Current file display */
+.current-file-display {
+  background: #f8f9fa;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 16px 0;
+}
+
+.current-file-display .file-name {
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.current-file-display .file-path {
+  color: #6c757d;
+  font-size: 14px;
+  font-family: monospace;
+}
+
+/* Step actions */
+.step-actions {
+  margin-top: 20px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.step-actions .btn {
+  border-radius: 20px;
+  font-weight: 600;
+  padding: 8px 20px;
+  transition: all 0.3s ease;
+}
+
+.step-actions .btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* USB devices integration */
+.usb-devices-container {
+  background: #f8f9fa;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 12px 0;
+}
+
+/* File info display integration */
+.file-info-display {
+  background: #f8f9fa;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 16px 0;
+}
+
+/* Progress containers inherit existing styles */
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .step-header {
+    padding: 12px 16px;
+  }
+  
+  .step-content {
+    padding: 16px;
+  }
+  
+  .step-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .step-actions .btn {
+    width: 100%;
+    margin-bottom: 8px;
+  }
 }
