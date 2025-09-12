@@ -218,6 +218,69 @@
                 <div id="extract-progress-bar" class="progress-bar"></div>
               </div>
             </div>
+
+            <!-- Extracted Files Section (shown after successful extraction) -->
+            <div id="extracted-files-section" class="hidden mt-16">
+              <h4><i class="fa-solid fa-list"></i> Extracted Image Files</h4>
+              <p>Docker image files found in the extracted archive:</p>
+              
+              <div id="extracted-files-list" class="extracted-files-container">
+                <!-- Will be populated with extracted .tar files -->
+              </div>
+              
+              <div class="actions">
+                <button id="load-images-btn" class="btn btn-success" disabled>
+                  <i class="fa-solid fa-download"></i> Load Images into Docker
+                </button>
+                <button id="refresh-extracted-files-btn" class="btn btn-outline-secondary">
+                  <i class="fa-solid fa-sync"></i> Refresh List
+                </button>
+              </div>
+              
+              <!-- Load Images Progress Bar -->
+              <div id="load-images-progress-container" class="progress-container hidden">
+                <div class="progress-info">
+                  <span id="load-images-progress-text">Preparing to load images...</span>
+                  <span id="load-images-progress-count">0/0</span>
+                </div>
+                <div class="progress-bar-container">
+                  <div id="load-images-progress-bar" class="progress-bar"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Loaded Images Section (shown after successful loading) -->
+            <div id="loaded-images-section" class="hidden mt-16">
+              <h4><i class="fa-brands fa-docker"></i> Loaded Docker Images</h4>
+              <p>Docker images now available in your local Docker daemon:</p>
+              
+              <div id="loaded-images-list" class="loaded-images-container">
+                <!-- Will be populated with loaded Docker images -->
+              </div>
+              
+              <div class="actions">
+                <button id="push-to-registry-btn" class="btn btn-brand" disabled>
+                  <i class="fa-solid fa-upload"></i> Push to Local Registry
+                </button>
+                <button id="cleanup-extracted-btn" class="btn btn-outline-warning">
+                  <i class="fa-solid fa-trash"></i> Cleanup Extracted Files
+                </button>
+                <button id="refresh-loaded-images-btn" class="btn btn-outline-secondary">
+                  <i class="fa-solid fa-sync"></i> Refresh Images
+                </button>
+              </div>
+              
+              <!-- Push Progress Bar -->
+              <div id="push-progress-container" class="progress-container hidden">
+                <div class="progress-info">
+                  <span id="push-progress-text">Preparing to push images...</span>
+                  <span id="push-progress-count">0/0</span>
+                </div>
+                <div class="progress-bar-container">
+                  <div id="push-progress-bar" class="progress-bar"></div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 

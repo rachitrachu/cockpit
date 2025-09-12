@@ -1324,3 +1324,157 @@ pre.yaml-terminal {
   align-items: center;
   gap: 4px;
 }
+
+/* Extracted files container */
+.extracted-files-container {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 10px 0;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.extracted-file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.extracted-file-item:last-child {
+  border-bottom: none;
+}
+
+.extracted-file-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.extracted-file-icon {
+  font-size: 18px;
+  color: #007bff;
+}
+
+.extracted-file-details {
+  flex: 1;
+}
+
+.extracted-file-name {
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 14px;
+}
+
+.extracted-file-size {
+  font-size: 12px;
+  color: #6c757d;
+}
+
+.extracted-file-status {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.status-ready {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.status-loading {
+  background-color: #fff3cd;
+  color: #856404;
+}
+
+.status-loaded {
+  background-color: #d1ecf1;
+  color: #0c5460;
+}
+
+.status-error {
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+.no-extracted-files {
+  text-align: center;
+  color: #6c757d;
+  font-style: italic;
+  padding: 20px;
+}
+
+/* Loaded images container */
+.loaded-images-container {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 10px 0;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.loaded-image-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.loaded-image-item:last-child {
+  border-bottom: none;
+}
+
+.loaded-image-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.loaded-image-icon {
+  font-size: 20px;
+  color: #007bff;
+}
+
+.loaded-image-details {
+  flex: 1;
+}
+
+.loaded-image-name {
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 15px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.loaded-image-meta {
+  font-size: 12px;
+  color: #6c757d;
+  display: flex;
+  gap: 15px;
+  margin-top: 4px;
+}
+
+.loaded-image-tag {
+  background-color: #e9ecef;
+  color: #495057;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.no-loaded-images {
+  text-align: center;
+  color: #6c757d;
+  font-style: italic;
+  padding: 20px;
+}

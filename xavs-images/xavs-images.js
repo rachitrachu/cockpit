@@ -780,6 +780,9 @@ document.addEventListener('DOMContentLoaded', () => {
         log(`\nCould not list extracted contents: ${e.message}`);
       }
       
+      // Show extracted files section and scan for Docker images
+      await showExtractedFiles();
+      
     } catch (e) {
       log(`<span class="text-red">Failed to extract archive: ${e.message || e}</span>`);
       extractProgressText.textContent = `Error: ${e.message}`;
@@ -792,6 +795,417 @@ document.addEventListener('DOMContentLoaded', () => {
         extractProgressContainer.classList.add('hidden');
         extractProgressBar.style.backgroundColor = '';
       }, 3000);
+    }
+  }
+
+  // Show extracted files section and scan for Docker images
+  async function showExtractedFiles() {
+    const EXTRACT_DESTINATION = '/etc/xavs/xavs-images/';
+    const extractedFilesSection = document.getElementById('extracted-files-section');
+    const extractedFilesList = document.getElementById('extracted-files-list');
+    const loadImagesBtn = document.getElementById('load-images-btn');
+    const refreshExtractedFilesBtn = document.getElementById('refresh-extracted-files-btn');
+    
+    if (!extractedFilesSection || !extractedFilesList) return;
+    
+    try {
+      // Scan for .tar files in the extract destination
+      const { stdout } = await runCommand(['find', EXTRACT_DESTINATION, '-name', '*.tar', '-type', 'f']);
+      
+      const tarFiles = stdout.trim().split('\n').filter(line => line.trim() && line.endsWith('.tar'));
+      
+      if (tarFiles.length === 0) {
+        extractedFilesList.innerHTML = '<div class="no-extracted-files">No Docker image files (.tar) found in extracted archive.</div>';
+        loadImagesBtn.disabled = true;
+      } else {
+        // Display found .tar files
+        let filesHtml = '';
+        for (const filePath of tarFiles) {
+          const fileName = filePath.split('/').pop();
+          
+          // Get file size
+          let fileSize = 'Unknown';
+          try {
+            const { stdout: sizeOutput } = await runCommand(['stat', '-c', '%s', filePath]);
+            const bytes = parseInt(sizeOutput.trim(), 10);
+            fileSize = formatFileSize(bytes);
+          } catch {}
+          
+          filesHtml += `
+            <div class="extracted-file-item" data-file-path="${filePath}">
+              <div class="extracted-file-info">
+                <i class="fa-brands fa-docker extracted-file-icon"></i>
+                <div class="extracted-file-details">
+                  <div class="extracted-file-name">${fileName}</div>
+                  <div class="extracted-file-size">${fileSize}</div>
+                </div>
+              </div>
+              <span class="extracted-file-status status-ready">Ready to load</span>
+            </div>
+          `;
+        }
+        
+        extractedFilesList.innerHTML = filesHtml;
+        loadImagesBtn.disabled = false;
+        
+        log(`<span class="text-green">Found ${tarFiles.length} Docker image file(s) ready to load.</span>`);
+      }
+      
+      // Show the section
+      extractedFilesSection.classList.remove('hidden');
+      
+    } catch (e) {
+      extractedFilesList.innerHTML = `<div class="no-extracted-files">Error scanning extracted files: ${e.message}</div>`;
+      loadImagesBtn.disabled = true;
+      extractedFilesSection.classList.remove('hidden');
+    }
+    
+    // Set up refresh button
+    if (refreshExtractedFilesBtn) {
+      refreshExtractedFilesBtn.onclick = () => showExtractedFiles();
+    }
+    
+    // Set up load images button
+    if (loadImagesBtn) {
+      loadImagesBtn.onclick = () => loadExtractedImages();
+    }
+  }
+
+  // Format file size for display
+  function formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  }
+
+  // Load extracted images into Docker
+  async function loadExtractedImages() {
+    const loadImagesBtn = document.getElementById('load-images-btn');
+    const loadImagesProgressContainer = document.getElementById('load-images-progress-container');
+    const loadImagesProgressBar = document.getElementById('load-images-progress-bar');
+    const loadImagesProgressText = document.getElementById('load-images-progress-text');
+    const loadImagesProgressCount = document.getElementById('load-images-progress-count');
+    const extractedFilesList = document.getElementById('extracted-files-list');
+    
+    if (!loadImagesBtn || !loadImagesProgressContainer) return;
+    
+    // Get all .tar files
+    const fileItems = extractedFilesList.querySelectorAll('.extracted-file-item');
+    const tarFiles = Array.from(fileItems).map(item => item.dataset.filePath);
+    
+    if (tarFiles.length === 0) {
+      log('<span class="text-red">No Docker image files found to load.</span>');
+      return;
+    }
+    
+    loadImagesBtn.disabled = true;
+    loadImagesBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading Images...';
+    
+    // Show progress bar
+    loadImagesProgressContainer.classList.remove('hidden');
+    loadImagesProgressBar.style.width = '0%';
+    loadImagesProgressText.textContent = 'Starting image load process...';
+    loadImagesProgressCount.textContent = `0/${tarFiles.length}`;
+    
+    log(`<span class="text-blue">Loading ${tarFiles.length} Docker image(s) into Docker...</span>`);
+    
+    let loadedCount = 0;
+    let errorCount = 0;
+    
+    try {
+      for (let i = 0; i < tarFiles.length; i++) {
+        const filePath = tarFiles[i];
+        const fileName = filePath.split('/').pop();
+        const fileItem = fileItems[i];
+        const statusSpan = fileItem.querySelector('.extracted-file-status');
+        
+        loadImagesProgressText.textContent = `Loading: ${fileName}`;
+        loadImagesProgressCount.textContent = `${i + 1}/${tarFiles.length}`;
+        
+        // Update file status to loading
+        statusSpan.textContent = 'Loading...';
+        statusSpan.className = 'extracted-file-status status-loading';
+        
+        try {
+          // Load the Docker image
+          await runCommand(['docker', 'load', '-i', filePath]);
+          
+          // Update file status to loaded
+          statusSpan.textContent = 'Loaded';
+          statusSpan.className = 'extracted-file-status status-loaded';
+          
+          loadedCount++;
+          log(`<span class="text-green">✅ Loaded: ${fileName}</span>`);
+          
+        } catch (e) {
+          // Update file status to error
+          statusSpan.textContent = 'Load failed';
+          statusSpan.className = 'extracted-file-status status-error';
+          
+          errorCount++;
+          log(`<span class="text-red">❌ Failed to load ${fileName}: ${e.message}</span>`);
+        }
+        
+        // Update progress bar
+        const progress = Math.round(((i + 1) / tarFiles.length) * 100);
+        loadImagesProgressBar.style.width = progress + '%';
+      }
+      
+      // Final status
+      loadImagesProgressText.textContent = `Completed: ${loadedCount} loaded, ${errorCount} failed`;
+      loadImagesProgressCount.textContent = `${tarFiles.length}/${tarFiles.length}`;
+      
+      if (loadedCount > 0) {
+        log(`<span class="text-green">Successfully loaded ${loadedCount} Docker image(s)!</span>`);
+        
+        // Show loaded images section
+        await showLoadedImages();
+      }
+      
+      if (errorCount > 0) {
+        log(`<span class="text-red">${errorCount} image(s) failed to load. Check the logs above for details.</span>`);
+      }
+      
+    } catch (e) {
+      log(`<span class="text-red">Error during image loading: ${e.message}</span>`);
+    } finally {
+      loadImagesBtn.disabled = false;
+      loadImagesBtn.innerHTML = '<i class="fa-solid fa-download"></i> Load Images into Docker';
+      
+      setTimeout(() => {
+        loadImagesProgressContainer.classList.add('hidden');
+      }, 3000);
+    }
+  }
+
+  // Show loaded images in UI
+  async function showLoadedImages() {
+    const loadedImagesSection = document.getElementById('loaded-images-section');
+    const loadedImagesList = document.getElementById('loaded-images-list');
+    const pushToRegistryBtn = document.getElementById('push-to-registry-btn');
+    const cleanupExtractedBtn = document.getElementById('cleanup-extracted-btn');
+    const refreshLoadedImagesBtn = document.getElementById('refresh-loaded-images-btn');
+    
+    if (!loadedImagesSection || !loadedImagesList) return;
+    
+    log('<span class="text-blue">Refreshing local images list...</span>');
+    
+    try {
+      // Get Docker images with detailed format
+      const { stdout } = await runCommand(['docker', 'images', '--format', '{{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}\t{{.ID}}']);
+      
+      if (!stdout.trim()) {
+        loadedImagesList.innerHTML = '<div class="no-loaded-images">No Docker images found in local daemon.</div>';
+        pushToRegistryBtn.disabled = true;
+      } else {
+        const lines = stdout.trim().split('\n');
+        let imagesHtml = '';
+        
+        for (const line of lines) {
+          const [repository, tag, size, createdAt, imageId] = line.split('\t');
+          
+          // Skip <none> images for cleaner display
+          if (repository === '<none>' || tag === '<none>') continue;
+          
+          const imageName = `${repository}:${tag}`;
+          const shortId = imageId.substring(0, 12);
+          
+          imagesHtml += `
+            <div class="loaded-image-item" data-image-name="${imageName}" data-image-id="${imageId}">
+              <div class="loaded-image-info">
+                <i class="fa-brands fa-docker loaded-image-icon"></i>
+                <div class="loaded-image-details">
+                  <div class="loaded-image-name">${imageName}</div>
+                  <div class="loaded-image-meta">
+                    <span>Size: ${size}</span>
+                    <span>ID: ${shortId}</span>
+                    <span>Created: ${createdAt}</span>
+                  </div>
+                </div>
+              </div>
+              <span class="loaded-image-tag">Ready</span>
+            </div>
+          `;
+        }
+        
+        if (imagesHtml) {
+          loadedImagesList.innerHTML = imagesHtml;
+          pushToRegistryBtn.disabled = false;
+          log(`<span class="text-green">Found ${lines.length} Docker image(s) in local daemon.</span>`);
+        } else {
+          loadedImagesList.innerHTML = '<div class="no-loaded-images">No named Docker images found in local daemon.</div>';
+          pushToRegistryBtn.disabled = true;
+        }
+      }
+      
+      // Show the section
+      loadedImagesSection.classList.remove('hidden');
+      
+    } catch (e) {
+      loadedImagesList.innerHTML = `<div class="no-loaded-images">Error loading Docker images: ${e.message}</div>`;
+      pushToRegistryBtn.disabled = true;
+      loadedImagesSection.classList.remove('hidden');
+      log(`<span class="text-red">Could not list Docker images: ${e.message}</span>`);
+    }
+    
+    // Set up button handlers
+    if (refreshLoadedImagesBtn) {
+      refreshLoadedImagesBtn.onclick = () => showLoadedImages();
+    }
+    
+    if (pushToRegistryBtn) {
+      pushToRegistryBtn.onclick = () => pushImagesToRegistry();
+    }
+    
+    if (cleanupExtractedBtn) {
+      cleanupExtractedBtn.onclick = () => cleanupExtractedFiles();
+    }
+  }
+
+  // Push images to local registry
+  async function pushImagesToRegistry() {
+    const pushToRegistryBtn = document.getElementById('push-to-registry-btn');
+    const pushProgressContainer = document.getElementById('push-progress-container');
+    const pushProgressBar = document.getElementById('push-progress-bar');
+    const pushProgressText = document.getElementById('push-progress-text');
+    const pushProgressCount = document.getElementById('push-progress-count');
+    const loadedImagesList = document.getElementById('loaded-images-list');
+    
+    if (!pushToRegistryBtn || !pushProgressContainer) return;
+    
+    // Get all loaded images
+    const imageItems = loadedImagesList.querySelectorAll('.loaded-image-item');
+    const images = Array.from(imageItems).map(item => ({
+      name: item.dataset.imageName,
+      id: item.dataset.imageId
+    }));
+    
+    if (images.length === 0) {
+      log('<span class="text-red">No Docker images found to push.</span>');
+      return;
+    }
+    
+    pushToRegistryBtn.disabled = true;
+    pushToRegistryBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Pushing to Registry...';
+    
+    // Show progress bar
+    pushProgressContainer.classList.remove('hidden');
+    pushProgressBar.style.width = '0%';
+    pushProgressText.textContent = 'Starting push to local registry...';
+    pushProgressCount.textContent = `0/${images.length}`;
+    
+    log(`<span class="text-blue">Pushing ${images.length} Docker image(s) to local registry...</span>`);
+    
+    let pushedCount = 0;
+    let errorCount = 0;
+    
+    try {
+      for (let i = 0; i < images.length; i++) {
+        const image = images[i];
+        const imageItem = imageItems[i];
+        const tagSpan = imageItem.querySelector('.loaded-image-tag');
+        
+        pushProgressText.textContent = `Pushing: ${image.name}`;
+        pushProgressCount.textContent = `${i + 1}/${images.length}`;
+        
+        // Update image status to pushing
+        tagSpan.textContent = 'Pushing...';
+        tagSpan.className = 'loaded-image-tag';
+        tagSpan.style.backgroundColor = '#fff3cd';
+        tagSpan.style.color = '#856404';
+        
+        try {
+          // Tag image for local registry
+          const registryTag = `docker-registry:4000/${image.name}`;
+          await runCommand(['docker', 'tag', image.name, registryTag]);
+          
+          // Push to registry
+          await runCommand(['docker', 'push', registryTag]);
+          
+          // Update image status to pushed
+          tagSpan.textContent = 'Pushed';
+          tagSpan.style.backgroundColor = '#d1ecf1';
+          tagSpan.style.color = '#0c5460';
+          
+          pushedCount++;
+          log(`<span class="text-green">✅ Pushed: ${image.name}</span>`);
+          
+        } catch (e) {
+          // Update image status to error
+          tagSpan.textContent = 'Push failed';
+          tagSpan.style.backgroundColor = '#f8d7da';
+          tagSpan.style.color = '#721c24';
+          
+          errorCount++;
+          log(`<span class="text-red">❌ Failed to push ${image.name}: ${e.message}</span>`);
+        }
+        
+        // Update progress bar
+        const progress = Math.round(((i + 1) / images.length) * 100);
+        pushProgressBar.style.width = progress + '%';
+      }
+      
+      // Final status
+      pushProgressText.textContent = `Completed: ${pushedCount} pushed, ${errorCount} failed`;
+      pushProgressCount.textContent = `${images.length}/${images.length}`;
+      
+      if (pushedCount > 0) {
+        log(`<span class="text-green">Successfully pushed ${pushedCount} Docker image(s) to local registry!</span>`);
+      }
+      
+      if (errorCount > 0) {
+        log(`<span class="text-red">${errorCount} image(s) failed to push. Check the logs above for details.</span>`);
+      }
+      
+    } catch (e) {
+      log(`<span class="text-red">Error during push operation: ${e.message}</span>`);
+    } finally {
+      pushToRegistryBtn.disabled = false;
+      pushToRegistryBtn.innerHTML = '<i class="fa-solid fa-upload"></i> Push to Local Registry';
+      
+      setTimeout(() => {
+        pushProgressContainer.classList.add('hidden');
+      }, 3000);
+    }
+  }
+
+  // Cleanup extracted files
+  async function cleanupExtractedFiles() {
+    const EXTRACT_DESTINATION = '/etc/xavs/xavs-images/';
+    const cleanupExtractedBtn = document.getElementById('cleanup-extracted-btn');
+    
+    if (!cleanupExtractedBtn) return;
+    
+    // Confirm cleanup
+    if (!confirm('Are you sure you want to delete all extracted files from /etc/xavs/xavs-images/? This action cannot be undone.')) {
+      return;
+    }
+    
+    cleanupExtractedBtn.disabled = true;
+    cleanupExtractedBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Cleaning up...';
+    
+    try {
+      // Remove all files from extract destination
+      await runCommand(['rm', '-rf', EXTRACT_DESTINATION + '*']);
+      
+      log(`<span class="text-green">Successfully cleaned up extracted files from ${EXTRACT_DESTINATION}</span>`);
+      
+      // Refresh the extracted files list
+      await showExtractedFiles();
+      
+      // Hide loaded images section as files are now cleaned up
+      const loadedImagesSection = document.getElementById('loaded-images-section');
+      if (loadedImagesSection) {
+        loadedImagesSection.classList.add('hidden');
+      }
+      
+    } catch (e) {
+      log(`<span class="text-red">Error during cleanup: ${e.message}</span>`);
+    } finally {
+      cleanupExtractedBtn.disabled = false;
+      cleanupExtractedBtn.innerHTML = '<i class="fa-solid fa-trash"></i> Cleanup Extracted Files';
     }
   }
 
