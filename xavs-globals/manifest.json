@@ -4,7 +4,7 @@
     "xavs-globals": {
       "label": "XAVS Globals",
       "path": "index.html",
-      "order": 11,
+      "order": 40,
       "keywords": [
         {"matches": ["openstack", "ansible", "configuration", "globals", "xavs"]},
         {"matches": ["deploy", "deployment", "setup", "settings"]},

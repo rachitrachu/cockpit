@@ -4,7 +4,7 @@
     "xavs-add_host": {
       "label": "xAVS Hosts",
       "path": "index.html",
-      "order": 15,
+      "order": 20,
       "keywords": [
         {"matches": ["hosts", "cluster", "nodes", "inventory", "xavs"]},
         {"matches": ["deploy", "target", "configuration", "management", "ssh"]}

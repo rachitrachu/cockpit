@@ -8,11 +8,11 @@
     ],
     "content-security-policy": "default-src 'self'; connect-src 'self' blob:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src 'self'",
     
-    "tools": {
+    "system": {
         "xavs-storage-v2": {
             "label": "XAVS Storage",
             "path": "index.html",
-            "order": 30,
+            "order": 20,
             "icon": "fa-database"
         }
     

@@ -4,7 +4,7 @@
     "xavs-bootstrap": {
       "label": "XAVS Bootstrap",
       "path": "index.html",
-      "order": 5,
+      "order": 10,
       "keywords": [
         {"matches": ["bootstrap", "preparation", "dependencies", "system"]},
         {"matches": ["setup", "install", "configure", "requirements"]}

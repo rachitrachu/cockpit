@@ -2,11 +2,11 @@
   "version": 1,
   "requires": { "cockpit": "186" },
   "content-security-policy": "default-src 'self'; connect-src 'self' blob:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src 'self'",
-  "tools": {
+  "system": {
     "xavs-networking": {
       "label": "XAVS Networking",
       "path": "index.html",
-      "order": 50,
+      "order": 10,
       "docs": [
         {
           "label": "Network Management",

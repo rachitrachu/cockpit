@@ -4,7 +4,7 @@
     "xavs-images": {
       "label": "XAVS Images",
       "path": "index.html",
-      "order": 20,
+      "order": 30,
       "icon": "fa-docker",
       "keywords": [
         {"matches": ["docker", "images", "containers", "registry"]},

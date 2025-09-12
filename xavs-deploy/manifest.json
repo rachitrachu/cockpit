@@ -4,7 +4,7 @@
     "xavs-deploy": {
       "label": "XAVS Deploy",
       "path": "index.html",
-      "order": 10,
+      "order": 50,
       "keywords": [
         {"matches": ["deploy", "deployment", "kolla", "ansible", "openstack"]},
         {"matches": ["install", "setup", "configure", "orchestration"]}
