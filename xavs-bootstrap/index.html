@@ -29,7 +29,6 @@
         <li><a class="nav-link" data-target="panel-deps"><i class="fas fa-puzzle-piece"></i> Dependencies</a></li>
         <li><a class="nav-link" data-target="panel-logs"><i class="fas fa-terminal"></i> Logs</a></li>
       </ul>
-      <button class="btn btn-brand btn-tab-right" id="btn-refresh" type="button"><i class="fas fa-sync"></i> Re-run all detections</button>
     </div>
 
   <!-- Overview -->
@@ -39,13 +38,48 @@
       <a href="https://xloud.tech" target="_blank" rel="noopener">xloud.tech</a>.
     </div>
 
+    <!-- System Readiness Status -->
+    <div class="card mb16" id="system-readiness-card">
+      <div class="card-header">
+        <h3><i class="fas fa-heartbeat"></i> System Readiness</h3>
+      </div>
+      <div class="readiness-summary">
+        <div class="readiness-item">
+          <div class="readiness-icon" id="hardware-status-icon">
+            <i class="fas fa-clock text-warning"></i>
+          </div>
+          <div class="readiness-content">
+            <div class="readiness-title">Hardware Requirements</div>
+            <div class="readiness-description" id="hardware-status-text">Not checked yet</div>
+          </div>
+        </div>
+        <div class="readiness-item">
+          <div class="readiness-icon" id="dependencies-status-icon">
+            <i class="fas fa-clock text-warning"></i>
+          </div>
+          <div class="readiness-content">
+            <div class="readiness-title">Dependencies</div>
+            <div class="readiness-description" id="dependencies-status-text">Not checked yet</div>
+          </div>
+        </div>
+        <div class="readiness-overall" id="overall-readiness">
+          <div class="readiness-overall-icon">
+            <i class="fas fa-clock text-warning"></i>
+          </div>
+          <div class="readiness-overall-content">
+            <div class="readiness-overall-title" id="overall-status-title">System Status: Pending</div>
+            <div class="readiness-overall-description" id="overall-status-description">Run hardware and dependency checks to see system readiness</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- System Overview Cards -->
     <div class="overview-grid">
       <!-- Operating System Card -->
       <div class="card">
         <div class="card-header">
           <h3><i class="fas fa-desktop"></i> Operating System</h3>
-          <button class="btn btn-sm btn-outline-brand" id="btn-detect-os" type="button">Refresh</button>
         </div>
         <div class="kv">
           <div><b>Distribution</b></div><div id="os-name">—</div>
@@ -59,7 +93,6 @@
       <div class="card">
         <div class="card-header">
           <h3><i class="fas fa-chart-bar"></i> System Status</h3>
-          <button class="btn btn-sm btn-outline-brand" id="btn-refresh-status" type="button">Refresh</button>
         </div>
         <div class="kv">
           <div><b>Uptime</b></div><div id="sys-uptime">—</div>
@@ -73,7 +106,6 @@
       <div class="card">
         <div class="card-header">
           <h3><i class="fas fa-hdd"></i> Storage Overview</h3>
-          <button class="btn btn-sm btn-outline-brand" id="btn-refresh-storage" type="button">Refresh</button>
         </div>
         <div class="kv">
           <div><b>Root Filesystem</b></div><div id="storage-root">—</div>
@@ -87,7 +119,6 @@
       <div class="card">
         <div class="card-header">
           <h3><i class="fas fa-network-wired"></i> Network Overview</h3>
-          <button class="btn btn-sm btn-outline-brand" id="btn-refresh-network" type="button">Refresh</button>
         </div>
         <div class="kv">
           <div><b>Interfaces</b></div><div id="net-interfaces">—</div>
@@ -104,8 +135,11 @@
         <h3><i class="fas fa-rocket"></i> Quick Actions</h3>
       </div>
       <div class="overview-actions">
-        <button class="btn btn-brand" id="btn-run-hw-top" type="button">
+        <button class="btn btn-outline-brand" id="btn-run-hw-top" type="button">
           <i class="fas fa-search"></i> Run Hardware Checks
+        </button>
+        <button class="btn btn-outline-brand" id="btn-check-deps-overview" type="button">
+          <i class="fas fa-puzzle-piece"></i> Check Dependencies
         </button>
         <button class="btn btn-outline-brand" id="btn-refresh-all" type="button">
           <i class="fas fa-sync"></i> Refresh All Information

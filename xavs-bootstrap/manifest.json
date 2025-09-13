@@ -2,7 +2,7 @@
   "version": 1,
   "tools": {
     "xavs-bootstrap": {
-      "label": "XAVS Bootstrap",
+      "label": "XAVS Bootstrap VF",
       "path": "index.html",
       "order": 10,
       "keywords": [

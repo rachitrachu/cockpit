@@ -4,6 +4,14 @@
    - Font: Tenorite + safe fallbacks
    - Follows Cockpit theme (PatternFly) + compact UI
    ========================================================= */
+
+/* Global font sizing for better readability */
+body, html {
+    font-size: 15px; /* Base font size increased for better readability */
+    line-height: 1.5;
+    font-weight: 400;
+}
+
 :root { 
     --brand: #197560; 
     --brand-600: #166551; 
@@ -24,9 +32,10 @@
 
 /* Badge styles */
 .badge { 
-    padding: 2px 10px; 
+    padding: 4px 12px; /* Increased padding for better visibility */
     border-radius: 999px; 
-    font-size: 12px; 
+    font-size: 13px; /* Increased from 12px */
+    font-weight: 600; /* Added font weight for better readability */
     border: 1px solid var(--tab-border); 
 }
 .ok   { background: #e8f5e9; color: #1b5e20; }
@@ -50,13 +59,21 @@
 }
 .check-row:last-child { border-bottom: 0; }
 .value { text-align: right; white-space: nowrap; }
-.muted { color: var(--muted,#6b7280); font-size: 12px; }
+.muted { color: var(--muted,#6b7280); font-size: 14px; font-weight: 500; } /* Increased from 12px, added font-weight */
 .kv { 
     display: grid; 
     grid-template-columns: 160px 1fr; 
-    row-gap: 6px; 
+    row-gap: 8px; /* Increased from 6px for better spacing */
     word-break: break-word;
     overflow-wrap: break-word;
+    font-size: 15px; /* Added base font size */
+}
+
+/* Style the labels (keys) in the key-value pairs */
+.kv > div:nth-child(odd) {
+    font-weight: 600; /* Make labels bold */
+    font-size: 15px; /* Ensure consistent size */
+    color: var(--text);
 }
 
 /* Handle long content in key-value pairs */
@@ -64,12 +81,15 @@
     overflow: hidden;
     word-wrap: break-word;
     hyphens: auto;
-    line-height: 1.4;
+    line-height: 1.5; /* Improved from 1.4 */
+    font-size: 15px; /* Increased from default */
+    font-weight: 500; /* Added weight for better readability */
 }
 
 /* Special handling for network IPs that can be very long */
 #net-ips, #net-active, #net-types {
-    font-size: 13px;
+    font-size: 14px; /* Increased from 13px */
+    font-weight: 500; /* Added font weight */
     line-height: 1.4;
     white-space: pre-line; /* Preserve line breaks */
     word-break: break-all; /* Break long IPs if needed */
@@ -150,7 +170,7 @@ body { margin:0; font-family: Tenorite,"Segoe UI",system-ui,-apple-system,"Helve
     margin:0; 
     font-weight:700; 
     letter-spacing:.2px; 
-    font-size:22px; 
+    font-size:26px; /* Increased from 22px */
     display: flex;
     align-items: center;
     gap: 2px;
@@ -249,25 +269,6 @@ body { margin:0; font-family: Tenorite,"Segoe UI",system-ui,-apple-system,"Helve
     box-shadow:0 2px 6px rgba(0,0,0,.08); 
 }
 
-/* Button in tab row */
-.btn-tab-right {
-    padding: 8px 14px;
-    font-size: 14px;
-    border-radius: 8px;
-    border: 1px solid var(--brand);
-    background: var(--brand);
-    color: #fff;
-    font-weight: 650;
-    transition: background .12s, transform .08s;
-    white-space: nowrap;
-}
-.btn-tab-right:hover {
-    background: var(--brand-600);
-    transform: translateY(-1px);
-}
-.btn-tab-right i {
-    margin-right: 6px;
-}
 .tab-content { padding:6px 0 12px; }
 .tab-pane {
     display: none !important;
@@ -481,13 +482,135 @@ select option:checked { background:var(--brand); color:#fff; }
 
 /* Enhanced Overview and Hardware Styles */
 .card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; border-bottom:1px solid var(--border); padding-bottom:12px; }
-.card-header h3, .card-header h4 { margin:0; font-size:16px; font-weight:600; display:flex; align-items:center; gap:8px; }
-.card-header h3 { font-size:18px; }
+.card-header h3, .card-header h4 { margin:0; font-size:18px; font-weight:700; display:flex; align-items:center; gap:8px; } /* Increased from 16px to 18px, font-weight from 600 to 700 */
+.card-header h3 { font-size:20px; font-weight:700; } /* Increased from 18px to 20px, ensured bold weight */
 
 /* Overview Grid Layout */
 .overview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 16px; }
 .overview-actions { display: flex; gap: 12px; flex-wrap: wrap; }
 .overview-actions .btn { display: flex; align-items: center; gap: 8px; }
+
+/* System Readiness Status */
+.readiness-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.readiness-item {
+    display: grid;
+    grid-template-columns: 50px 1fr;
+    gap: 16px;
+    align-items: flex-start;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-2);
+    transition: all 0.2s ease;
+}
+
+.readiness-item.success {
+    border-color: #22c55e;
+    background: #f0fdf4;
+}
+
+.readiness-item.error {
+    border-color: #ef4444;
+    background: #fef2f2;
+}
+
+.readiness-item.warning {
+    border-color: #f59e0b;
+    background: #fffbeb;
+}
+
+.readiness-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 2px solid var(--border);
+    font-size: 18px;
+}
+
+.readiness-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.readiness-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.readiness-description {
+    font-size: 14px;
+    color: var(--muted);
+    line-height: 1.4;
+}
+
+.readiness-overall {
+    display: grid;
+    grid-template-columns: 60px 1fr;
+    gap: 20px;
+    align-items: center;
+    padding: 20px;
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    margin-top: 8px;
+    transition: all 0.3s ease;
+}
+
+.readiness-overall.success {
+    border-color: #22c55e;
+    background: #f0fdf4;
+}
+
+.readiness-overall.error {
+    border-color: #ef4444;
+    background: #fef2f2;
+}
+
+.readiness-overall.warning {
+    border-color: #f59e0b;
+    background: #fffbeb;
+}
+
+.readiness-overall-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 3px solid var(--border);
+    font-size: 24px;
+}
+
+.readiness-overall-content {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.readiness-overall-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.readiness-overall-description {
+    font-size: 15px;
+    color: var(--muted);
+    line-height: 1.4;
+}
 
 /* Hardware Checks */
 .hw-requirements { display: flex; flex-direction: column; gap: 12px; }
@@ -495,7 +618,7 @@ select option:checked { background:var(--brand); color:#fff; }
 .hw-check-icon { font-size: 20px; text-align: center; line-height: 1; }
 .hw-check-content { flex: 1; }
 .hw-check-title { font-weight: 600; margin-bottom: 4px; }
-.hw-check-description { font-size: 13px; color: var(--muted); line-height: 1.4; }
+.hw-check-description { font-size: 14px; color: var(--muted); line-height: 1.4; } /* Increased from 13px */
 .hw-check-result { display: flex; align-items: center; }
 
 /* Hardware Details */
@@ -514,7 +637,7 @@ select option:checked { background:var(--brand); color:#fff; }
     min-width: 0; /* Allow flex item to shrink */
 }
 .hw-detail-header { margin-bottom: 12px; }
-.hw-detail-header h4 { margin: 0; font-size: 14px; font-weight: 600; }
+.hw-detail-header h4 { margin: 0; font-size: 16px; font-weight: 700; } /* Increased from 14px, font-weight from 600 to 700 */
 
 /* Summary section */
 .hw-summary-section { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }

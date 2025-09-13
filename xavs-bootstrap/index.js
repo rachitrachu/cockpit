@@ -486,6 +486,9 @@
 
                 log(`[HW] Hardware check completed: root=${freeSpace}G nics=${nics} extra=${extra} cores=${cores} ram=${ramGB}G`);
                 
+                // Update readiness status
+                updateHardwareReadinessStatus();
+                
                 // Load detailed hardware information
                 log("[Hardware] Refreshing detailed hardware information...");
 
@@ -721,6 +724,174 @@
             log("[OS] Detection failed: " + (error.message || error), "error");
         }
         });
+    }
+
+    //  System Readiness Status Functions 
+    function setReadinessCheckingState() {
+        const hardwareIcon = $("hardware-status-icon");
+        const hardwareText = $("hardware-status-text");
+        const depsIcon = $("dependencies-status-icon");
+        const depsText = $("dependencies-status-text");
+        
+        if (hardwareIcon && hardwareText) {
+            hardwareIcon.innerHTML = '<i class="fas fa-spinner fa-spin text-info"></i>';
+            hardwareText.textContent = "Checking hardware requirements...";
+        }
+        
+        if (depsIcon && depsText) {
+            if (osInfo.isXOS) {
+                depsIcon.innerHTML = '<i class="fas fa-info-circle text-info"></i>';
+                depsText.textContent = "Skipped on XOS (hardware-only deployment)";
+            } else {
+                depsIcon.innerHTML = '<i class="fas fa-spinner fa-spin text-info"></i>';
+                depsText.textContent = "Checking dependencies...";
+            }
+        }
+        
+        // Set overall status to checking
+        const overallSection = $("overall-readiness");
+        const overallTitle = $("overall-status-title");
+        const overallDescription = $("overall-status-description");
+        const overallIcon = overallSection?.querySelector('.readiness-overall-icon');
+        
+        if (overallIcon && overallTitle && overallDescription) {
+            overallIcon.innerHTML = '<i class="fas fa-spinner fa-spin text-info"></i>';
+            overallTitle.textContent = "System Status: Checking...";
+            overallDescription.textContent = "Running system checks to determine readiness for deployment.";
+        }
+    }
+    
+    function updateHardwareReadinessStatus() {
+        const hardwareIcon = $("hardware-status-icon");
+        const hardwareText = $("hardware-status-text");
+        const hardwareItem = hardwareIcon?.closest('.readiness-item');
+        
+        if (!hardwareIcon || !hardwareText || !hardwareItem) return;
+        
+        // Check hardware validation results
+        const errors = ['root', 'nics', 'cores', 'ram']
+            .filter(id => {
+                const el = $(`chk-${id}`);
+                return el && el.className.includes("err");
+            });
+        const warnings = ['extra']
+            .filter(id => {
+                const el = $(`chk-${id}`);
+                return el && el.className.includes("warn");
+            });
+        
+        // Reset classes
+        hardwareItem.classList.remove('success', 'error', 'warning');
+        
+        if (errors.length === 0 && warnings.length === 0) {
+            // All requirements met
+            hardwareIcon.innerHTML = '<i class="fas fa-check text-success"></i>';
+            hardwareText.textContent = "All hardware requirements met";
+            hardwareItem.classList.add('success');
+        } else if (errors.length > 0) {
+            // Critical issues
+            hardwareIcon.innerHTML = '<i class="fas fa-times text-danger"></i>';
+            hardwareText.textContent = `${errors.length} critical requirement(s) not met`;
+            hardwareItem.classList.add('error');
+        } else {
+            // Only warnings
+            hardwareIcon.innerHTML = '<i class="fas fa-exclamation-triangle text-warning"></i>';
+            hardwareText.textContent = `${warnings.length} optional requirement(s) missing`;
+            hardwareItem.classList.add('warning');
+        }
+        
+        updateOverallReadinessStatus();
+    }
+    
+    function updateDependenciesReadinessStatus() {
+        const depsIcon = $("dependencies-status-icon");
+        const depsText = $("dependencies-status-text");
+        const depsItem = depsIcon?.closest('.readiness-item');
+        
+        if (!depsIcon || !depsText || !depsItem) return;
+        
+        // Check if running on XOS (skip dependencies)
+        if (osInfo.isXOS) {
+            depsIcon.innerHTML = '<i class="fas fa-info-circle text-info"></i>';
+            depsText.textContent = "Skipped on XOS (hardware-only deployment)";
+            depsItem.classList.remove('success', 'error', 'warning');
+            updateOverallReadinessStatus();
+            return;
+        }
+        
+        // Check dependency validation results
+        const badges = ['dep-py', 'dep-tools', 'dep-env', 'dep-xdep', 'dep-oscli', 'dep-cfg', 'dep-pwd'];
+        const errors = badges.filter(id => {
+            const el = $(id);
+            return el && el.className.includes("err");
+        });
+        const warnings = badges.filter(id => {
+            const el = $(id);
+            return el && el.className.includes("warn");
+        });
+        
+        // Reset classes
+        depsItem.classList.remove('success', 'error', 'warning');
+        
+        if (errors.length === 0 && warnings.length === 0) {
+            // All dependencies ready
+            depsIcon.innerHTML = '<i class="fas fa-check text-success"></i>';
+            depsText.textContent = "All dependencies are ready";
+            depsItem.classList.add('success');
+        } else if (errors.length > 0) {
+            // Missing dependencies
+            depsIcon.innerHTML = '<i class="fas fa-times text-danger"></i>';
+            depsText.textContent = `${errors.length} missing dependencies`;
+            depsItem.classList.add('error');
+        } else {
+            // Partial dependencies
+            depsIcon.innerHTML = '<i class="fas fa-exclamation-triangle text-warning"></i>';
+            depsText.textContent = `${warnings.length} dependencies need attention`;
+            depsItem.classList.add('warning');
+        }
+        
+        updateOverallReadinessStatus();
+    }
+    
+    function updateOverallReadinessStatus() {
+        const overallSection = $("overall-readiness");
+        const overallTitle = $("overall-status-title");
+        const overallDescription = $("overall-status-description");
+        const overallIcon = overallSection?.querySelector('.readiness-overall-icon');
+        
+        if (!overallSection || !overallTitle || !overallDescription || !overallIcon) return;
+        
+        // Get status of individual components
+        const hardwareItem = $("hardware-status-icon")?.closest('.readiness-item');
+        const depsItem = $("dependencies-status-icon")?.closest('.readiness-item');
+        
+        const hardwareSuccess = hardwareItem?.classList.contains('success');
+        const hardwareError = hardwareItem?.classList.contains('error');
+        const depsSuccess = depsItem?.classList.contains('success') || osInfo.isXOS;
+        const depsError = depsItem?.classList.contains('error') && !osInfo.isXOS;
+        
+        // Reset classes
+        overallSection.classList.remove('success', 'error', 'warning');
+        
+        if (hardwareSuccess && depsSuccess) {
+            // System ready
+            overallIcon.innerHTML = '<i class="fas fa-check-circle text-success"></i>';
+            overallTitle.textContent = "System Status: Ready for Deployment";
+            overallDescription.textContent = "All requirements met. Your system is ready for OpenStack deployment.";
+            overallSection.classList.add('success');
+        } else if (hardwareError || depsError) {
+            // Critical issues
+            overallIcon.innerHTML = '<i class="fas fa-exclamation-circle text-danger"></i>';
+            overallTitle.textContent = "System Status: Not Ready";
+            overallDescription.textContent = "Critical requirements are missing. Please resolve issues before deployment.";
+            overallSection.classList.add('error');
+        } else {
+            // Partial readiness or warnings
+            overallIcon.innerHTML = '<i class="fas fa-exclamation-triangle text-warning"></i>';
+            overallTitle.textContent = "System Status: Partially Ready";
+            overallDescription.textContent = "Some optional requirements are missing, but deployment is possible.";
+            overallSection.classList.add('warning');
+        }
     }
 
     //  Enhanced System Information Functions 
@@ -1147,6 +1318,10 @@ End of Report
             setText("hw-summary", summary);
 
             log(`[HW] Hardware check completed: root=${freeSpace}G nics=${nics} extra=${extra} cores=${cores} ram=${ramGB}G`);
+            
+            // Update readiness status
+            updateHardwareReadinessStatus();
+            
         } catch (error) {
             setText("hw-summary", "Hardware check failed. See logs for details.");
             log("[HW] Hardware check failed: " + (error.message || error));
@@ -1286,6 +1461,9 @@ End of Report
                 }
                 
                 log(`[Deps] Check completed - ${errors.length} errors, ${warnings.length} warnings`);
+                
+                // Update readiness status after dependency check
+                updateDependenciesReadinessStatus();
                 
                 // Update button states after successful check
                 updateInstallButtonStates();
@@ -2746,9 +2924,12 @@ octavia_loadbalancer_topology: "ACTIVE_STANDBY"
     }
 
     //  Event Listeners 
-    $("btn-detect-os").addEventListener("click", detectOS);
     $("btn-run-hw-top").addEventListener("click", () => {
         document.querySelector('#tabs .nav-link[data-target="panel-hw"]').click();
+    });
+    $("btn-check-deps-overview").addEventListener("click", () => {
+        log("[UI] Check Dependencies button clicked from Overview - redirecting to Dependencies tab");
+        document.querySelector('#tabs .nav-link[data-target="panel-deps"]').click();
     });
     $("btn-run-hw").addEventListener("click", runHardwareChecks);
     $("btn-check-deps").addEventListener("click", () => {
@@ -2758,9 +2939,6 @@ octavia_loadbalancer_topology: "ACTIVE_STANDBY"
     $("btn-install-all").addEventListener("click", installDependencies);
     
     // Enhanced Overview buttons
-    $("btn-refresh-status").addEventListener("click", refreshSystemStatus);
-    $("btn-refresh-storage").addEventListener("click", refreshStorageOverview);
-    $("btn-refresh-network").addEventListener("click", refreshNetworkOverview);
     $("btn-refresh-all").addEventListener("click", async () => {
         await detectOS();
         await refreshSystemStatus();
@@ -2786,44 +2964,7 @@ octavia_loadbalancer_topology: "ACTIVE_STANDBY"
     $("btn-install-cfg").addEventListener("click", installConfiguration);
     $("btn-install-pwd").addEventListener("click", generatePasswords);
     
-    $("btn-refresh").addEventListener("click", async () => {
-        // Disable button during operation
-        const refreshBtn = $("btn-refresh");
-        if (refreshBtn) {
-            refreshBtn.disabled = true;
-            refreshBtn.textContent = " Running all detections...";
-        }
-        
-        try {
-            log("[Refresh] Starting comprehensive system detection...");
-            
-            // Core system detection
-            await detectOS();
-            
-            // Enhanced overview functions
-            await refreshSystemStatus();
-            await refreshStorageOverview();
-            await refreshNetworkOverview();
-            
-            // Hardware checks
-            await runHardwareChecks();
-            await refreshHardwareDetails();
-            await detectVirtualization();
-            
-            // Dependency checks
-            await checkDependencies();
-            
-            log("[Refresh]  All detections completed successfully");
-        } catch (error) {
-            log("[Refresh]  Error during detection: " + (error.message || error));
-        } finally {
-            // Re-enable button
-            if (refreshBtn) {
-                refreshBtn.disabled = false;
-                refreshBtn.textContent = " Re-run all detections";
-            }
-        }
-    });
+    
     $("btn-clear-log").addEventListener("click", () => {
         const logElement = $("log");
         if (logElement) {
@@ -2856,6 +2997,9 @@ octavia_loadbalancer_topology: "ACTIVE_STANDBY"
         // Initialize hardware information on page load with OperationManager
         OperationManager.run("Initial Hardware Load", async () => {
             log("[Hardware] Loading hardware information on page startup...");
+            
+            // Set readiness status to checking state
+            setReadinessCheckingState();
             
             // Run hardware validation checks
             ['root', 'nics', 'extra', 'cores', 'ram'].forEach(id => 
@@ -2933,6 +3077,9 @@ octavia_loadbalancer_topology: "ACTIVE_STANDBY"
             setText("hw-summary", summary);
 
             log(`[HW] Hardware check completed: root=${freeSpace}G nics=${nics} extra=${extra} cores=${cores} ram=${ramGB}G`);
+            
+            // Update readiness status immediately after validation checks
+            updateHardwareReadinessStatus();
             
             // Load detailed hardware information
             log("[Hardware] Refreshing detailed hardware information...");
