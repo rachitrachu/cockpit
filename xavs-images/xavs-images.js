@@ -3269,10 +3269,16 @@ OS: ${imageData.Os}`;
   // ---- Registry Management Functions ----
   
   async function showRegistryInfo() {
-    const detailsEl = $('registry-details');
+    const containerEl = $('registry-details');
+    const placeholderEl = containerEl?.querySelector('.registry-info-placeholder');
     
     try {
-      log(' Gathering registry information...\n');
+      log('ℹ️ Gathering registry information...\n');
+      
+      // Hide placeholder
+      if (placeholderEl) {
+        placeholderEl.style.display = 'none';
+      }
       
       // Get container info
       const { stdout: containerInfo } = await runCommand(['docker', 'inspect', REGISTRY_CONTAINER_NAME]);
@@ -3294,42 +3300,62 @@ OS: ${imageData.Os}`;
         catalogInfo = 'Registry not accessible';
       }
       
-      const registryDetails = `
-Container Information:
-  Name: ${containerData.Name.replace('/', '')}
-  Status: ${containerData.State.Status}
-  Created: ${new Date(containerData.Created).toLocaleString()}
-  Image: ${containerData.Config.Image}
-  Ports: ${Object.keys(containerData.NetworkSettings.Ports || {}).join(', ')}
-  
-Performance Stats:
-${statsInfo}
-
-Volume Information:
-${volumeInfo}
-
-Registry Content:
-  Repositories: ${catalogInfo}
-  API Endpoint: http://${LOCAL_REG_HOST}/v2/
-  
-Network Configuration:
-  Host: ${LOCAL_REG_HOST}
-  Internal IP: ${containerData.NetworkSettings.IPAddress || 'N/A'}
-`;
+      // Populate container information
+      const setElementText = (id, text) => {
+        const el = $(id);
+        if (el) el.textContent = text || '-';
+      };
       
-      detailsEl.textContent = registryDetails;
+      setElementText('container-name', containerData.Name.replace('/', ''));
+      setElementText('container-status', containerData.State.Status);
+      setElementText('container-created', new Date(containerData.Created).toLocaleString());
+      setElementText('container-image', containerData.Config.Image);
+      setElementText('container-ports', Object.keys(containerData.NetworkSettings.Ports || {}).join(', ') || 'None');
+      
+      // Populate performance stats
+      const performanceEl = $('performance-stats');
+      if (performanceEl) {
+        performanceEl.textContent = statsInfo;
+      }
+      
+      // Populate registry content
+      setElementText('registry-repositories', catalogInfo);
+      setElementText('registry-endpoint', `http://${LOCAL_REG_HOST}/v2/`);
+      
+      // Populate network configuration
+      setElementText('network-host', LOCAL_REG_HOST);
+      setElementText('network-ip', containerData.NetworkSettings.IPAddress || 'N/A');
+      
+      // Populate volume information
+      const volumeEl = $('volume-info');
+      if (volumeEl) {
+        volumeEl.textContent = volumeInfo;
+      }
+      
+      // Show all sections
+      const sections = ['container-info-section', 'performance-info-section', 'registry-content-section', 'network-info-section', 'volume-info-section'];
+      sections.forEach(sectionId => {
+        const section = $(sectionId);
+        if (section) {
+          section.style.display = 'block';
+        }
+      });
       
       // Open the details element to show the information
-      const detailsParent = detailsEl.closest('details');
+      const detailsParent = containerEl?.closest('details');
       if (detailsParent) {
         detailsParent.open = true;
       }
       
-      log(' Registry information loaded\n');
+      log('✅ Registry information loaded\n');
       
     } catch (e) {
-      detailsEl.textContent = `Error loading registry information: ${e.message}`;
-      log(` Failed to get registry info: ${e.message}\n`);
+      // Show error in placeholder
+      if (placeholderEl) {
+        placeholderEl.style.display = 'flex';
+        placeholderEl.innerHTML = `<i class="fa fa-exclamation-triangle"></i><span>Error loading registry information: ${e.message}</span>`;
+      }
+      log(`❌ Failed to get registry info: ${e.message}\n`);
     }
   }
 
@@ -3873,6 +3899,18 @@ ${volumeSize}
         }));
     } catch (e) {
         console.warn('Could not clear stored logs:', e);
+    }
+  });
+
+  // Go to Registry Management tab button for Pull tab
+  safeAddEventListener('goto-registry-btn-pull', 'click', () => {
+    // Find the registry tab and trigger click
+    const tabs = document.querySelectorAll('.nav-link[data-tab]');
+    for (const tab of tabs) {
+      if (tab.getAttribute('data-tab') === 'tab-registry') {
+        tab.click();
+        break;
+      }
     }
   });
 

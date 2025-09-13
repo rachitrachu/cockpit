@@ -1299,6 +1299,115 @@ pre.yaml-terminal {
   min-width: 140px;
 }
 
+/* ===== Registry Info Container ===== */
+.registry-info-container {
+  margin-top: 16px;
+}
+
+.registry-info-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.registry-info-placeholder i {
+  color: var(--brand);
+}
+
+.info-section {
+  margin-bottom: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.info-section h4 {
+  margin: 0 0 16px 0;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.info-section h4 i {
+  color: var(--brand);
+  width: 20px;
+  text-align: center;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.info-label {
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.info-value {
+  color: var(--text);
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 14px;
+  word-break: break-all;
+  padding: 8px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.stats-container,
+.volume-container {
+  margin-top: 12px;
+}
+
+.stats-display {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 16px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* Responsive adjustments for registry info */
+@media (max-width: 768px) {
+  .info-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  
+  .info-section {
+    padding: 16px;
+  }
+}
+
 /* File Info Display for Extract Section */
 .file-info-display {
   background: #f8f9fa;

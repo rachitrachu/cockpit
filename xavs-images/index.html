@@ -382,6 +382,9 @@
           <div class="actions">
             <button class="btn btn-brand" id="test-connectivity-btn">🧪 Test Connectivity</button>
             <button class="btn btn-outline-brand" id="pull-btn">Pull from Xloud</button>
+            <button class="btn btn-brand" id="goto-registry-btn-pull">
+              <i class="fa-solid fa-arrow-right"></i> Go to Registry Management to Push Images
+            </button>
           </div>
         </div>
       </section>
@@ -485,7 +488,85 @@
           
           <details class="config-details">
             <summary>Registry Details</summary>
-            <pre id="registry-details" class="config-display">Click "Show Registry Info" to load details</pre>
+            <div id="registry-details" class="registry-info-container">
+              <div class="registry-info-placeholder">
+                <i class="fa fa-info-circle"></i>
+                <span>Click "Show Registry Info" to load details</span>
+              </div>
+              
+              <!-- Container Information -->
+              <div class="info-section" id="container-info-section" style="display: none;">
+                <h4><i class="fa fa-cube"></i> Container Information</h4>
+                <div class="info-grid">
+                  <div class="info-item">
+                    <span class="info-label">Name:</span>
+                    <span class="info-value" id="container-name">-</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">Status:</span>
+                    <span class="info-value" id="container-status">-</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">Created:</span>
+                    <span class="info-value" id="container-created">-</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">Image:</span>
+                    <span class="info-value" id="container-image">-</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">Ports:</span>
+                    <span class="info-value" id="container-ports">-</span>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Performance Stats -->
+              <div class="info-section" id="performance-info-section" style="display: none;">
+                <h4><i class="fa fa-chart-line"></i> Performance Stats</h4>
+                <div class="stats-container">
+                  <pre id="performance-stats" class="stats-display"></pre>
+                </div>
+              </div>
+              
+              <!-- Registry Content -->
+              <div class="info-section" id="registry-content-section" style="display: none;">
+                <h4><i class="fa fa-database"></i> Registry Content</h4>
+                <div class="info-grid">
+                  <div class="info-item">
+                    <span class="info-label">Repositories:</span>
+                    <span class="info-value" id="registry-repositories">-</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">API Endpoint:</span>
+                    <span class="info-value" id="registry-endpoint">-</span>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Network Configuration -->
+              <div class="info-section" id="network-info-section" style="display: none;">
+                <h4><i class="fa fa-network-wired"></i> Network Configuration</h4>
+                <div class="info-grid">
+                  <div class="info-item">
+                    <span class="info-label">Host:</span>
+                    <span class="info-value" id="network-host">-</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">Internal IP:</span>
+                    <span class="info-value" id="network-ip">-</span>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Volume Information -->
+              <div class="info-section" id="volume-info-section" style="display: none;">
+                <h4><i class="fa fa-hdd"></i> Volume Information</h4>
+                <div class="volume-container">
+                  <pre id="volume-info" class="stats-display"></pre>
+                </div>
+              </div>
+            </div>
           </details>
         </div>
       </section>
