@@ -2786,6 +2786,33 @@ OS: ${imageData.Os}`;
     }
   });
 
+  // Function to create XAVS globals YAML configuration file
+  async function createXavsGlobalsConfig() {
+    try {
+      log('Creating XAVS globals configuration...\n');
+      
+      // Create the directory if it doesn't exist
+      await runCommand(['mkdir', '-p', '/etc/xavs/globals.d']);
+      
+      // YAML content for xavs-images configuration
+      const yamlContent = `# xdeploy repo details
+docker_custom_config:
+ insecure-registries:
+ - docker-registry:4000
+enable_docker_repo: "no"
+docker_registry: "docker-registry:4000"
+kolla_internal_registry: "docker-registry:4000"
+`;
+      
+      // Write the YAML file (overwrite if exists)
+      await writeFile('/etc/xavs/globals.d/_98_xavs-images.yml', yamlContent);
+      log(' XAVS globals configuration created at /etc/xavs/globals.d/_98_xavs-images.yml\n');
+      
+    } catch (e) {
+      log(` Warning: Could not create XAVS globals configuration: ${e.message}\n`);
+    }
+  }
+
   // Split registry start logic into separate function
   async function startRegistry() {
     log('Starting docker-registry (host network, port 4000)...\n');
@@ -2823,6 +2850,9 @@ OS: ${imageData.Os}`;
       await writeFile(DOCKER_DAEMON_JSON, JSON.stringify(DOCKER_CONFIG_TEMPLATE, null, 2));
       log(' Applied Docker daemon configuration\n');
       
+      // Create XAVS globals configuration file
+      await createXavsGlobalsConfig();
+      
       log(' Registry started successfully!');
       log('Registry is accessible at: http://docker-registry:4000\n');
       $('restart-docker-btn').disabled = false;
@@ -2841,12 +2871,18 @@ OS: ${imageData.Os}`;
             log(' Registry container is already running!\n');
             log('Registry is accessible at: http://docker-registry:4000\n');
             $('restart-docker-btn').disabled = false;
+            
+            // Create XAVS globals configuration file
+            await createXavsGlobalsConfig();
           } else {
             log('Registry container exists but is not running. Starting it...\n');
             await runCommand(['docker', 'start', REGISTRY_CONTAINER_NAME]);
             log(' Registry container started successfully!\n');
             log('Registry is accessible at: http://docker-registry:4000\n');
             $('restart-docker-btn').disabled = false;
+            
+            // Create XAVS globals configuration file
+            await createXavsGlobalsConfig();
           }
         } catch (statusError) {
           log(` Could not check registry status: ${statusError.message}\n`);

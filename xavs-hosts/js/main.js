@@ -23,7 +23,6 @@ const subTabContents = document.querySelectorAll('.sub-tab-content');
 // Log elements
 const logContainer = document.getElementById("log-container");
 const clearLogBtn = document.getElementById("btn-clear-log");
-const viewLogsBtn = document.getElementById("view-logs-btn");
 const statusBar = document.querySelector('.bottom-status-bar');
 const statusText = document.getElementById('recent-activity');
 
@@ -239,12 +238,6 @@ function clearLog() {
 // Log event listeners
 if (clearLogBtn) {
   clearLogBtn.addEventListener('click', clearLog);
-}
-
-if (viewLogsBtn) {
-  viewLogsBtn.addEventListener('click', () => {
-    switchTab('panel-logs');
-  });
 }
 
 // Help button functionality (tooltip handled by CSS)
