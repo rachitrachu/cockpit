@@ -1,7 +1,7 @@
 {
   "version": 1,
   "tools": {
-    "xavs-add_host": {
+    "xavs-hosts": {
       "label": "XAVS Hosts",
       "path": "index.html",
       "order": 20,
