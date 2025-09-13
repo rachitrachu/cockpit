@@ -3271,9 +3271,16 @@ OS: ${imageData.Os}`;
   async function showRegistryInfo() {
     const containerEl = $('registry-details');
     const placeholderEl = containerEl?.querySelector('.registry-info-placeholder');
+    const detailsSection = $('registry-details-section');
     
     try {
       log('ℹ️ Gathering registry information...\n');
+      
+      // Show the entire details section
+      if (detailsSection) {
+        detailsSection.classList.remove('details-hidden');
+        detailsSection.style.display = 'block';
+      }
       
       // Hide placeholder
       if (placeholderEl) {
@@ -3350,6 +3357,12 @@ OS: ${imageData.Os}`;
       log('✅ Registry information loaded\n');
       
     } catch (e) {
+      // Show the details section even on error
+      if (detailsSection) {
+        detailsSection.classList.remove('details-hidden');
+        detailsSection.style.display = 'block';
+      }
+      
       // Show error in placeholder
       if (placeholderEl) {
         placeholderEl.style.display = 'flex';
@@ -3360,8 +3373,23 @@ OS: ${imageData.Os}`;
   }
 
   async function showStorageUsage() {
+    const containerEl = $('storage-usage-details');
+    const placeholderEl = containerEl?.querySelector('.storage-usage-placeholder');
+    const detailsSection = $('storage-usage-section');
+    
     try {
-      log('� Analyzing registry storage usage...\n');
+      log('📊 Analyzing registry storage usage...\n');
+      
+      // Show the entire details section
+      if (detailsSection) {
+        detailsSection.classList.remove('details-hidden');
+        detailsSection.style.display = 'block';
+      }
+      
+      // Hide placeholder
+      if (placeholderEl) {
+        placeholderEl.style.display = 'none';
+      }
       
       // Get registry volume size
       const { stdout: volumeSize } = await runCommand(['docker', 'system', 'df', '-v']);
@@ -3371,40 +3399,82 @@ OS: ${imageData.Os}`;
       
       // Get registry directory size inside container
       let registryDataSize = 'N/A';
+      let registryDataSizeFormatted = 'Unable to access registry data';
       try {
         const { stdout: dataSize } = await runCommand(['docker', 'exec', REGISTRY_CONTAINER_NAME, 'du', '-sh', '/var/lib/registry']);
         registryDataSize = dataSize.trim();
+        registryDataSizeFormatted = registryDataSize.split('\t')[0] || registryDataSize;
       } catch (e) {
-        registryDataSize = 'Unable to access registry data';
+        registryDataSizeFormatted = 'Unable to access registry data';
       }
       
-      const storageInfo = `
-Storage Usage Analysis:
-
-Container Size:
-${containerSize}
-
-Registry Data Size:
-${registryDataSize}
-
-Volume Information:
-${volumeSize}
-`;
+      // Extract container size from the output
+      let containerSizeFormatted = 'N/A';
+      try {
+        const lines = containerSize.split('\n');
+        if (lines.length > 1) {
+          const dataLine = lines[1]; // Skip header
+          const parts = dataLine.split('\t');
+          if (parts.length >= 2) {
+            containerSizeFormatted = parts[1] || 'N/A';
+          }
+        }
+      } catch (e) {
+        containerSizeFormatted = 'Unable to determine container size';
+      }
       
-      $('registry-details').textContent = storageInfo;
+      // Helper function to set element text
+      const setElementText = (id, text) => {
+        const el = $(id);
+        if (el) el.textContent = text || '-';
+      };
+      
+      // Populate storage overview
+      setElementText('registry-data-size', registryDataSizeFormatted);
+      setElementText('container-size', containerSizeFormatted);
+      
+      // Populate container storage details
+      const containerStatsEl = $('container-storage-stats');
+      if (containerStatsEl) {
+        containerStatsEl.textContent = containerSize;
+      }
+      
+      // Populate volume storage details
+      const volumeStatsEl = $('volume-storage-stats');
+      if (volumeStatsEl) {
+        volumeStatsEl.textContent = volumeSize;
+      }
+      
+      // Show all sections
+      const sections = ['storage-overview-section', 'container-details-section', 'volume-details-section'];
+      sections.forEach(sectionId => {
+        const section = $(sectionId);
+        if (section) {
+          section.style.display = 'block';
+        }
+      });
       
       // Open the details element to show the information
-      const detailsEl = $('registry-details');
-      const detailsParent = detailsEl.closest('details');
+      const detailsParent = containerEl?.closest('details');
       if (detailsParent) {
         detailsParent.open = true;
       }
       
-      log(' Storage usage analysis complete\n');
+      log('✅ Storage usage analysis complete\n');
       
     } catch (e) {
-      $('registry-details').textContent = `Error analyzing storage: ${e.message}`;
-      log(` Storage analysis failed: ${e.message}\n`);
+      // Show the details section even on error
+      if (detailsSection) {
+        detailsSection.classList.remove('details-hidden');
+        detailsSection.style.display = 'block';
+      }
+      
+      // Show error in placeholder
+      if (placeholderEl) {
+        placeholderEl.style.display = 'flex';
+        placeholderEl.innerHTML = `<i class="fa fa-exclamation-triangle"></i><span>Error analyzing storage: ${e.message}</span>`;
+      }
+      log(`❌ Storage analysis failed: ${e.message}\n`);
     }
   }
 

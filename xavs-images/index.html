@@ -486,7 +486,7 @@
             </div>
           </div>
           
-          <details class="config-details">
+          <details class="config-details details-hidden" id="registry-details-section">
             <summary>Registry Details</summary>
             <div id="registry-details" class="registry-info-container">
               <div class="registry-info-placeholder">
@@ -564,6 +564,47 @@
                 <h4><i class="fa fa-hdd"></i> Volume Information</h4>
                 <div class="volume-container">
                   <pre id="volume-info" class="stats-display"></pre>
+                </div>
+              </div>
+            </div>
+          </details>
+          
+          <details class="config-details details-hidden" id="storage-usage-section">
+            <summary>Storage Usage</summary>
+            <div id="storage-usage-details" class="registry-info-container">
+              <div class="storage-usage-placeholder">
+                <i class="fa fa-chart-pie"></i>
+                <span>Click "Show Storage Usage" to analyze disk usage</span>
+              </div>
+              
+              <!-- Storage Overview -->
+              <div class="info-section" id="storage-overview-section" style="display: none;">
+                <h4><i class="fa fa-chart-pie"></i> Storage Overview</h4>
+                <div class="info-grid">
+                  <div class="info-item">
+                    <span class="info-label">Registry Data Size:</span>
+                    <span class="info-value" id="registry-data-size">-</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="info-label">Container Size:</span>
+                    <span class="info-value" id="container-size">-</span>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Container Details -->
+              <div class="info-section" id="container-details-section" style="display: none;">
+                <h4><i class="fa fa-cube"></i> Container Storage Details</h4>
+                <div class="stats-container">
+                  <pre id="container-storage-stats" class="stats-display"></pre>
+                </div>
+              </div>
+              
+              <!-- Volume Details -->
+              <div class="info-section" id="volume-details-section" style="display: none;">
+                <h4><i class="fa fa-hdd"></i> Volume Storage Details</h4>
+                <div class="stats-container">
+                  <pre id="volume-storage-stats" class="stats-display"></pre>
                 </div>
               </div>
             </div>

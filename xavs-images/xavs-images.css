@@ -1321,6 +1321,23 @@ pre.yaml-terminal {
   color: var(--brand);
 }
 
+.storage-usage-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.storage-usage-placeholder i {
+  color: var(--brand);
+}
+
 .info-section {
   margin-bottom: 24px;
   background: var(--surface);
@@ -1928,4 +1945,9 @@ pre.yaml-terminal {
     width: 100%;
     margin-bottom: 8px;
   }
+}
+
+/* ===== Hidden Details Sections ===== */
+.details-hidden {
+  display: none !important;
 }
