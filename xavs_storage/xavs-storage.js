@@ -572,7 +572,8 @@ function loadDisks() {
 function addManageButtonListeners() {
     // Add event listeners for manage disk buttons
     document.querySelectorAll('.manage-disk-btn').forEach(button => {
-        button.addEventListener('click', function() {
+        button.addEventListener('click', function(e) {
+            window.event = e; // Store event globally
             const device = this.getAttribute('data-device');
             manageDisk(device);
         });
@@ -580,7 +581,8 @@ function addManageButtonListeners() {
     
     // Add event listeners for manage partition buttons
     document.querySelectorAll('.manage-partition-btn').forEach(button => {
-        button.addEventListener('click', function() {
+        button.addEventListener('click', function(e) {
+            window.event = e; // Store event globally
             const partition = this.getAttribute('data-partition');
             managePartition(partition);
         });
@@ -632,14 +634,42 @@ function populateFilesystemDevices(devices) {
 }
 
 function checkDiskHealth() {
-    // Check SMART status for normal disks only (not hardware RAID controllers)
+    // Check SMART status for normal disks only (not hardware RAID controllers or LVM devices)
     const rows = document.querySelectorAll('#table-disks tbody tr.disk-row');
     rows.forEach((row, index) => {
         const deviceCell = row.querySelector('td:first-child strong');
         const modelCell = row.querySelector('td:nth-child(2)');
+        const fstypeCell = row.querySelector('td:nth-child(5)');
+        
         if (deviceCell && deviceCell.textContent.startsWith('/dev/')) {
             const device = deviceCell.textContent;
             const model = modelCell ? modelCell.textContent.toLowerCase() : '';
+            const fstype = fstypeCell ? fstypeCell.textContent.toLowerCase() : '';
+            
+            // Check if it's an LVM device - still check health but show LVM status too
+            if (fstype.includes('lvm2_member')) {
+                // For LVM devices, check underlying disk health but show LVM status
+                cockpit.spawn(['smartctl', '-H', device])
+                    .then(output => {
+                        const healthBadge = row.querySelector('.badge');
+                        if (output.includes('SMART Health Status: OK') || output.includes('PASSED')) {
+                            healthBadge.textContent = 'LVM (Healthy)';
+                            healthBadge.className = 'badge ok';
+                        } else if (output.includes('FAILING')) {
+                            healthBadge.textContent = 'LVM (Warning)';
+                            healthBadge.className = 'badge error';
+                        } else {
+                            healthBadge.textContent = 'LVM (Unknown)';
+                            healthBadge.className = 'badge warn';
+                        }
+                    })
+                    .catch(() => {
+                        const healthBadge = row.querySelector('.badge');
+                        healthBadge.textContent = 'LVM (N/A)';
+                        healthBadge.className = 'badge info';
+                    });
+                return;
+            }
             
             // Skip hardware RAID controllers - don't check health
             const isHardwareRAID = model.includes('perc') || model.includes('raid') || 
@@ -1431,69 +1461,335 @@ function manageDisk(device) {
         return;
     }
     
+    // Store the clicked button reference
+    window.lastClickedButton = window.event ? window.event.target.closest('button') : null;
+    
+    // Get device information for validation
+    getDiskInfo(device).then(diskInfo => {
+        showDiskActionMenu(device, diskInfo);
+    }).catch(error => {
+        console.error('Error getting disk info:', error);
+        showDiskActionMenu(device, null);
+    });
+}
+
+function managePartition(partition) {
+    if (!partition) {
+        alert('No partition specified');
+        return;
+    }
+    
+    // Store the clicked button reference
+    window.lastClickedButton = window.event ? window.event.target.closest('button') : null;
+    
+    // Get partition information for validation
+    getPartitionInfo(partition).then(partInfo => {
+        showPartitionActionMenu(partition, partInfo);
+    }).catch(error => {
+        console.error('Error getting partition info:', error);
+        showPartitionActionMenu(partition, null);
+    });
+}
+
+function getDiskInfo(device) {
+    return new Promise((resolve, reject) => {
+        cockpit.spawn(['lsblk', '-J', '-o', 'NAME,FSTYPE,MOUNTPOINT,SIZE,TYPE', device])
+            .then(output => {
+                const data = JSON.parse(output);
+                resolve(data.blockdevices[0]);
+            })
+            .catch(reject);
+    });
+}
+
+function getPartitionInfo(partition) {
+    return new Promise((resolve, reject) => {
+        cockpit.spawn(['lsblk', '-J', '-o', 'NAME,FSTYPE,MOUNTPOINT,SIZE,TYPE', partition])
+            .then(output => {
+                const data = JSON.parse(output);
+                resolve(data.blockdevices[0]);
+            })
+            .catch(reject);
+    });
+}
+
+function showDiskActionMenu(device, diskInfo) {
+    // Remove any existing menu
+    const existingMenu = document.querySelector('.action-dropdown');
+    if (existingMenu) {
+        existingMenu.remove();
+    }
+    
+    const isMounted = diskInfo && diskInfo.mountpoint;
+    const isSystemDisk = diskInfo && (diskInfo.mountpoint === '/' || diskInfo.mountpoint === '/boot' || diskInfo.mountpoint === '/boot/efi');
+    const fstype = diskInfo ? diskInfo.fstype : null;
+    const isLVM = fstype && fstype.toLowerCase().includes('lvm');
+    const isInUse = isMounted || isLVM || isSystemDisk;
+    
+    // Check if disk has partitions in use
+    let hasPartitionsInUse = false;
+    if (diskInfo && diskInfo.children) {
+        hasPartitionsInUse = diskInfo.children.some(child => child.mountpoint || (child.fstype && child.fstype.toLowerCase().includes('lvm')));
+    }
+    
     const actions = [
-        'Format Device',
-        'Create Partition',
-        'Mount Device',
-        'Unmount Device',
-        'Check Filesystem'
+        { 
+            label: 'Format Device', 
+            action: () => formatDevice(device),
+            enabled: !isSystemDisk,
+            dangerous: true,
+            warning: isInUse ? 'This device is currently in use and formatting will destroy all data and may crash the system' : 'This will destroy all data on the device'
+        },
+        { 
+            label: 'Create Partition', 
+            action: () => createPartition(device),
+            enabled: !isMounted && !isLVM && !hasPartitionsInUse,
+            dangerous: false,
+            warning: isInUse ? 'This device is currently in use. Creating partitions may cause system instability' : ''
+        },
+        { 
+            label: 'Mount Device', 
+            action: () => mountDevice(device),
+            enabled: !isMounted && fstype && !isSystemDisk,
+            dangerous: false
+        },
+        { 
+            label: 'Unmount Device', 
+            action: () => unmountDevice(device),
+            enabled: isMounted && !isSystemDisk,
+            dangerous: false,
+            warning: 'Unmounting this device may cause applications using it to fail'
+        },
+        { 
+            label: 'Check Filesystem', 
+            action: () => checkFilesystem(device),
+            enabled: fstype && !isMounted,
+            dangerous: false,
+            warning: isMounted ? 'Cannot check mounted filesystem. Unmount first.' : ''
+        },
+        { 
+            label: 'View Details', 
+            action: () => viewDiskDetails(device),
+            enabled: true,
+            dangerous: false
+        }
     ];
     
-    const action = prompt(`Select action for ${device}:\n${actions.map((a, i) => `${i + 1}. ${a}`).join('\n')}\n\nEnter number (1-5):`);
-    
-    if (!action || isNaN(action) || action < 1 || action > 5) {
-        return;
+    createActionDropdown(device, actions);
+}
+
+function showPartitionActionMenu(partition, partInfo) {
+    // Remove any existing menu
+    const existingMenu = document.querySelector('.action-dropdown');
+    if (existingMenu) {
+        existingMenu.remove();
     }
     
-    const selectedAction = actions[parseInt(action) - 1];
+    const isMounted = partInfo && partInfo.mountpoint;
+    const isSystemPartition = partInfo && (partInfo.mountpoint === '/' || partInfo.mountpoint === '/boot' || partInfo.mountpoint === '/boot/efi');
+    const fstype = partInfo ? partInfo.fstype : null;
+    const isLVM = fstype && fstype.toLowerCase().includes('lvm');
+    const isInUse = isMounted || isLVM || isSystemPartition;
     
-    if (selectedAction.includes('Format') && !confirm(`WARNING: This will destroy all data on ${device}. Continue?`)) {
-        return;
+    const actions = [
+        { 
+            label: 'Format Partition', 
+            action: () => formatDevice(partition),
+            enabled: !isSystemPartition,
+            dangerous: true,
+            warning: isInUse ? 'This partition is currently in use and formatting will destroy all data and may crash the system' : 'This will destroy all data on the partition'
+        },
+        { 
+            label: 'Resize Partition', 
+            action: () => resizePartition(partition),
+            enabled: !isMounted && !isSystemPartition,
+            dangerous: false,
+            warning: isInUse ? 'This partition is currently in use. Resizing may cause data loss or system instability' : 'Resizing may cause data loss if not done carefully'
+        },
+        { 
+            label: 'Mount Partition', 
+            action: () => mountDevice(partition),
+            enabled: !isMounted && fstype && !isSystemPartition,
+            dangerous: false
+        },
+        { 
+            label: 'Unmount Partition', 
+            action: () => unmountDevice(partition),
+            enabled: isMounted && !isSystemPartition,
+            dangerous: false,
+            warning: 'Unmounting this partition may cause applications using it to fail'
+        },
+        { 
+            label: 'Check Filesystem', 
+            action: () => checkFilesystem(partition),
+            enabled: fstype && !isMounted,
+            dangerous: false,
+            warning: isMounted ? 'Cannot check mounted filesystem. Unmount first.' : ''
+        },
+        { 
+            label: 'Delete Partition', 
+            action: () => deletePartition(partition),
+            enabled: !isMounted && !isSystemPartition,
+            dangerous: true,
+            warning: isInUse ? 'This partition is currently in use. Deleting it will cause system instability and data loss' : 'This will permanently delete the partition and all its data'
+        }
+    ];
+    
+    createActionDropdown(partition, actions);
+}
+
+function createActionDropdown(device, actions) {
+    // Remove any existing dropdown
+    const existingDropdown = document.querySelector('.action-dropdown');
+    if (existingDropdown) {
+        existingDropdown.remove();
     }
     
+    // Find the manage button that was clicked
+    const clickedButton = window.lastClickedButton;
+    if (!clickedButton) return;
+    
+    const dropdown = document.createElement('div');
+    dropdown.className = 'action-dropdown';
+    dropdown.innerHTML = `
+        <div class="dropdown-backdrop" onclick="this.parentElement.remove()"></div>
+        <div class="dropdown-menu">
+            ${actions.map(action => `
+                <button class="dropdown-item ${action.enabled ? '' : 'disabled'} ${action.dangerous ? 'dangerous' : ''}" 
+                        ${action.enabled ? `onclick="handleActionClick('${device}', '${action.label}', ${action.dangerous}, '${action.warning || ''}')"` : 'disabled'}>
+                    ${action.label}
+                </button>
+            `).join('')}
+        </div>
+    `;
+    
+    // Position the dropdown near the clicked button
+    const rect = clickedButton.getBoundingClientRect();
+    dropdown.style.position = 'fixed';
+    dropdown.style.top = '0';
+    dropdown.style.left = '0';
+    dropdown.style.right = '0';
+    dropdown.style.bottom = '0';
+    dropdown.style.zIndex = '1000';
+    
+    const menu = dropdown.querySelector('.dropdown-menu');
+    menu.style.position = 'absolute';
+    menu.style.top = (rect.bottom + 5) + 'px';
+    menu.style.left = rect.left + 'px';
+    
+    // Adjust if menu would go off screen
+    setTimeout(() => {
+        const menuRect = menu.getBoundingClientRect();
+        if (menuRect.right > window.innerWidth) {
+            menu.style.left = (rect.right - menuRect.width) + 'px';
+        }
+        if (menuRect.bottom > window.innerHeight) {
+            menu.style.top = (rect.top - menuRect.height - 5) + 'px';
+        }
+    }, 0);
+    
+    document.body.appendChild(dropdown);
+    
+    // Store actions for later use
+    window.currentActions = actions.reduce((acc, action) => {
+        acc[action.label] = action.action;
+        return acc;
+    }, {});
+}
+
+function handleActionClick(device, actionLabel, isDangerous, warningMessage) {
+    // Remove the dropdown
+    const dropdown = document.querySelector('.action-dropdown');
+    if (dropdown) {
+        dropdown.remove();
+    }
+    
+    // Show warning for dangerous actions
+    if (isDangerous && warningMessage) {
+        const confirmed = confirm(`WARNING: ${warningMessage}\n\nDevice: ${device}\n\nDo you want to continue?`);
+        if (!confirmed) {
+            return;
+        }
+    }
+    
+    // Execute the action
+    if (window.currentActions && window.currentActions[actionLabel]) {
+        window.currentActions[actionLabel]();
+    }
+}
+
+// Individual action functions
+function formatDevice(device) {
+    const fsType = prompt('Filesystem type (ext4, xfs, ntfs):', 'ext4');
+    if (!fsType) return;
+    
+    const command = ['mkfs', `-t${fsType}`, device];
+    executeCommand(command, `Formatting ${device} with ${fsType}`);
+}
+
+function createPartition(device) {
+    alert(`Opening partition editor for ${device}. Use fdisk or parted manually.`);
+    const command = ['fdisk', device];
+    executeCommand(command, `Opening partition editor for ${device}`);
+}
+
+function mountDevice(device) {
+    const mountPoint = prompt('Mount point:', `/mnt/${device.split('/').pop()}`);
+    if (!mountPoint) return;
+    
+    const command = ['mount', device, mountPoint];
+    executeCommand(command, `Mounting ${device} to ${mountPoint}`);
+}
+
+function unmountDevice(device) {
+    const command = ['umount', device];
+    executeCommand(command, `Unmounting ${device}`);
+}
+
+function checkFilesystem(device) {
+    const command = ['fsck', '-f', device];
+    executeCommand(command, `Checking filesystem on ${device}`);
+}
+
+function resizePartition(partition) {
+    alert(`Resize functionality requires manual intervention. Use parted or resize2fs.`);
+}
+
+function deletePartition(partition) {
+    alert(`Delete partition functionality requires manual intervention. Use fdisk or parted.`);
+}
+
+function viewDiskDetails(device) {
+    // Show detailed information about the device
+    cockpit.spawn(['lsblk', '-o', 'NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,UUID,LABEL', device])
+        .then(output => {
+            alert(`Device Details for ${device}:\n\n${output}`);
+        })
+        .catch(error => {
+            alert(`Error getting device details: ${error}`);
+        });
+}
+
+function executeCommand(command, description) {
     // Show output section
     const outputDiv = document.getElementById('fs-output');
     if (outputDiv) {
         outputDiv.classList.remove('hidden');
-        outputDiv.textContent = `Executing: ${selectedAction} on ${device}\n`;
+        outputDiv.textContent = `Executing: ${description}\n`;
     }
     
-    // Execute the management command
-    let command;
-    switch(parseInt(action)) {
-        case 1: // Format
-            const fsType = prompt('Filesystem type (ext4, xfs, ntfs):', 'ext4');
-            command = ['mkfs', `-t${fsType}`, device];
-            break;
-        case 2: // Create Partition
-            command = ['fdisk', device];
-            break;
-        case 3: // Mount
-            const mountPoint = prompt('Mount point:', `/mnt/${device.split('/').pop()}`);
-            command = ['mount', device, mountPoint];
-            break;
-        case 4: // Unmount
-            command = ['umount', device];
-            break;
-        case 5: // Check
-            command = ['fsck', '-f', device];
-            break;
-    }
-    
-    if (command) {
-        cockpit.spawn(command)
-            .then(output => {
-                if (outputDiv) {
-                    outputDiv.textContent += `Success:\n${output}\n`;
-                }
-                loadDiskData(); // Refresh disk data
-            })
-            .catch(error => {
-                if (outputDiv) {
-                    outputDiv.textContent += `Error: ${error}\n`;
-                }
-            });
-    }
+    cockpit.spawn(command)
+        .then(output => {
+            if (outputDiv) {
+                outputDiv.textContent += `Success:\n${output}\n`;
+            }
+            loadDiskData(); // Refresh disk data
+        })
+        .catch(error => {
+            if (outputDiv) {
+                outputDiv.textContent += `Error: ${error}\n`;
+            }
+        });
 }
 
 // Populate available disks for RAID configuration

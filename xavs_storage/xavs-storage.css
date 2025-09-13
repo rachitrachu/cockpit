@@ -1181,3 +1181,75 @@ body {
   font-size: 12px;
   line-height: 1.3;
 }
+
+/* Action Dropdown Menu */
+.action-dropdown {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.dropdown-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: all;
+}
+
+.dropdown-menu {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  min-width: 160px;
+  max-width: 200px;
+  overflow: hidden;
+  pointer-events: all;
+}
+
+.dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  text-align: left;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  line-height: 1.4;
+}
+
+.dropdown-item:hover:not(.disabled) {
+  background: var(--surface-2);
+}
+
+.dropdown-item.disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.dropdown-item.dangerous {
+  color: #dc2626;
+}
+
+.dropdown-item.dangerous:hover:not(.disabled) {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+/* Dark theme adjustments */
+.pf-theme-dark .dropdown-item.dangerous:hover:not(.disabled) {
+  background: #2d1b1b;
+  color: #f87171;
+}
