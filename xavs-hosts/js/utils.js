@@ -13,7 +13,65 @@ export function setStatus(el, msg, kind) {
 /* ---------- Validation ---------- */
 export const isValidIPv4 = ip => /^(\d{1,3}\.){3}\d{1,3}$/.test(ip);
 
-/* ---------- Roles UI ---------- */
+/* ---------- Roles parsing and normalization ---------- */
+export function normalizeRoles(input) {
+  if (!input) return [];
+  if (Array.isArray(input)) return input.filter(Boolean);
+  
+  // Handle string input with multiple delimiters: ;, comma, space
+  const str = String(input).trim();
+  if (!str) return [];
+  
+  // Split by semicolon, comma, or whitespace, then filter and dedupe
+  const roles = str.split(/[;,\s]+/)
+    .map(r => r.trim())
+    .filter(Boolean)
+    .filter(r => ROLES.includes(r)); // Only valid roles
+  
+  // Remove duplicates
+  return [...new Set(roles)];
+}
+
+export function validateRoles(roles, existingHosts = [], skipHostname = null) {
+  const normalizedRoles = normalizeRoles(roles);
+  
+  // Check for deployment role uniqueness
+  if (normalizedRoles.includes(DEPLOYMENT_ROLE)) {
+    const hasDeploymentElsewhere = existingHosts.some(h => 
+      h.hostname !== skipHostname && 
+      (h.roles || []).includes(DEPLOYMENT_ROLE)
+    );
+    if (hasDeploymentElsewhere) {
+      return { valid: false, error: "Only one host can have the 'deployment' role" };
+    }
+  }
+  
+  return { valid: true, roles: normalizedRoles };
+}
+
+/* ---------- Quick role selection ---------- */
+export function createRoleFilter(hosts, onFilterChange) {
+  const container = document.createElement('div');
+  container.className = 'role-filter-container';
+  container.innerHTML = `
+    <label>Quick filter by role:</label>
+    <select class="form-control role-filter-select">
+      <option value="">All hosts</option>
+      ${ROLES.map(role => `<option value="${role}">${role}</option>`).join('')}
+    </select>
+  `;
+  
+  const select = container.querySelector('.role-filter-select');
+  select.addEventListener('change', () => {
+    const selectedRole = select.value;
+    const filteredHosts = selectedRole ? 
+      hosts.filter(h => (h.roles || []).includes(selectedRole)) : 
+      hosts;
+    onFilterChange(filteredHosts, selectedRole);
+  });
+  
+  return container;
+}
 export function renderRoleChips(container, roles, onRemove) {
   container.querySelectorAll(".role-tag").forEach(n => n.remove());
   (roles || []).forEach(r => {
@@ -85,13 +143,4 @@ export function attachPingBehavior(btn, getIP, isValid = isValidIPv4) {
 
   // return control interface
   return { refreshEnabled };
-}
-
-/* ---------- Misc ---------- */
-export function normalizeRoles(s) {
-  if (!s) return [];
-  const parts = s.split(/[|;, \t]+/).map(x => x.trim()).filter(Boolean);
-  const set = new Set();
-  for (const r of parts) if (ROLES.includes(r)) set.add(r);
-  return Array.from(set);
 }

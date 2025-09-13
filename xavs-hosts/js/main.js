@@ -1,15 +1,16 @@
-import { CONFIG_PATH, NODES_PATH, DEPLOYMENT_ROLE } from "./constants.js";
+import { CONFIG_PATH, DEPLOYMENT_ROLE } from "./constants.js";
 import { setStatus } from "./utils.js";
-import { patchNodesFile } from "./nodes.js";
-import { loadHosts, saveHostsAndNodes } from "./store.js";
+import { loadHosts, saveHostsAndFormats } from "./store.js";
 import { createTableUI } from "./ui_table.js";
 import { createAddUI } from "./ui_add.js";
 import { createSSHUI } from "./ssh.js";
 import { saveEtcHosts } from "./hostsfile.js";
+import { checkRequiredTools, logCommand } from "./ssh-new.js";
 
 const statusEl   = document.getElementById("recent-activity");
-const previewEl  = document.getElementById("preview");
-const nodesPrev  = document.getElementById("nodes-preview");
+const previewJsonEl = document.getElementById("preview-json");
+const previewYamlEl = document.getElementById("preview-yaml");
+const previewInventoryEl = document.getElementById("preview-inventory");
 
 // Tab navigation elements
 const tabLinks = document.querySelectorAll('.nav-link');
@@ -17,7 +18,7 @@ const tabPanes = document.querySelectorAll('.tab-pane');
 
 // Add Host sub-tab elements  
 const subTabBtns = document.querySelectorAll('.sub-tabs .btn');
-const subTabContents = document.querySelectorAll('.tab-content');
+const subTabContents = document.querySelectorAll('.sub-tab-content');
 
 // Log elements
 const logContainer = document.getElementById("log-container");
@@ -36,13 +37,14 @@ const setHosts = (h) => { hosts = h.slice(); renderPreview(); persistDebounced("
 function switchTab(targetId) {
   // Update tab links
   tabLinks.forEach(link => {
-    const isActive = link.getAttribute('data-target') === targetId;
+    const isActive = link.getAttribute('data-tab') === targetId;
     link.classList.toggle('active', isActive);
   });
   
   // Update tab panes
   tabPanes.forEach(pane => {
     const isActive = pane.id === targetId;
+    pane.classList.toggle('show', isActive);
     pane.classList.toggle('active', isActive);
   });
 
@@ -90,11 +92,29 @@ function switchSubTab(targetId) {
   }
 }
 
+// Format tab switching for Config & Outputs section
+function switchFormatTab(targetId) {
+  const formatBtns = document.querySelectorAll('#format-json, #format-yaml, #format-inventory');
+  const formatContents = document.querySelectorAll('#format-json-content, #format-yaml-content, #format-inventory-content');
+  
+  // Update format tab buttons
+  formatBtns.forEach(btn => {
+    const isActive = btn.id === targetId;
+    btn.classList.toggle('active', isActive);
+  });
+  
+  // Update format tab contents
+  formatContents.forEach(content => {
+    const isActive = content.id === targetId + '-content';
+    content.classList.toggle('active', isActive);
+  });
+}
+
 // Initialize tab event listeners
 tabLinks.forEach(link => {
   link.addEventListener('click', (e) => {
     e.preventDefault();
-    const targetId = link.getAttribute('data-target');
+    const targetId = link.getAttribute('data-tab');
     switchTab(targetId);
   });
 });
@@ -147,6 +167,56 @@ function addToLog(message, type = 'info') {
     }
   }
 }
+
+// Enhanced console logging for SSH commands
+function addCommandLog(command, output = "", isError = false) {
+  const timestamp = new Date().toLocaleTimeString();
+  
+  if (logContainer) {
+    // Command entry
+    const cmdEntry = document.createElement('div');
+    cmdEntry.className = `log-entry log-command`;
+    
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'log-time';
+    timeSpan.textContent = timestamp;
+    
+    const commandSpan = document.createElement('span');
+    commandSpan.className = 'log-command-text';
+    commandSpan.textContent = command;
+    
+    cmdEntry.appendChild(timeSpan);
+    cmdEntry.appendChild(commandSpan);
+    logContainer.appendChild(cmdEntry);
+    
+    // Output entry (if any)
+    if (output) {
+      const outputEntry = document.createElement('div');
+      outputEntry.className = `log-entry log-output ${isError ? 'log-error' : 'log-success'}`;
+      
+      const outputSpan = document.createElement('span');
+      outputSpan.className = 'log-output-text';
+      outputSpan.textContent = output;
+      
+      outputEntry.appendChild(outputSpan);
+      logContainer.appendChild(outputEntry);
+    }
+    
+    logContainer.scrollTop = logContainer.scrollHeight;
+    
+    // Limit to 100 entries
+    const entries = logContainer.querySelectorAll('.log-entry');
+    if (entries.length > 100) {
+      entries[0].remove();
+    }
+  }
+}
+
+// Listen for SSH command log events
+window.addEventListener('ssh-command-log', (event) => {
+  const { command, output, isError } = event.detail;
+  addCommandLog(command, output, isError);
+});
 
 // Clear log function
 function clearLog() {
@@ -207,8 +277,11 @@ function persistDebounced(reason = "Auto-saved.") {
   clearTimeout(persistTimer);
   persistTimer = setTimeout(async () => {
     try {
-      const patchedNodes = await saveHostsAndNodes(hosts, patchNodesFile);
-      if (nodesPrev) nodesPrev.textContent = patchedNodes;
+      const formats = await saveHostsAndFormats(hosts);
+      // Update all preview formats
+      if (previewJsonEl) previewJsonEl.textContent = formats.json;
+      if (previewYamlEl) previewYamlEl.textContent = formats.yaml;
+      if (previewInventoryEl) previewInventoryEl.textContent = formats.inventory;
 
       if (etcToggle?.checked) {
         try {
@@ -230,14 +303,57 @@ function persistDebounced(reason = "Auto-saved.") {
   }, 400);
 }
 
-function renderPreview() {
-  if (previewEl) previewEl.textContent = JSON.stringify(hosts, null, 2);
-  // show ACTUAL nodes file on disk (not hypothetical)
-  if (nodesPrev) {
-    cockpit.file(NODES_PATH, { superuser: "try" }).read()
-      .then(text => { nodesPrev.textContent = text || ""; })
-      .catch(()   => { nodesPrev.textContent = ""; });
-  }
+async function renderPreview() {
+  // Generate all formats
+  const jsonData = JSON.stringify(hosts, null, 2);
+  
+  // Generate YAML manually
+  const yamlLines = ["nodes:"];
+  hosts.forEach(node => {
+    yamlLines.push(`  - hostname: "${node.hostname}"`);
+    yamlLines.push(`    ip: "${node.ip}"`);
+    if (node.roles && node.roles.length > 0) {
+      yamlLines.push(`    roles:`);
+      node.roles.forEach(role => {
+        yamlLines.push(`      - "${role}"`);
+      });
+    }
+  });
+  const yamlData = yamlLines.join("\n");
+  
+  // Generate Ansible inventory
+  const invLines = ["[all:vars]", "ansible_user=root", "ansible_ssh_private_key_file=/root/.ssh/xavs", ""];
+  const roleGroups = {};
+  const allHosts = [];
+  
+  hosts.forEach(node => {
+    const hostLine = `${node.hostname} ansible_host=${node.ip}`;
+    allHosts.push(hostLine);
+    
+    if (node.roles && node.roles.length > 0) {
+      node.roles.forEach(role => {
+        if (!roleGroups[role]) roleGroups[role] = [];
+        roleGroups[role].push(hostLine);
+      });
+    }
+  });
+  
+  invLines.push("[all]");
+  allHosts.forEach(host => invLines.push(host));
+  invLines.push("");
+  
+  Object.keys(roleGroups).forEach(role => {
+    invLines.push(`[${role}]`);
+    roleGroups[role].forEach(host => invLines.push(host));
+    invLines.push("");
+  });
+  
+  const inventoryData = invLines.join("\n");
+  
+  // Update preview elements
+  if (previewJsonEl) previewJsonEl.textContent = jsonData;
+  if (previewYamlEl) previewYamlEl.textContent = yamlData;
+  if (previewInventoryEl) previewInventoryEl.textContent = inventoryData;
 }
 
 async function loadConfig() {
@@ -310,14 +426,89 @@ sshUI = createSSHUI({
   getHosts: () => hosts.slice()
 });
 
+// Save button functionality
+const saveAllBtn = document.getElementById('save-all-formats');
+const saveJsonBtn = document.getElementById('save-json');
+const saveYamlBtn = document.getElementById('save-yaml');
+const saveInventoryBtn = document.getElementById('save-inventory');
+
+if (saveAllBtn) {
+  saveAllBtn.addEventListener('click', async () => {
+    try {
+      addToLog("Saving all formats...");
+      await saveHostsAndFormats(hosts);
+      addToLog("All formats saved successfully", "success");
+    } catch (error) {
+      addToLog("Failed to save formats: " + error.message, "error");
+    }
+  });
+}
+
+if (saveJsonBtn) {
+  saveJsonBtn.addEventListener('click', async () => {
+    try {
+      addToLog("Saving JSON format...");
+      const jsonData = JSON.stringify(hosts, null, 2) + "\n";
+      await cockpit.file(CONFIG_PATH, { superuser: "try" }).replace(jsonData);
+      addToLog("JSON saved successfully", "success");
+    } catch (error) {
+      addToLog("Failed to save JSON: " + error.message, "error");
+    }
+  });
+}
+
+if (saveYamlBtn) {
+  saveYamlBtn.addEventListener('click', async () => {
+    try {
+      addToLog("Saving YAML format...");
+      const formats = await saveHostsAndFormats(hosts);
+      addToLog("YAML saved successfully", "success");
+    } catch (error) {
+      addToLog("Failed to save YAML: " + error.message, "error");
+    }
+  });
+}
+
+if (saveInventoryBtn) {
+  saveInventoryBtn.addEventListener('click', async () => {
+    try {
+      addToLog("Saving Ansible inventory...");
+      const formats = await saveHostsAndFormats(hosts);
+      addToLog("Ansible inventory saved successfully", "success");
+    } catch (error) {
+      addToLog("Failed to save inventory: " + error.message, "error");
+    }
+  });
+}
+
 /* Initialize everything */
 // Set default active tabs
 switchTab('panel-hosts');
 switchSubTab('tab-single');
 
+// Initialize format tab event listeners  
+const formatBtns = document.querySelectorAll('#format-json, #format-yaml, #format-inventory');
+formatBtns.forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    switchFormatTab(btn.id);
+  });
+});
+
 // Module initialization
 addToLog("xAVS Host Management module started", "info");
 addToLog("Initializing user interface components", "info");
+
+// Check for required tools
+checkRequiredTools().then(result => {
+  if (result.missing.length > 0) {
+    addToLog(`Missing tools: ${result.missing.join(', ')}. Some features may not work.`, "warning");
+  } else {
+    addToLog("All required tools are available", "success");
+  }
+}).catch(error => {
+  addToLog("Failed to check required tools: " + error.message, "error");
+});
 
 // Load configuration
 loadConfig();

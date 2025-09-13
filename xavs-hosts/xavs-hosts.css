@@ -555,9 +555,53 @@ body{
 .nav-link.active i{ color:#fff }
 
 /* Tab panes */
-.tab-content{ padding:10px 0 4px }
+.tab-content{ padding:20px 0 4px; min-height: 400px; }
 .tab-pane{ display:none; }
-.tab-pane.show{ display:block; }
+.tab-pane.show{ display:block !important; }
+.tab-pane.active{ display:block !important; }
+
+/* Sub-tab content */
+.sub-tab-content{ display:none; }
+.sub-tab-content.active{ display:block; }
+.sub-tab-content.hidden{ display:none; }
+
+/* Enhanced console logging styles */
+.log-command .log-command-text {
+  font-family: 'Courier New', monospace;
+  color: var(--brand);
+  font-weight: bold;
+}
+
+.log-output .log-output-text {
+  font-family: 'Courier New', monospace;
+  margin-left: 20px;
+  white-space: pre-wrap;
+}
+
+.log-entry.log-error .log-output-text {
+  color: #dc3545;
+}
+
+.log-entry.log-success .log-output-text {
+  color: #28a745;
+}
+
+/* Format preview headers */
+.format-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 15px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.format-header h4 {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+}
 
 /* ===== Toggle pill (XAVS-Shares style) ===== */
 .toggle-pill {

@@ -1,43 +1,39 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
+  <meta charset="UTF-8" />
+  <title>XAVS Hosts</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>xAVS Hosts</title>
+  <!-- Brand CSS + Local Font Awesome -->
+  <link rel="stylesheet" href="xavs-hosts.css" />
+  <link rel="stylesheet" href="fontawesome/css/all.css" />
+  <!-- Cockpit JavaScript API -->
   <script src="../base1/cockpit.js"></script>
-  <link rel="stylesheet" href="css/theme.css">
-  <link rel="stylesheet" href="css/layout.css">
-  <link rel="stylesheet" href="css/components.css">
-  <link rel="stylesheet" href="css/xavs-style.css">
-  <link rel="stylesheet" href="fontawesome/css/all.min.css">
-  <link rel="stylesheet" href="css/force-styles.css">
 </head>
 <body>
-  <div class="container-fluid">
-    <div class="topbar">
+  <div class="app">
+    <!-- Top bar -->
+    <header class="topbar">
       <h1 class="app-title">
-        <img src="images/logo-x.png" alt="X" class="logo-x">AVS Hosts
+        <img src="logo-x.png" alt="X" class="logo-x">AVS Hosts
       </h1>
       <div class="help" data-tip="This module helps manage cluster host configuration:
 • Add and configure hosts for your deployment cluster
 • Manage SSH access and key distribution  
 • Configure host roles and networking settings
 • Monitor host connectivity and status">?</div>
-    </div>
-    <hr class="separator">
+    </header>
 
-    <div class="tabs-container">
-      <ul class="nav-tabs" id="tabs">
-        <li><a class="nav-link active" data-target="panel-hosts"><i class="fas fa-server"></i> Hosts</a></li>
-        <li><a class="nav-link" data-target="panel-ssh"><i class="fas fa-key"></i> SSH Access</a></li>
-        <li><a class="nav-link" data-target="panel-logs"><i class="fas fa-terminal"></i> Logs</a></li>
-      </ul>
-      <button class="btn btn-brand btn-tab-right" id="btn-refresh" type="button"><i class="fas fa-sync"></i> Refresh All</button>
-    </div>
+    <!-- Tabs -->
+    <ul class="nav-tabs" id="tabs">
+      <li><a href="#" class="nav-link active" data-tab="panel-hosts"><i class="fas fa-server"></i> Hosts</a></li>
+      <li><a href="#" class="nav-link" data-tab="panel-ssh"><i class="fas fa-key"></i> SSH Access</a></li>
+      <li><a href="#" class="nav-link" data-tab="panel-logs"><i class="fas fa-terminal"></i> Logs</a></li>
+    </ul>
 
-    <div class="main-content">
+    <main class="tab-content">
   <!-- HOSTS PANEL -->
-  <section id="panel-hosts" class="tab-pane active">
+  <section id="panel-hosts" class="tab-pane show active">
     <!-- Add Host -->
     <div class="card">
       <div class="card-header">
@@ -52,7 +48,7 @@
       </div>
 
       <!-- Single -->
-      <div id="tab-single" class="tab-content active" role="tabpanel" aria-labelledby="tabbtn-single">
+      <div id="tab-single" class="sub-tab-content active" role="tabpanel" aria-labelledby="tabbtn-single">
         <form id="add-form" class="form-horizontal" autocomplete="off">
           <div class="form-group">
             <label class="col-sm-2 control-label" for="add-hostname">Hostname</label>
@@ -93,7 +89,7 @@
       </div>
 
       <!-- Bulk -->
-      <div id="tab-bulk" class="tab-content hidden" role="tabpanel" aria-labelledby="tabbtn-bulk">
+      <div id="tab-bulk" class="sub-tab-content hidden" role="tabpanel" aria-labelledby="tabbtn-bulk">
         <div class="alert alert-info">
           <i class="fas fa-info-circle"></i> Paste one per line — <code>hostname,ip,roles</code> (roles: <code>|</code> or <code>;</code>)
         </div>
@@ -115,7 +111,7 @@
       </div>
 
       <!-- Upload -->
-      <div id="tab-upload" class="tab-content hidden" role="tabpanel" aria-labelledby="tabbtn-upload">
+      <div id="tab-upload" class="sub-tab-content hidden" role="tabpanel" aria-labelledby="tabbtn-upload">
         <div class="alert alert-info">
           <i class="fas fa-info-circle"></i> Upload <strong>.csv</strong> (headers: <code>hostname,ip,roles</code>) or <strong>.json</strong>
         </div>
@@ -144,6 +140,7 @@
         <h3><i class="fas fa-list"></i> Added Hosts</h3>
         <div class="card-actions">
           <input id="hosts-search" class="form-control search-input" type="text" placeholder="Search hostname, IP, or role…">
+          <button id="btn-refresh" class="btn btn-outline-brand"><i class="fas fa-sync"></i> Refresh All</button>
           <button id="hosts-ping-all" class="btn btn-brand"><i class="fas fa-satellite-dish"></i> Ping All</button>
           <button id="hosts-ssh-all" class="btn btn-brand"><i class="fas fa-key"></i> SSH Check All</button>
         </div>
@@ -198,19 +195,48 @@
       </div>
     </div>
 
-    <!-- Previews -->
+    <!-- Config & Outputs -->
     <div class="card">
       <div class="card-header">
-        <h3><i class="fas fa-code"></i> Config file (JSON)</h3>
+        <h3><i class="fas fa-code"></i> Config & Outputs</h3>
+        <div class="card-actions">
+          <button id="save-all-formats" class="btn btn-brand"><i class="fas fa-save"></i> Save All Formats</button>
+        </div>
       </div>
-      <pre class="config-preview" id="preview"></pre>
-    </div>
-
-    <div class="card">
-      <div class="card-header">
-        <h3><i class="fas fa-sitemap"></i> Nodes file</h3>
+      
+      <!-- Output format tabs -->
+      <div class="sub-tabs">
+        <button id="format-json" class="btn btn-outline-brand active" role="tab" aria-controls="format-json-content">JSON</button>
+        <button id="format-yaml" class="btn btn-outline-brand" role="tab" aria-controls="format-yaml-content">YAML</button>
+        <button id="format-inventory" class="btn btn-outline-brand" role="tab" aria-controls="format-inventory-content">Ansible Inventory</button>
       </div>
-      <pre class="config-preview" id="nodes-preview"></pre>
+      
+      <!-- JSON Format -->
+      <div id="format-json-content" class="sub-tab-content active">
+        <div class="format-header">
+          <h4>/etc/xavs/nodes.json</h4>
+          <button id="save-json" class="btn btn-sm btn-outline-brand"><i class="fas fa-download"></i> Save JSON</button>
+        </div>
+        <pre class="config-preview" id="preview-json"></pre>
+      </div>
+      
+      <!-- YAML Format -->
+      <div id="format-yaml-content" class="sub-tab-content">
+        <div class="format-header">
+          <h4>/etc/xavs/nodes.yml</h4>
+          <button id="save-yaml" class="btn btn-sm btn-outline-brand"><i class="fas fa-download"></i> Save YAML</button>
+        </div>
+        <pre class="config-preview" id="preview-yaml"></pre>
+      </div>
+      
+      <!-- Ansible Inventory Format -->
+      <div id="format-inventory-content" class="sub-tab-content">
+        <div class="format-header">
+          <h4>/etc/xavs/inventory/multinode</h4>
+          <button id="save-inventory" class="btn btn-sm btn-outline-brand"><i class="fas fa-download"></i> Save Inventory</button>
+        </div>
+        <pre class="config-preview" id="preview-inventory"></pre>
+      </div>
     </div>
   </section>
 
@@ -240,13 +266,13 @@
         <div class="form-group">
           <label class="col-sm-2 control-label" for="ssh-remote-user">Remote username (on targets)</label>
           <div class="col-sm-10">
-            <input id="ssh-remote-user" class="form-control" type="text" value="root" placeholder="e.g. root" />
+            <input id="ssh-remote-user" class="form-control" type="text" value="root" placeholder="e.g. root" autocomplete="username" />
           </div>
         </div>
         <div class="form-group">
           <label class="col-sm-2 control-label" for="ssh-remote-pass">Remote password (used once to install key)</label>
           <div class="col-sm-10">
-            <input id="ssh-remote-pass" class="form-control" type="password" placeholder="password for remote user" />
+            <input id="ssh-remote-pass" class="form-control" type="password" placeholder="password for remote user" autocomplete="current-password" />
           </div>
         </div>
       </form>
@@ -322,7 +348,7 @@
       </div>
     </div>
   </section>
-    </div> <!-- End main-content -->
+    </main> <!-- End tab-content -->
 
     <!-- Status Bar -->
     <div class="bottom-status-bar">
@@ -333,7 +359,7 @@
         View Logs
       </button>
     </div>
-  </div> <!-- End container-fluid -->
+  </div> <!-- End app -->
 
   <!-- Module loader -->
   <script type="module" src="js/main.js"></script>
