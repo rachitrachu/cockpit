@@ -309,8 +309,13 @@
         showPanel(targetPanel);
         
         // Run checks when switching to these tabs
-        if (targetPanel === 'panel-hw')   runHardwareChecks().catch(console.error);
-        // Removed auto-check for dependencies - user must click "Check Dependencies"
+        if (targetPanel === 'panel-hw') {
+            runHardwareChecks().catch(console.error);
+            refreshHardwareDetails().catch(console.error);
+            detectVirtualization().catch(console.error);
+        } else if (targetPanel === 'panel-deps') {
+            checkDependencies().catch(console.error);
+        }
     }));
 
     // Wire up status bar link
@@ -849,6 +854,92 @@ End of Report
     //  Dependencies 
     let isRunningBulkInstall = false;  // Flag to prevent individual checks during bulk install
     
+    // Function to update install button states based on dependency status
+    function updateInstallButtonStates() {
+        const buttonMap = {
+            'dep-py': 'btn-install-py',
+            'dep-tools': 'btn-install-tools', 
+            'dep-env': 'btn-install-env',
+            'dep-xdep': 'btn-install-xdep',
+            'dep-oscli': 'btn-install-oscli',
+            'dep-cfg': 'btn-install-cfg',
+            'dep-pwd': 'btn-install-pwd'
+        };
+        
+        Object.entries(buttonMap).forEach(([badgeId, buttonId]) => {
+            const badge = $(badgeId);
+            const button = $(buttonId);
+            
+            if (!badge || !button) return;
+            
+            const isOK = badge.className.includes("ok");
+            const isPartial = badge.className.includes("warn");
+            
+            if (isOK) {
+                // Component is fully installed - disable button and change text
+                button.disabled = true;
+                button.classList.add('btn-success');
+                button.classList.remove('btn-outline-brand');
+                const originalText = button.textContent.trim();
+                if (!originalText.includes('✓')) {
+                    button.innerHTML = '<i class="fas fa-check"></i> Installed';
+                }
+                button.title = "This component is already installed and ready";
+            } else if (isPartial && (badgeId === 'dep-xdep' || badgeId === 'dep-cfg' || badgeId === 'dep-pwd')) {
+                // Component is partially installed - enable button but show it needs attention
+                button.disabled = false;
+                button.classList.add('btn-warning');
+                button.classList.remove('btn-outline-brand', 'btn-success');
+                if (badgeId === 'dep-xdep') button.innerHTML = '<i class="fas fa-redo"></i> Reinstall';
+                else if (badgeId === 'dep-cfg') button.innerHTML = '<i class="fas fa-redo"></i> Reconfigure';
+                else if (badgeId === 'dep-pwd') button.innerHTML = '<i class="fas fa-redo"></i> Regenerate';
+                button.title = "This component needs attention - click to fix";
+            } else {
+                // Component is missing - enable button with original functionality
+                button.disabled = false;
+                button.classList.remove('btn-success', 'btn-warning');
+                button.classList.add('btn-outline-brand');
+                
+                // Restore original button text
+                const originalTexts = {
+                    'btn-install-py': 'Install',
+                    'btn-install-tools': 'Install', 
+                    'btn-install-env': 'Create',
+                    'btn-install-xdep': 'Install',
+                    'btn-install-oscli': 'Install',
+                    'btn-install-cfg': 'Setup',
+                    'btn-install-pwd': 'Generate'
+                };
+                button.innerHTML = originalTexts[buttonId] || 'Install';
+                button.title = "Click to install this component";
+            }
+        });
+        
+        // Update bulk install button state
+        const installAllBtn = $("btn-install-all");
+        if (installAllBtn) {
+            const allBadges = ['dep-py', 'dep-tools', 'dep-env', 'dep-xdep', 'dep-oscli', 'dep-cfg', 'dep-pwd'];
+            const allOK = allBadges.every(id => {
+                const badge = $(id);
+                return badge && badge.className.includes("ok");
+            });
+            
+            if (allOK) {
+                installAllBtn.disabled = true;
+                installAllBtn.classList.add('btn-success');
+                installAllBtn.classList.remove('btn-brand');
+                installAllBtn.innerHTML = '<i class="fas fa-check"></i> All Dependencies Ready';
+                installAllBtn.title = "All dependencies are already installed";
+            } else {
+                installAllBtn.disabled = false;
+                installAllBtn.classList.remove('btn-success');
+                installAllBtn.classList.add('btn-brand');
+                installAllBtn.innerHTML = 'Install All';
+                installAllBtn.title = "Install all missing dependencies";
+            }
+        }
+    }
+    
     async function checkDependencies() {
         log("[Deps] Check All button clicked - starting dependency check");
         
@@ -904,40 +995,76 @@ End of Report
             # More fault-tolerant script - don't exit on first error
             step() { echo "[STEP] $1"; }
             
-            # Python deps
+            # Python deps - Fixed logic to properly detect missing packages
             pkgs='git python3-dev python3-pip libffi-dev gcc libssl-dev python3-venv python3-docker'
-            missing=$(dpkg-query -W -f='\${Status} \${Package}\\n' $pkgs 2>/dev/null | 
-                     awk '$3!="installed"{print $5}') || true
-            [ -z "$missing" ] && echo PY_OK || echo PY_MISS
+            missing=""
+            for pkg in $pkgs; do
+                if ! dpkg-query -W "$pkg" >/dev/null 2>&1; then
+                    missing="$missing $pkg"
+                elif ! dpkg-query -W -f='\${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+                    missing="$missing $pkg"
+                fi
+            done
+            missing=$(echo "$missing" | xargs)  # trim whitespace
+            [ -z "$missing" ] && echo PY_OK || { echo PY_MISS; echo "Missing Python deps: $missing"; }
 
-            # System tools (checking representative packages from each installation step)
+            # System tools (checking representative packages from each installation step) - Fixed logic
             # Step 1: Core monitoring/networking
             step1_tools='btop htop iftop nethogs iotop'
-            missing_step1=$(dpkg-query -W -f='\${Status} \${Package}\\n' $step1_tools 2>/dev/null | 
-                           awk '$3!="installed"{print $5}')
+            missing_step1=""
+            for pkg in $step1_tools; do
+                if ! dpkg-query -W "$pkg" >/dev/null 2>&1; then
+                    missing_step1="$missing_step1 $pkg"
+                elif ! dpkg-query -W -f='\${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+                    missing_step1="$missing_step1 $pkg"
+                fi
+            done
             
             # Step 2: Development tools  
             step2_tools='git curl wget vim nano'
-            missing_step2=$(dpkg-query -W -f='\${Status} \${Package}\\n' $step2_tools 2>/dev/null | 
-                           awk '$3!="installed"{print $5}')
+            missing_step2=""
+            for pkg in $step2_tools; do
+                if ! dpkg-query -W "$pkg" >/dev/null 2>&1; then
+                    missing_step2="$missing_step2 $pkg"
+                elif ! dpkg-query -W -f='\${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+                    missing_step2="$missing_step2 $pkg"
+                fi
+            done
             
             # Step 3: System services
             step3_tools='snmp snmpd bridge-utils build-essential'
-            missing_step3=$(dpkg-query -W -f='\${Status} \${Package}\\n' $step3_tools 2>/dev/null | 
-                           awk '$3!="installed"{print $5}')
+            missing_step3=""
+            for pkg in $step3_tools; do
+                if ! dpkg-query -W "$pkg" >/dev/null 2>&1; then
+                    missing_step3="$missing_step3 $pkg"
+                elif ! dpkg-query -W -f='\${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+                    missing_step3="$missing_step3 $pkg"
+                fi
+            done
             
             # Step 4: Storage/virtualization
             step4_tools='lvm2 parted docker.io'
-            missing_step4=$(dpkg-query -W -f='\${Status} \${Package}\\n' $step4_tools 2>/dev/null | 
-                           awk '$3!="installed"{print $5}')
+            missing_step4=""
+            for pkg in $step4_tools; do
+                if ! dpkg-query -W "$pkg" >/dev/null 2>&1; then
+                    missing_step4="$missing_step4 $pkg"
+                elif ! dpkg-query -W -f='\${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+                    missing_step4="$missing_step4 $pkg"
+                fi
+            done
             
             # Check if majority of representative packages are installed (at least 75%)
             total_checked=$(echo "$step1_tools $step2_tools $step3_tools $step4_tools" | wc -w)
-            total_missing=$(echo "$missing_step1 $missing_step2 $missing_step3 $missing_step4" | wc -w)
-            installed_count=$((total_checked - total_missing))
+            missing_count=$(echo "$missing_step1 $missing_step2 $missing_step3 $missing_step4" | wc -w)
+            installed_count=$((total_checked - missing_count))
             threshold=$((total_checked * 3 / 4))  # 75% threshold
             
-            [ $installed_count -ge $threshold ] && echo TOOLS_OK || echo TOOLS_MISS
+            if [ $installed_count -ge $threshold ]; then
+                echo TOOLS_OK
+            else
+                echo TOOLS_MISS
+                echo "Missing system tools: $(echo "$missing_step1 $missing_step2 $missing_step3 $missing_step4" | xargs)"
+            fi
 
             # Environment
             [ -d /opt/xenv ] && echo ENV_OK || echo ENV_MISS
@@ -1157,6 +1284,9 @@ PY
                 log("[Deps:Debian] Password file exists but appears incomplete - please regenerate passwords");
             }
             
+            // Update install button states based on current status
+            updateInstallButtonStates();
+            
             log("[Deps:Debian] Check completed\n" + out.trim());
         } catch (error) {
             setTextError("dep-status", '<i class="fas fa-times text-danger"></i> Check failed');
@@ -1173,6 +1303,9 @@ PY
             ['dep-py', 'dep-tools', 'dep-env', 'dep-xdep', 'dep-oscli', 'dep-cfg', 'dep-pwd'].forEach(id => 
                 setBadge(id, "err", '<i class="fas fa-times text-danger"></i> error')
             );
+            
+            // Update install button states to reflect error state
+            updateInstallButtonStates();
         }
     }
 
@@ -1181,31 +1314,57 @@ PY
             # More fault-tolerant script - don't exit on first error
             step() { echo "[STEP] $1"; }
             
-            # Python deps
-            missing=$(rpm -q git python3-devel python3-pip libffi-devel gcc openssl-devel python3-libselinux 2>/dev/null |
-                     awk '/is not installed/{print $1}') || true
-            [ -z "$missing" ] && echo PY_OK || echo PY_MISS
+            # Python deps - Fixed logic for RPM systems
+            pkgs='git python3-devel python3-pip libffi-devel gcc openssl-devel python3-libselinux'
+            missing=""
+            for pkg in $pkgs; do
+                if ! rpm -q "$pkg" >/dev/null 2>&1; then
+                    missing="$missing $pkg"
+                fi
+            done
+            missing=$(echo "$missing" | xargs)  # trim whitespace
+            [ -z "$missing" ] && echo PY_OK || { echo PY_MISS; echo "Missing Python deps: $missing"; }
 
-            # System tools (checking representative packages from each installation step)
+            # System tools (checking representative packages from each installation step) - Fixed logic for RPM
             # Step 1: Core monitoring/networking
             step1_tools='btop htop iftop nethogs iotop'
-            missing_step1=$(rpm -q $step1_tools 2>/dev/null | awk '/is not installed/{print $1}')
+            missing_step1=""
+            for pkg in $step1_tools; do
+                if ! rpm -q "$pkg" >/dev/null 2>&1; then
+                    missing_step1="$missing_step1 $pkg"
+                fi
+            done
             
             # Step 2: Development tools
             step2_tools='git curl wget vim nano'
-            missing_step2=$(rpm -q $step2_tools 2>/dev/null | awk '/is not installed/{print $1}')
+            missing_step2=""
+            for pkg in $step2_tools; do
+                if ! rpm -q "$pkg" >/dev/null 2>&1; then
+                    missing_step2="$missing_step2 $pkg"
+                fi
+            done
             
             # Step 3: System services  
             step3_tools='net-snmp net-snmp-utils bridge-utils'
-            missing_step3=$(rpm -q $step3_tools 2>/dev/null | awk '/is not installed/{print $1}')
+            missing_step3=""
+            for pkg in $step3_tools; do
+                if ! rpm -q "$pkg" >/dev/null 2>&1; then
+                    missing_step3="$missing_step3 $pkg"
+                fi
+            done
             
             # Check if majority of representative packages are installed (at least 75%)
             total_checked=$(echo "$step1_tools $step2_tools $step3_tools" | wc -w)
-            total_missing=$(echo "$missing_step1 $missing_step2 $missing_step3" | wc -w)
-            installed_count=$((total_checked - total_missing))
+            missing_count=$(echo "$missing_step1 $missing_step2 $missing_step3" | wc -w)
+            installed_count=$((total_checked - missing_count))
             threshold=$((total_checked * 3 / 4))  # 75% threshold
             
-            [ $installed_count -ge $threshold ] && echo TOOLS_OK || echo TOOLS_MISS
+            if [ $installed_count -ge $threshold ]; then
+                echo TOOLS_OK
+            else
+                echo TOOLS_MISS
+                echo "Missing system tools: $(echo "$missing_step1 $missing_step2 $missing_step3" | xargs)"
+            fi
 
             # OpenStack clients (check via pip globally on RHEL)
             python3 - <<'PY'
@@ -1415,6 +1574,9 @@ PY
                 log("[Deps:RHEL] Password file exists but appears incomplete - please regenerate passwords");
             }
             
+            // Update install button states based on current status
+            updateInstallButtonStates();
+            
             log("[Deps:RHEL] Check completed\n" + out.trim());
         } catch (error) {
             setTextError("dep-status", '<i class="fas fa-times text-danger"></i> Check failed');
@@ -1431,6 +1593,9 @@ PY
             ['dep-py', 'dep-tools', 'dep-env', 'dep-xdep', 'dep-oscli', 'dep-cfg', 'dep-pwd'].forEach(id => 
                 setBadge(id, "err", '<i class="fas fa-times text-danger"></i> error')
             );
+            
+            // Update install button states to reflect error state
+            updateInstallButtonStates();
         }
     }
 
@@ -2293,6 +2458,8 @@ octavia_loadbalancer_topology: "ACTIVE_STANDBY"
         await refreshStorageOverview();
         await refreshNetworkOverview();
         await runHardwareChecks();
+        await refreshHardwareDetails();
+        await detectVirtualization();
         await checkDependencies();
     });
     $("btn-system-info").addEventListener("click", exportSystemInfo);
@@ -2376,6 +2543,17 @@ octavia_loadbalancer_topology: "ACTIVE_STANDBY"
         refreshSystemStatus().catch(console.error);
         refreshStorageOverview().catch(console.error);
         refreshNetworkOverview().catch(console.error);
+        
+        // Initialize hardware information on page load
+        runHardwareChecks().catch(console.error);
+        refreshHardwareDetails().catch(console.error);
+        detectVirtualization().catch(console.error);
+        
+        // Initialize dependency checks on page load
+        checkDependencies().catch(console.error);
+        
+        // Initialize button states (will be properly set after first dependency check)
+        updateInstallButtonStates();
     }).catch(console.error);
 })();
 
