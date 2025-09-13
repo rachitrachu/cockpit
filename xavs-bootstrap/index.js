@@ -125,6 +125,102 @@
         const el = $(id);
         if (el) el.style.width = Math.max(0, Math.min(100, v)) + "%";
     };
+
+    // Simple operation state manager (inspired by xavs-images)
+    const OperationManager = {
+        currentOperation: null,
+        isRunning: false,
+        operationQueue: [],
+        
+        async run(operationName, operationFn, options = {}) {
+            // If something is already running and we don't allow concurrent operations, queue this one
+            if (this.isRunning && !options.allowConcurrent) {
+                log(`${operationName} queued (${this.currentOperation} is running)`, "info");
+                return new Promise((resolve, reject) => {
+                    this.operationQueue.push({ operationName, operationFn, options, resolve, reject });
+                });
+            }
+            
+            // Set current operation
+            this.isRunning = true;
+            this.currentOperation = operationName;
+            
+            // Update status bar to show operation is running
+            const statusElement = $('recent-activity');
+            const statusBar = document.querySelector('.bottom-status-bar');
+            if (statusElement && statusBar) {
+                statusElement.textContent = `Running: ${operationName}`;
+                statusBar.classList.remove('status-success', 'status-warning', 'status-error');
+                statusBar.classList.add('status-info');
+            }
+            
+            // Log operation start with separator
+            log(`Starting: ${operationName}`, "info");
+            log("─".repeat(50), "info");
+            
+            try {
+                // Run the operation
+                const result = await operationFn();
+                
+                // Log completion
+                log("─".repeat(50), "info");
+                log(`Completed: ${operationName}`, "success");
+                
+                // Update status bar to show success
+                if (statusElement && statusBar) {
+                    statusElement.textContent = `Completed: ${operationName}`;
+                    statusBar.classList.remove('status-info', 'status-warning', 'status-error');
+                    statusBar.classList.add('status-success');
+                }
+                
+                return result;
+                
+            } catch (error) {
+                log("─".repeat(50), "info");
+                log(`Failed: ${operationName} - ${error.message}`, "error");
+                
+                // Update status bar to show error
+                if (statusElement && statusBar) {
+                    statusElement.textContent = `Failed: ${operationName}`;
+                    statusBar.classList.remove('status-info', 'status-success', 'status-warning');
+                    statusBar.classList.add('status-error');
+                }
+                
+                throw error;
+            } finally {
+                // Clear current operation
+                this.isRunning = false;
+                this.currentOperation = null;
+                
+                // Process next operation in queue
+                if (this.operationQueue.length > 0) {
+                    const next = this.operationQueue.shift();
+                    setTimeout(() => {
+                        this.run(next.operationName, next.operationFn, next.options)
+                            .then(next.resolve)
+                            .catch(next.reject);
+                    }, 100); // Small delay to prevent overwhelming
+                } else {
+                    // Reset status bar to ready state after all operations complete
+                    setTimeout(() => {
+                        if (statusElement && statusBar && !this.isRunning) {
+                            statusElement.textContent = "Ready";
+                            statusBar.classList.remove('status-info', 'status-success', 'status-warning', 'status-error');
+                        }
+                    }, 2000); // Show result for 2 seconds
+                }
+            }
+        },
+        
+        isOperationRunning() {
+            return this.isRunning;
+        },
+        
+        getCurrentOperation() {
+            return this.currentOperation;
+        }
+    };
+
     const logEl = $("log");
     const log = (t="", type = 'info') => {
         if (!logEl) return;
@@ -308,11 +404,223 @@
         const targetPanel = a.dataset.target;
         showPanel(targetPanel);
         
-        // Run checks when switching to these tabs
+        // Run checks when switching to these tabs - with operation management
         if (targetPanel === 'panel-hw') {
-            runHardwareChecks().catch(console.error);
-            refreshHardwareDetails().catch(console.error);
-            detectVirtualization().catch(console.error);
+            OperationManager.run("Hardware Tab Load", async () => {
+                log("[Tab] Hardware tab clicked - running hardware checks");
+                
+                // Run hardware validation checks
+                ['root', 'nics', 'extra', 'cores', 'ram'].forEach(id => 
+                    setBadge(`chk-${id}`, "", '<i class="fas fa-clock text-warning"></i>')
+                );
+                setText("hw-summary", "Running hardware checks...");
+                
+                // Check root space
+                log("[HW] Checking root filesystem free space...");
+                const df = await cockpit.spawn([
+                    "bash", "-c",
+                    "df -BG / | awk 'NR==2{gsub(\"G\",\"\",$4); print $4}'"
+                ]);
+                const freeSpace = parseInt(df.trim(), 10) || 0;
+                setBadge("chk-root", freeSpace >= 100 ? "ok" : "err", `${freeSpace} GB`);
+
+                // Check network interfaces
+                log("[HW] Checking network interfaces...");
+                const nc = await cockpit.spawn([
+                    "bash", "-c",
+                    "ls -1 /sys/class/net | grep -v '^lo$' | wc -l"
+                ]);
+                const nics = parseInt(nc.trim(), 10) || 0;
+                setBadge("chk-nics", nics >= 2 ? "ok" : "err", String(nics));
+
+                // Check for extra storage
+                log("[HW] Checking for additional storage...");
+                const storageCheck = 
+                    "rootdev=$(findmnt -n -o SOURCE / | sed 's/[0-9]*$//');" +
+                    "disks=$(lsblk -dn -o NAME,TYPE | awk '$2==\"disk\"{print \"/dev/\"$1}');" +
+                    "extra=0; for d in $disks; do " +
+                    "  if [ \"$d\" != \"$rootdev\" ]; then " +
+                    "    parts=$(lsblk -no NAME,MOUNTPOINT \"$d\" | tail -n +2 | awk 'NF');" +
+                    "    [ -z \"$parts\" ] && extra=1 && break;" +
+                    "  fi;" +
+                    "done;" +
+                    "if [ $extra -eq 0 ]; then " +
+                    "  if command -v vgs >/dev/null 2>&1; then " +
+                    "    vgs --noheadings -o vg_name,lv_count,vg_free | " +
+                    "    awk '($2==0)||($3!~/0B/){found=1} END{exit !(found)}' && " +
+                    "    echo YES || echo NO;" +
+                    "  else echo NO; fi;" +
+                    "else echo YES; fi";
+
+                const extra = (await cockpit.spawn(["bash", "-c", storageCheck])).trim() === "YES";
+                setBadge("chk-extra", extra ? "ok" : "warn", extra ? "Available" : "Not found");
+
+                // Check CPU cores
+                log("[HW] Checking CPU cores...");
+                const cores = parseInt((await cockpit.spawn(["nproc"])).trim(), 10) || 0;
+                setBadge("chk-cores", cores >= 4 ? "ok" : "err", String(cores));
+
+                // Check RAM
+                log("[HW] Checking memory...");
+                const meminfo = await cockpit.spawn([
+                    "bash", "-c",
+                    "awk '/MemTotal/ {print int($2/1024/1024)}' /proc/meminfo"
+                ]);
+                const ramGB = parseInt(meminfo.trim(), 10) || 0;
+                setBadge("chk-ram", ramGB >= 8 ? "ok" : "err", `${ramGB} GB`);
+
+                // Summarize hardware results
+                const errors = ['root', 'nics', 'cores', 'ram']
+                    .filter(id => $(`chk-${id}`).className.includes("err"));
+                const warnings = ['extra']
+                    .filter(id => $(`chk-${id}`).className.includes("warn"));
+
+                let summary = "";
+                if (errors.length === 0 && warnings.length === 0) {
+                    summary = '<i class="fas fa-check text-success"></i> All hardware requirements met!';
+                } else {
+                    if (errors.length) summary += `${errors.length} critical issue(s). `;
+                    if (warnings.length) summary += `${warnings.length} warning(s). `;
+                }
+                setText("hw-summary", summary);
+
+                log(`[HW] Hardware check completed: root=${freeSpace}G nics=${nics} extra=${extra} cores=${cores} ram=${ramGB}G`);
+                
+                // Load detailed hardware information
+                log("[Hardware] Refreshing detailed hardware information...");
+
+                // CPU Information
+                setText("cpu-model", "Loading...");
+                setText("cpu-cores", "Loading...");
+                setText("cpu-threads", "Loading...");
+                setText("cpu-arch", "Loading...");
+                setText("cpu-virt", "Loading...");
+
+                const cpuModel = await cockpit.spawn(["bash", "-c", "lscpu | grep 'Model name' | cut -d':' -f2 | sed 's/^ *//' || echo ''"]);
+                setText("cpu-model", cpuModel.trim() || "");
+
+                const cpuCores = await cockpit.spawn(["bash", "-c", "lscpu | grep '^CPU(s):' | awk '{print $2}' || echo ''"]);
+                setText("cpu-cores", cpuCores.trim() || "");
+
+                const cpuThreads = await cockpit.spawn(["bash", "-c", "lscpu | grep 'Thread(s) per core' | awk '{print $4}' || echo ''"]);
+                setText("cpu-threads", cpuThreads.trim() || "");
+
+                const cpuArch = await cockpit.spawn(["bash", "-c", "lscpu | grep Architecture | cut -d':' -f2 | sed 's/^ *//' || echo ''"]);
+                setText("cpu-arch", cpuArch.trim() || "");
+
+                // Check for virtualization support
+                try {
+                    const virtSupport = await cockpit.spawn(["bash", "-c", "lscpu | grep -i virtualization | cut -d':' -f2 | sed 's/^ *//' || echo 'Not supported'"]);
+                    setText("cpu-virt", virtSupport.trim() || "Not supported");
+                } catch {
+                    setText("cpu-virt", "Not detected");
+                }
+
+                // Memory Information
+                setText("mem-total", "Loading...");
+                setText("mem-available", "Loading...");
+                setText("mem-used", "Loading...");
+                setText("mem-swap", "Loading...");
+
+                const memTotal = await cockpit.spawn(["bash", "-c", "free -h | awk 'NR==2{print $2}'"]);
+                setText("mem-total", memTotal.trim() || "");
+
+                const memAvailable = await cockpit.spawn(["bash", "-c", "free -h | awk 'NR==2{print $7}'"]);
+                setText("mem-available", memAvailable.trim() || "");
+
+                const memUsed = await cockpit.spawn(["bash", "-c", "free -h | awk 'NR==2{print $3}'"]);
+                setText("mem-used", memUsed.trim() || "");
+
+                const memSwap = await cockpit.spawn(["bash", "-c", "free -h | awk 'NR==3{print $2}' | grep -v '^$' || echo 'None'"]);
+                setText("mem-swap", memSwap.trim() || "None");
+
+                // Storage Information
+                setText("disk-rootfs", "Loading...");
+                setText("disk-devices", "Loading...");
+                setText("disk-vgs", "Loading...");
+                setText("disk-mounts", "Loading...");
+
+                const rootfsType = await cockpit.spawn(["bash", "-c", "findmnt -n -o FSTYPE / || echo ''"]);
+                setText("disk-rootfs", rootfsType.trim() || "");
+
+                const blockDevices = await cockpit.spawn(["bash", "-c", "lsblk -dn -o NAME,SIZE,TYPE | grep disk | wc -l"]);
+                setText("disk-devices", blockDevices.trim() + " disk(s)");
+
+                // Check for LVM volume groups
+                try {
+                    const vgs = await cockpit.spawn(["bash", "-c", "vgs --noheadings -o vg_name 2>/dev/null | wc -l"]);
+                    setText("disk-vgs", vgs.trim() + " VG(s)");
+                } catch {
+                    setText("disk-vgs", "LVM not available");
+                }
+
+                const mountCount = await cockpit.spawn(["bash", "-c", "mount | grep -v tmpfs | grep -v proc | grep -v sys | wc -l"]);
+                setText("disk-mounts", mountCount.trim() + " mount(s)");
+
+                // Network Information
+                setText("net-active", "Loading...");
+                setText("net-types", "Loading...");
+                setText("net-ips", "Loading...");
+                setText("net-gateway", "Loading...");
+
+                const activeNics = await cockpit.spawn(["bash", "-c", "ip link show | grep -c 'state UP'"]);
+                setText("net-active", activeNics.trim() || "0");
+
+                const nicTypes = await cockpit.spawn(["bash", "-c", "ip link show | grep '^[0-9]' | awk '{print $2}' | cut -d':' -f1 | grep -v lo | head -3 | tr '\\n' ', ' | sed 's/,$//' || echo ''"]);
+                setText("net-types", nicTypes.trim() || "");
+
+                const ipAddresses = await cockpit.spawn(["bash", "-c", "ip addr show | grep 'inet ' | grep -v '127.0.0.1' | awk '{print $2}' | head -6 || echo ''"]);
+                setText("net-ips", ipAddresses.trim() || "");
+
+                const gateway = await cockpit.spawn(["bash", "-c", "ip route | grep default | awk '{print $3}' | head -1 || echo ''"]);
+                setText("net-gateway", gateway.trim() || "");
+
+                log("[Hardware] Hardware details updated successfully", "success");
+                
+                // Detect virtualization environment
+                setText("virt-type", "Loading...");
+                setText("virt-platform", "Loading...");
+                setText("virt-hypervisor", "Loading...");
+                setText("virt-nested", "Loading...");
+                
+                log("[Virtualization] Detecting virtualization environment...");
+
+                // Detect virtualization type
+                try {
+                    const virtType = await cockpit.spawn(["bash", "-c", "systemd-detect-virt 2>/dev/null || echo 'none'"]);
+                    setText("virt-type", virtType.trim() === "none" ? "Physical/Bare Metal" : virtType.trim());
+                } catch {
+                    setText("virt-type", "Unknown");
+                }
+
+                // Platform detection
+                try {
+                    const platform = await cockpit.spawn(["bash", "-c", "dmidecode -s system-product-name 2>/dev/null | head -1 || echo ''"]);
+                    setText("virt-platform", platform.trim() || "");
+                } catch {
+                    setText("virt-platform", "Access denied");
+                }
+
+                // Hypervisor detection
+                try {
+                    const hypervisor = await cockpit.spawn(["bash", "-c", "lscpu | grep 'Hypervisor vendor' | cut -d':' -f2 | sed 's/^ *//' || echo 'None'"]);
+                    setText("virt-hypervisor", hypervisor.trim() || "None");
+                } catch {
+                    setText("virt-hypervisor", "Not detected");
+                }
+
+                // Check nested virtualization support
+                try {
+                    const nested = await cockpit.spawn(["bash", "-c", "cat /sys/module/kvm_*/parameters/nested 2>/dev/null | head -1 || echo 'N/A'"]);
+                    const nestedText = nested.trim() === "Y" ? '<i class="fas fa-check text-success"></i> Enabled' : 
+                                     nested.trim() === "N" ? '<i class="fas fa-times text-danger"></i> Disabled' : "N/A";
+                    setText("virt-nested", nestedText);
+                } catch {
+                    setText("virt-nested", "Not available");
+                }
+
+                log("[Virtualization] Virtualization detection completed");
+            }).catch(console.error);
         } else if (targetPanel === 'panel-deps') {
             log("[Tab] Dependencies tab clicked - running dependency check");
             checkDependencies().catch(console.error);
@@ -343,15 +651,15 @@
     };
 
     async function detectOS() {
-        try {
-            setText("os-name", "Detecting");
-            log("[OS] Starting OS detection...", "info");
-            
-            const out = await cockpit.spawn([
-                "bash", "-c", 
-                "source /etc/os-release 2>/dev/null; echo \"$NAME|$ID|$ID_LIKE|$VERSION_ID\""
-            ]);
-            const ker = await cockpit.spawn(["uname", "-r"]);
+        return await OperationManager.run("OS Detection", async () => {
+            try {
+                setText("os-name", "Detecting");
+                
+                const out = await cockpit.spawn([
+                    "bash", "-c", 
+                    "source /etc/os-release 2>/dev/null; echo \"$NAME|$ID|$ID_LIKE|$VERSION_ID\""
+                ]);
+                const ker = await cockpit.spawn(["uname", "-r"]);
             
             const [name, id, like, ver] = (out.trim() || "Unknown|||").split("|");
             osInfo = {
@@ -412,6 +720,7 @@
             showNotification("OS detection failed: " + (error.message || error), 'error');
             log("[OS] Detection failed: " + (error.message || error), "error");
         }
+        });
     }
 
     //  Enhanced System Information Functions 
@@ -551,7 +860,7 @@
     }
 
     async function refreshHardwareDetails() {
-        try {
+        await OperationManager.run("Hardware Details Check", async () => {
             log("[Hardware] Refreshing detailed hardware information...");
 
             // CPU Information
@@ -641,13 +950,11 @@
             setText("net-gateway", gateway.trim() || "");
 
             log("[Hardware] Hardware details updated successfully", "success");
-        } catch (error) {
-            log("[Hardware] Failed to refresh hardware details: " + (error.message || error));
-        }
+        });
     }
 
     async function detectVirtualization() {
-        try {
+        await OperationManager.run("Virtualization Detection", async () => {
             setText("virt-type", "Loading...");
             setText("virt-platform", "Loading...");
             setText("virt-hypervisor", "Loading...");
@@ -690,13 +997,7 @@
             }
 
             log("[Virtualization] Virtualization detection completed");
-        } catch (error) {
-            setText("virt-type", "Error");
-            setText("virt-platform", "Error");
-            setText("virt-hypervisor", "Error");
-            setText("virt-nested", "Error");
-            log("[Virtualization] Failed to detect virtualization: " + (error.message || error));
-        }
+        });
     }
 
     async function exportSystemInfo() {
@@ -764,16 +1065,16 @@ End of Report
 
     //  Hardware Checks 
     async function runHardwareChecks() {
-        // Reset badges
-        ['root', 'nics', 'extra', 'cores', 'ram'].forEach(id => 
-            setBadge(`chk-${id}`, "", '<i class="fas fa-clock text-warning"></i>')
-        );
-        setText("hw-summary", "Running hardware checks...");
-        log("[HW] Starting hardware validation checks");
+        return await OperationManager.run("Hardware Validation Checks", async () => {
+            // Reset badges
+            ['root', 'nics', 'extra', 'cores', 'ram'].forEach(id => 
+                setBadge(`chk-${id}`, "", '<i class="fas fa-clock text-warning"></i>')
+            );
+            setText("hw-summary", "Running hardware checks...");
 
-        try {
-            // Check root space
-            log("[HW] Checking root filesystem free space...");
+            try {
+                // Check root space
+                log("[HW] Checking root filesystem free space...");
             const df = await cockpit.spawn([
                 "bash", "-c",
                 "df -BG / | awk 'NR==2{gsub(\"G\",\"\",$4); print $4}'"
@@ -850,6 +1151,7 @@ End of Report
             setText("hw-summary", "Hardware check failed. See logs for details.");
             log("[HW] Hardware check failed: " + (error.message || error));
         }
+        });
     }
 
     //  Dependencies 
@@ -942,53 +1244,57 @@ End of Report
     }
     
     async function checkDependencies() {
-        log("[Deps] Starting dependency check");
-        log("[Deps] OS Info at check time: " + JSON.stringify(osInfo));
-        
-        if (osInfo.isXOS) {
-            setText("dep-status", "Skipped on XOS");
-            log("[Deps] Skipping dependency check on XOS system");
-            return;
-        }
-
-        // Reset all badges to loading state
-        ['dep-py', 'dep-tools', 'dep-env', 'dep-xdep', 'dep-oscli', 'dep-cfg', 'dep-pwd'].forEach(id => 
-            setBadge(id, "", '<i class="fas fa-clock text-warning"></i>')
-        );
-        
-        setTextWithSpinner("dep-status", "Checking dependencies...");
-        log("[Deps] Starting dependency check for " + osInfo.branch + " system");
-
-        try {
-            if (osInfo.branch === "debian") {
-                await checkDebianDeps();
-            } else if (osInfo.branch === "rhel") {
-                await checkRHELDeps();
-            } else {
-                setTextError("dep-status", '<i class="fas fa-times text-danger"></i> Unknown OS - cannot check dependencies');
-                log("[Deps] Unknown OS branch: " + osInfo.branch);
+        return await OperationManager.run("Dependency Check", async () => {
+            log("[Deps] OS Info at check time: " + JSON.stringify(osInfo));
+            
+            if (osInfo.isXOS) {
+                setText("dep-status", "Skipped on XOS");
+                log("[Deps] Skipping dependency check on XOS system");
                 return;
             }
+
+            // Reset all badges to loading state
+            ['dep-py', 'dep-tools', 'dep-env', 'dep-xdep', 'dep-oscli', 'dep-cfg', 'dep-pwd'].forEach(id => 
+                setBadge(id, "", '<i class="fas fa-clock text-warning"></i>')
+            );
             
-            // Analyze results and provide summary
-            const badges = ['dep-py', 'dep-tools', 'dep-env', 'dep-xdep', 'dep-oscli', 'dep-cfg', 'dep-pwd'];
-            const errors = badges.filter(id => $(`${id}`).className.includes("err"));
-            const warnings = badges.filter(id => $(`${id}`).className.includes("warn"));
-            
-            if (errors.length === 0 && warnings.length === 0) {
-                setTextSuccess("dep-status", '<i class="fas fa-check text-success"></i> All dependencies ready!');
-            } else if (errors.length === 0) {
-                setText("dep-status", `<i class="fas fa-exclamation-triangle text-warning"></i> ${warnings.length} item(s) need attention`);
-            } else {
-                setTextError("dep-status", `<i class="fas fa-times text-danger"></i> ${errors.length} missing dependencies`);
+            setTextWithSpinner("dep-status", "Checking dependencies...");
+            log("[Deps] Starting dependency check for " + osInfo.branch + " system");
+
+            try {
+                if (osInfo.branch === "debian") {
+                    await checkDebianDeps();
+                } else if (osInfo.branch === "rhel") {
+                    await checkRHELDeps();
+                } else {
+                    setTextError("dep-status", '<i class="fas fa-times text-danger"></i> Unknown OS - cannot check dependencies');
+                    log("[Deps] Unknown OS branch: " + osInfo.branch);
+                    return;
+                }
+                
+                // Analyze results and provide summary
+                const badges = ['dep-py', 'dep-tools', 'dep-env', 'dep-xdep', 'dep-oscli', 'dep-cfg', 'dep-pwd'];
+                const errors = badges.filter(id => $(`${id}`).className.includes("err"));
+                const warnings = badges.filter(id => $(`${id}`).className.includes("warn"));
+                
+                if (errors.length === 0 && warnings.length === 0) {
+                    setTextSuccess("dep-status", '<i class="fas fa-check text-success"></i> All dependencies ready!');
+                } else if (errors.length === 0) {
+                    setText("dep-status", `<i class="fas fa-exclamation-triangle text-warning"></i> ${warnings.length} item(s) need attention`);
+                } else {
+                    setTextError("dep-status", `<i class="fas fa-times text-danger"></i> ${errors.length} missing dependencies`);
+                }
+                
+                log(`[Deps] Check completed - ${errors.length} errors, ${warnings.length} warnings`);
+                
+                // Update button states after successful check
+                updateInstallButtonStates();
+                
+            } catch (error) {
+                setTextError("dep-status", '<i class="fas fa-times text-danger"></i> Check failed');
+                log("[Deps] Check failed: " + (error.message || error));
             }
-            
-            log(`[Deps] Check completed - ${errors.length} errors, ${warnings.length} warnings`);
-            
-        } catch (error) {
-            setTextError("dep-status", '<i class="fas fa-times text-danger"></i> Check failed');
-            log("[Deps] Check failed: " + (error.message || error));
-        }
+        });
     }
 
     async function checkDebianDeps() {
@@ -1652,7 +1958,7 @@ PY
             });
             
             pb("dep-progress", 80);
-            setTextWithSpinner("dep-note", "Installing Ansible and Kolla-Ansible...");
+            setTextWithSpinner("dep-note", "Installing Ansible and deployment tools...");
             
             // Install Python packages
             await cockpit.spawn([
@@ -1752,8 +2058,8 @@ octavia_loadbalancer_topology: "ACTIVE_STANDBY"
             });
             
             pb("dep-progress", 65);
-            setTextWithSpinner("dep-note", "Installing Ansible and Kolla-Ansible...");
-            log("[Install:RHEL] Step 3/4: Installing Python dependencies (ansible-core>=2.15,<2.16.99, kolla-ansible)");
+            setTextWithSpinner("dep-note", "Installing Ansible and deployment tools...");
+            log("[Install:RHEL] Step 3/4: Installing Python dependencies (ansible-core and deployment tools)");
             
             // Step 3: Install Python packages globally (no venv on RHEL approach)
             await cockpit.spawn([
@@ -1825,96 +2131,98 @@ octavia_loadbalancer_topology: "ACTIVE_STANDBY"
     }
 
     async function installDependencies() {
-        if (osInfo.isXOS) {
-            setText("dep-note", "Installation skipped on XOS systems");
-            return;
-        }
-        
-        // Set bulk install flag to prevent individual checks
-        isRunningBulkInstall = true;
-        
-        const installBtn = $("btn-install-all");
-        const checkBtn = $("btn-check-deps");
-        
-        // Disable buttons during installation
-        if (installBtn) installBtn.disabled = true;
-        if (checkBtn) checkBtn.disabled = true;
-        
-        // Reset progress and show starting message
-        pb("dep-progress", 0);
-        setTextWithSpinner("dep-note", "Starting sequential installation...");
-        log("[Install:All] Starting complete dependency installation in proper sequence");
-
-        try {
-            // Step 1: Python Dependencies
-            pb("dep-progress", 10);
-            setTextWithSpinner("dep-note", "Step 1/7: Installing Python Dependencies...");
-            log("[Install:All] Step 1/7: Python Dependencies");
-            await installPythonDeps();
+        await OperationManager.run("Full Dependency Installation", async () => {
+            if (osInfo.isXOS) {
+                setText("dep-note", "Installation skipped on XOS systems");
+                return;
+            }
             
-            // Step 2: System Tools
-            pb("dep-progress", 25);
-            setTextWithSpinner("dep-note", "Step 2/7: Installing System Tools...");
-            log("[Install:All] Step 2/7: System Tools");
-            await installSystemTools();
+            // Set bulk install flag to prevent individual checks
+            isRunningBulkInstall = true;
             
-            // Step 3: Python Environment
-            pb("dep-progress", 40);
-            setTextWithSpinner("dep-note", "Step 3/7: Setting up Python Environment...");
-            log("[Install:All] Step 3/7: Python Environment");
-            await installEnvironment();
+            const installBtn = $("btn-install-all");
+            const checkBtn = $("btn-check-deps");
             
-            // Step 4: xDeploy Dependencies
-            pb("dep-progress", 55);
-            setTextWithSpinner("dep-note", "Step 4/7: Installing xAVS Dependencies...");
-            log("[Install:All] Step 4/7: xAVS Dependencies");
-            await installXDeployDeps();
+            // Disable buttons during installation
+            if (installBtn) installBtn.disabled = true;
+            if (checkBtn) checkBtn.disabled = true;
             
-            // Step 5: OpenStack Clients
-            pb("dep-progress", 70);
-            setTextWithSpinner("dep-note", "Step 5/7: Installing CLI Clients...");
-            log("[Install:All] Step 5/7: CLI Clients");
-            await installCLIClients();
-            
-            // Step 6: Configuration Setup
-            pb("dep-progress", 85);
-            setTextWithSpinner("dep-note", "Step 6/7: Setting up Configuration...");
-            log("[Install:All] Step 6/7: Configuration Setup");
-            await installConfiguration();
-            
-            // Step 7: Password Configuration
-            pb("dep-progress", 95);
-            setTextWithSpinner("dep-note", "Step 7/7: Generating Passwords...");
-            log("[Install:All] Step 7/7: Password Configuration");
-            await generatePasswords();
-
-            // Final verification
-            pb("dep-progress", 100);
-            setTextWithSpinner("dep-note", "Verifying complete installation...");
-            log("[Install:All] Running final verification check");
-            await checkDependencies();
-            
-            // Show final success message
-            setTextSuccess("dep-note", '<i class="fas fa-check text-success"></i> Complete installation successful!');
-            log("[Install:All] All 7 steps completed successfully in proper sequence", "success");
-            
-        } catch (error) {
-            const errorMsg = error.message || error.toString();
-            setTextError("dep-note", '<i class="fas fa-times text-danger"></i> Installation failed: ' + errorMsg);
-            log("[Install:All] Installation failed at current step: " + errorMsg);
-            log("[Install:All] You can continue by clicking individual component install buttons");
-            
-            // Reset progress on failure
+            // Reset progress and show starting message
             pb("dep-progress", 0);
-            
-        } finally {
-            // Reset bulk install flag
-            isRunningBulkInstall = false;
-            
-            // Re-enable buttons
-            if (installBtn) installBtn.disabled = false;
-            if (checkBtn) checkBtn.disabled = false;
-        }
+            setTextWithSpinner("dep-note", "Starting sequential installation...");
+            log("[Install:All] Starting complete dependency installation in proper sequence");
+
+            try {
+                // Step 1: Python Dependencies
+                pb("dep-progress", 10);
+                setTextWithSpinner("dep-note", "Step 1/7: Installing Python Dependencies...");
+                log("[Install:All] Step 1/7: Python Dependencies");
+                await installPythonDeps();
+                
+                // Step 2: System Tools
+                pb("dep-progress", 25);
+                setTextWithSpinner("dep-note", "Step 2/7: Installing System Tools...");
+                log("[Install:All] Step 2/7: System Tools");
+                await installSystemTools();
+                
+                // Step 3: Python Environment
+                pb("dep-progress", 40);
+                setTextWithSpinner("dep-note", "Step 3/7: Setting up Python Environment...");
+                log("[Install:All] Step 3/7: Python Environment");
+                await installEnvironment();
+                
+                // Step 4: xDeploy Dependencies
+                pb("dep-progress", 55);
+                setTextWithSpinner("dep-note", "Step 4/7: Installing xAVS Dependencies...");
+                log("[Install:All] Step 4/7: xAVS Dependencies");
+                await installXDeployDeps();
+                
+                // Step 5: OpenStack Clients
+                pb("dep-progress", 70);
+                setTextWithSpinner("dep-note", "Step 5/7: Installing CLI Clients...");
+                log("[Install:All] Step 5/7: CLI Clients");
+                await installCLIClients();
+                
+                // Step 6: Configuration Setup
+                pb("dep-progress", 85);
+                setTextWithSpinner("dep-note", "Step 6/7: Setting up Configuration...");
+                log("[Install:All] Step 6/7: Configuration Setup");
+                await installConfiguration();
+                
+                // Step 7: Password Configuration
+                pb("dep-progress", 95);
+                setTextWithSpinner("dep-note", "Step 7/7: Generating Passwords...");
+                log("[Install:All] Step 7/7: Password Configuration");
+                await generatePasswords();
+
+                // Final verification
+                pb("dep-progress", 100);
+                setTextWithSpinner("dep-note", "Verifying complete installation...");
+                log("[Install:All] Running final verification check");
+                await checkDependencies();
+                
+                // Show final success message
+                setTextSuccess("dep-note", '<i class="fas fa-check text-success"></i> Complete installation successful!');
+                log("[Install:All] All 7 steps completed successfully in proper sequence", "success");
+                
+            } catch (error) {
+                const errorMsg = error.message || error.toString();
+                setTextError("dep-note", '<i class="fas fa-times text-danger"></i> Installation failed: ' + errorMsg);
+                log("[Install:All] Installation failed at current step: " + errorMsg);
+                log("[Install:All] You can continue by clicking individual component install buttons");
+                
+                // Reset progress on failure
+                pb("dep-progress", 0);
+                
+            } finally {
+                // Reset bulk install flag
+                isRunningBulkInstall = false;
+                
+                // Re-enable buttons
+                if (installBtn) installBtn.disabled = false;
+                if (checkBtn) checkBtn.disabled = false;
+            }
+        });
     }
 
     //  Individual Installation Functions 
@@ -2134,7 +2442,7 @@ octavia_loadbalancer_topology: "ACTIVE_STANDBY"
             ], { superuser: "require", err: "message" });
             
             setBadge("dep-xdep", "", " Installing Ansible...");
-            log("[Install:XDeploy] Step 2/3: Installing ansible-core>=2.15,<2.16.99 and kolla-ansible");
+            log("[Install:XDeploy] Step 2/3: Installing ansible-core and deployment framework");
             // Step 2: Install ansible-core and kolla-ansible
             await cockpit.spawn([
                 "/opt/xenv/bin/pip", "install", 
@@ -2208,7 +2516,7 @@ octavia_loadbalancer_topology: "ACTIVE_STANDBY"
 
             setBadge("dep-xdep", "ok", '<i class="fas fa-check text-success"></i> ready');
             log("[Install:XDeploy]  All XDeploy dependencies installed successfully");
-            log("[Install:XDeploy]  Virtual env: ansible-core>=2.15, kolla-ansible@stable/2024.1, requests==2.31.0, urllib3==1.26.20, docker==6.1.3");
+            log("[Install:XDeploy]  Virtual env: ansible-core>=2.15, deployment framework, requests==2.31.0, urllib3==1.26.20, docker==6.1.3");
             log("[Install:XDeploy]  Global: requests==2.31.0, urllib3==1.26.20, docker==6.1.3");
             
             // Refresh detection to verify installation
@@ -2315,12 +2623,12 @@ octavia_loadbalancer_topology: "ACTIVE_STANDBY"
             setBadge("dep-cfg", "", " Setting up directories...");
             log("[Install:Config] Setting up xavs configuration directories and files...");
 
-            // Check if virtual environment and kolla-ansible are available
+            // Check if virtual environment and deployment framework are available
             try {
                 await cockpit.spawn(["test", "-d", "/opt/xenv/share/kolla-ansible"], { err: "message" });
             } catch (e) {
-                log("[Install:Config]  Kolla-ansible not found. Please install xDeploy Dependencies first.");
-                setBadge("dep-cfg", "err", " kolla missing");
+                log("[Install:Config]  Deployment framework not found. Please install xDeploy Dependencies first.");
+                setBadge("dep-cfg", "err", " framework missing");
                 return;
             }
 
@@ -2332,8 +2640,8 @@ octavia_loadbalancer_topology: "ACTIVE_STANDBY"
                 "mkdir -p /etc/xavs && chown root:root /etc/xavs"
             ], { superuser: "require", err: "message" });
 
-            setBadge("dep-cfg", "", " Copying kolla config...");
-            log("[Install:Config] Step 2/5: Copying kolla-ansible configuration files to /etc/xavs");
+            setBadge("dep-cfg", "", " Copying deployment config...");
+            log("[Install:Config] Step 2/5: Copying deployment configuration files to /etc/xavs");
             // Step 2: Copy kolla configuration files
             await cockpit.spawn([
                 "bash", "-c",
@@ -2357,7 +2665,7 @@ octavia_loadbalancer_topology: "ACTIVE_STANDBY"
             ], { superuser: "require", err: "message" });
 
             setBadge("dep-cfg", "", " Installing deps...");
-            log("[Install:Config] Step 5/7: Running kolla-ansible install-deps");
+            log("[Install:Config] Step 5/7: Running deployment framework dependency installation");
             // Step 5: Install kolla-ansible dependencies
             await cockpit.spawn([
                 "bash", "-c",
@@ -2380,8 +2688,8 @@ octavia_loadbalancer_topology: "ACTIVE_STANDBY"
 
             setBadge("dep-cfg", "ok", '<i class="fas fa-check text-success"></i> ready');
             log("[Install:Config]  xavs configuration setup completed successfully", "success");
-            log("[Install:Config]  Created: /etc/xavs (kolla config), /etc/xavs/nodes (inventory), /etc/kolla -> /etc/xavs (symlink)");
-            log("[Install:Config]  Executed: kolla-ansible install-deps and verified ansible collections");
+            log("[Install:Config]  Created: /etc/xavs (deployment config), /etc/xavs/nodes (inventory), /etc/kolla -> /etc/xavs (symlink)");
+            log("[Install:Config]  Executed: deployment framework dependency installation and verified ansible collections");
             
             // Refresh detection to verify installation
             if (!isRunningBulkInstall) { setTimeout(() => checkDependencies(), 1000); }
@@ -2389,7 +2697,7 @@ octavia_loadbalancer_topology: "ACTIVE_STANDBY"
         } catch (error) {
             setBadge("dep-cfg", "err", '<i class="fas fa-times text-danger"></i> failed');
             log("[Install:Config]  Failed: " + (error.message || error));
-            log("[Install:Config]  Tip: Make sure xDeploy Dependencies (kolla-ansible) are installed first");
+            log("[Install:Config]  Tip: Make sure xDeploy Dependencies (deployment framework) are installed first");
         } finally {
             if (btn) btn.disabled = false;
         }
@@ -2401,7 +2709,7 @@ octavia_loadbalancer_topology: "ACTIVE_STANDBY"
 
         try {
             setBadge("dep-pwd", "", "");
-            log("[Install:Passwords] Generating passwords using kolla-genpwd...");
+            log("[Install:Passwords] Generating passwords using deployment framework...");
 
             if (osInfo.branch === "debian") {
                 // Use virtual environment on Debian
@@ -2424,7 +2732,7 @@ octavia_loadbalancer_topology: "ACTIVE_STANDBY"
             }
 
             setBadge("dep-pwd", "ok", '<i class="fas fa-check text-success"></i> ready');
-            log("[Install:Passwords]  Passwords generated successfully using kolla-genpwd");
+            log("[Install:Passwords]  Passwords generated successfully using deployment framework");
             
             // Refresh detection to verify installation
             if (!isRunningBulkInstall) { setTimeout(() => checkDependencies(), 1000); }
@@ -2545,19 +2853,228 @@ octavia_loadbalancer_topology: "ACTIVE_STANDBY"
         refreshStorageOverview().catch(console.error);
         refreshNetworkOverview().catch(console.error);
         
-        // Initialize hardware information on page load
-        runHardwareChecks().catch(console.error);
-        refreshHardwareDetails().catch(console.error);
-        detectVirtualization().catch(console.error);
+        // Initialize hardware information on page load with OperationManager
+        OperationManager.run("Initial Hardware Load", async () => {
+            log("[Hardware] Loading hardware information on page startup...");
+            
+            // Run hardware validation checks
+            ['root', 'nics', 'extra', 'cores', 'ram'].forEach(id => 
+                setBadge(`chk-${id}`, "", '<i class="fas fa-clock text-warning"></i>')
+            );
+            setText("hw-summary", "Running hardware checks...");
+            
+            // Check root space
+            log("[HW] Checking root filesystem free space...");
+            const df = await cockpit.spawn([
+                "bash", "-c",
+                "df -BG / | awk 'NR==2{gsub(\"G\",\"\",$4); print $4}'"
+            ]);
+            const freeSpace = parseInt(df.trim(), 10) || 0;
+            setBadge("chk-root", freeSpace >= 100 ? "ok" : "err", `${freeSpace} GB`);
+
+            // Check network interfaces
+            log("[HW] Checking network interfaces...");
+            const nc = await cockpit.spawn([
+                "bash", "-c",
+                "ls -1 /sys/class/net | grep -v '^lo$' | wc -l"
+            ]);
+            const nics = parseInt(nc.trim(), 10) || 0;
+            setBadge("chk-nics", nics >= 2 ? "ok" : "err", String(nics));
+
+            // Check for extra storage
+            log("[HW] Checking for additional storage...");
+            const storageCheck = 
+                "rootdev=$(findmnt -n -o SOURCE / | sed 's/[0-9]*$//');" +
+                "disks=$(lsblk -dn -o NAME,TYPE | awk '$2==\"disk\"{print \"/dev/\"$1}');" +
+                "extra=0; for d in $disks; do " +
+                "  if [ \"$d\" != \"$rootdev\" ]; then " +
+                "    parts=$(lsblk -no NAME,MOUNTPOINT \"$d\" | tail -n +2 | awk 'NF');" +
+                "    [ -z \"$parts\" ] && extra=1 && break;" +
+                "  fi;" +
+                "done;" +
+                "if [ $extra -eq 0 ]; then " +
+                "  if command -v vgs >/dev/null 2>&1; then " +
+                "    vgs --noheadings -o vg_name,lv_count,vg_free | " +
+                "    awk '($2==0)||($3!~/0B/){found=1} END{exit !(found)}' && " +
+                "    echo YES || echo NO;" +
+                "  else echo NO; fi;" +
+                "else echo YES; fi";
+
+            const extra = (await cockpit.spawn(["bash", "-c", storageCheck])).trim() === "YES";
+            setBadge("chk-extra", extra ? "ok" : "warn", extra ? "Available" : "Not found");
+
+            // Check CPU cores
+            log("[HW] Checking CPU cores...");
+            const cores = parseInt((await cockpit.spawn(["nproc"])).trim(), 10) || 0;
+            setBadge("chk-cores", cores >= 4 ? "ok" : "err", String(cores));
+
+            // Check RAM
+            log("[HW] Checking memory...");
+            const meminfo = await cockpit.spawn([
+                "bash", "-c",
+                "awk '/MemTotal/ {print int($2/1024/1024)}' /proc/meminfo"
+            ]);
+            const ramGB = parseInt(meminfo.trim(), 10) || 0;
+            setBadge("chk-ram", ramGB >= 8 ? "ok" : "err", `${ramGB} GB`);
+
+            // Summarize hardware results
+            const errors = ['root', 'nics', 'cores', 'ram']
+                .filter(id => $(`chk-${id}`).className.includes("err"));
+            const warnings = ['extra']
+                .filter(id => $(`chk-${id}`).className.includes("warn"));
+
+            let summary = "";
+            if (errors.length === 0 && warnings.length === 0) {
+                summary = '<i class="fas fa-check text-success"></i> All hardware requirements met!';
+            } else {
+                if (errors.length) summary += `${errors.length} critical issue(s). `;
+                if (warnings.length) summary += `${warnings.length} warning(s). `;
+            }
+            setText("hw-summary", summary);
+
+            log(`[HW] Hardware check completed: root=${freeSpace}G nics=${nics} extra=${extra} cores=${cores} ram=${ramGB}G`);
+            
+            // Load detailed hardware information
+            log("[Hardware] Refreshing detailed hardware information...");
+
+            // CPU Information
+            setText("cpu-model", "Loading...");
+            setText("cpu-cores", "Loading...");
+            setText("cpu-threads", "Loading...");
+            setText("cpu-arch", "Loading...");
+            setText("cpu-virt", "Loading...");
+
+            const cpuModel = await cockpit.spawn(["bash", "-c", "lscpu | grep 'Model name' | cut -d':' -f2 | sed 's/^ *//' || echo ''"]);
+            setText("cpu-model", cpuModel.trim() || "");
+
+            const cpuCores = await cockpit.spawn(["bash", "-c", "lscpu | grep '^CPU(s):' | awk '{print $2}' || echo ''"]);
+            setText("cpu-cores", cpuCores.trim() || "");
+
+            const cpuThreads = await cockpit.spawn(["bash", "-c", "lscpu | grep 'Thread(s) per core' | awk '{print $4}' || echo ''"]);
+            setText("cpu-threads", cpuThreads.trim() || "");
+
+            const cpuArch = await cockpit.spawn(["bash", "-c", "lscpu | grep Architecture | cut -d':' -f2 | sed 's/^ *//' || echo ''"]);
+            setText("cpu-arch", cpuArch.trim() || "");
+
+            // Check for virtualization support
+            try {
+                const virtSupport = await cockpit.spawn(["bash", "-c", "lscpu | grep -i virtualization | cut -d':' -f2 | sed 's/^ *//' || echo 'Not supported'"]);
+                setText("cpu-virt", virtSupport.trim() || "Not supported");
+            } catch {
+                setText("cpu-virt", "Not detected");
+            }
+
+            // Memory Information
+            setText("mem-total", "Loading...");
+            setText("mem-available", "Loading...");
+            setText("mem-used", "Loading...");
+            setText("mem-swap", "Loading...");
+
+            const memTotal = await cockpit.spawn(["bash", "-c", "free -h | awk 'NR==2{print $2}'"]);
+            setText("mem-total", memTotal.trim() || "");
+
+            const memAvailable = await cockpit.spawn(["bash", "-c", "free -h | awk 'NR==2{print $7}'"]);
+            setText("mem-available", memAvailable.trim() || "");
+
+            const memUsed = await cockpit.spawn(["bash", "-c", "free -h | awk 'NR==2{print $3}'"]);
+            setText("mem-used", memUsed.trim() || "");
+
+            const memSwap = await cockpit.spawn(["bash", "-c", "free -h | awk 'NR==3{print $2}' | grep -v '^$' || echo 'None'"]);
+            setText("mem-swap", memSwap.trim() || "None");
+
+            // Storage Information
+            setText("disk-rootfs", "Loading...");
+            setText("disk-devices", "Loading...");
+            setText("disk-vgs", "Loading...");
+            setText("disk-mounts", "Loading...");
+
+            const rootfsType = await cockpit.spawn(["bash", "-c", "findmnt -n -o FSTYPE / || echo ''"]);
+            setText("disk-rootfs", rootfsType.trim() || "");
+
+            const blockDevices = await cockpit.spawn(["bash", "-c", "lsblk -dn -o NAME,SIZE,TYPE | grep disk | wc -l"]);
+            setText("disk-devices", blockDevices.trim() + " disk(s)");
+
+            // Check for LVM volume groups
+            try {
+                const vgs = await cockpit.spawn(["bash", "-c", "vgs --noheadings -o vg_name 2>/dev/null | wc -l"]);
+                setText("disk-vgs", vgs.trim() + " VG(s)");
+            } catch {
+                setText("disk-vgs", "LVM not available");
+            }
+
+            const mountCount = await cockpit.spawn(["bash", "-c", "mount | grep -v tmpfs | grep -v proc | grep -v sys | wc -l"]);
+            setText("disk-mounts", mountCount.trim() + " mount(s)");
+
+            // Network Information
+            setText("net-active", "Loading...");
+            setText("net-types", "Loading...");
+            setText("net-ips", "Loading...");
+            setText("net-gateway", "Loading...");
+
+            const activeNics = await cockpit.spawn(["bash", "-c", "ip link show | grep -c 'state UP'"]);
+            setText("net-active", activeNics.trim() || "0");
+
+            const nicTypes = await cockpit.spawn(["bash", "-c", "ip link show | grep '^[0-9]' | awk '{print $2}' | cut -d':' -f1 | grep -v lo | head -3 | tr '\\n' ', ' | sed 's/,$//' || echo ''"]);
+            setText("net-types", nicTypes.trim() || "");
+
+            const ipAddresses = await cockpit.spawn(["bash", "-c", "ip addr show | grep 'inet ' | grep -v '127.0.0.1' | awk '{print $2}' | head -6 || echo ''"]);
+            setText("net-ips", ipAddresses.trim() || "");
+
+            const gateway = await cockpit.spawn(["bash", "-c", "ip route | grep default | awk '{print $3}' | head -1 || echo ''"]);
+            setText("net-gateway", gateway.trim() || "");
+
+            log("[Hardware] Hardware details updated successfully", "success");
+            
+            // Detect virtualization environment
+            setText("virt-type", "Loading...");
+            setText("virt-platform", "Loading...");
+            setText("virt-hypervisor", "Loading...");
+            setText("virt-nested", "Loading...");
+            
+            log("[Virtualization] Detecting virtualization environment...");
+
+            // Detect virtualization type
+            try {
+                const virtType = await cockpit.spawn(["bash", "-c", "systemd-detect-virt 2>/dev/null || echo 'none'"]);
+                setText("virt-type", virtType.trim() === "none" ? "Physical/Bare Metal" : virtType.trim());
+            } catch {
+                setText("virt-type", "Unknown");
+            }
+
+            // Platform detection
+            try {
+                const platform = await cockpit.spawn(["bash", "-c", "dmidecode -s system-product-name 2>/dev/null | head -1 || echo ''"]);
+                setText("virt-platform", platform.trim() || "");
+            } catch {
+                setText("virt-platform", "Access denied");
+            }
+
+            // Hypervisor detection
+            try {
+                const hypervisor = await cockpit.spawn(["bash", "-c", "lscpu | grep 'Hypervisor vendor' | cut -d':' -f2 | sed 's/^ *//' || echo 'None'"]);
+                setText("virt-hypervisor", hypervisor.trim() || "None");
+            } catch {
+                setText("virt-hypervisor", "Not detected");
+            }
+
+            // Check nested virtualization support
+            try {
+                const nested = await cockpit.spawn(["bash", "-c", "cat /sys/module/kvm_*/parameters/nested 2>/dev/null | head -1 || echo 'N/A'"]);
+                const nestedText = nested.trim() === "Y" ? '<i class="fas fa-check text-success"></i> Enabled' : 
+                                 nested.trim() === "N" ? '<i class="fas fa-times text-danger"></i> Disabled' : "N/A";
+                setText("virt-nested", nestedText);
+            } catch {
+                setText("virt-nested", "Not available");
+            }
+
+            log("[Virtualization] Virtualization detection completed");
+        }).catch(console.error);
         
-        // Initialize dependency checks on page load (with small delay to ensure OS info is fully processed)
+        // Initialize dependency checks on page load - run after hardware checks complete
         setTimeout(() => {
             log("[Init] Starting automatic dependency check on page load");
             checkDependencies().catch(console.error);
-        }, 1000);
-        
-        // Initialize button states (will be properly set after first dependency check)
-        updateInstallButtonStates();
+        }, 500);  // Shorter delay since OperationManager will handle serialization
     }).catch(console.error);
 })();
 
