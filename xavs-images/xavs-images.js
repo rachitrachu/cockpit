@@ -2,6 +2,35 @@ document.addEventListener('DOMContentLoaded', () => {
   const $ = (id) => document.getElementById(id);
 
   // ---- Helpers ----
+  // Format path to remove double slashes and clean up display
+  const formatPath = (path) => {
+    if (!path) return '';
+    return path.replace(/\/+/g, '/').replace(/^\//, '/');
+  };
+
+  // Format path with icon for better visual display
+  const formatPathWithIcon = (path, isFile = false) => {
+    if (!path) return '';
+    const cleanPath = formatPath(path);
+    
+    // Determine icon based on path and file type
+    let icon = '📁'; // Default folder icon
+    
+    if (isFile || cleanPath.includes('.')) {
+      if (cleanPath.endsWith('.tar.gz')) {
+        icon = '📦'; // Archive icon for tar.gz files
+      } else {
+        icon = '📄'; // Generic file icon
+      }
+    } else if (cleanPath === '/root' || cleanPath.startsWith('/root')) {
+      icon = '🏠'; // Home icon for root directory
+    } else if (cleanPath.includes('/home/')) {
+      icon = '👤'; // User icon for home directories
+    }
+    
+    return `${icon} ${cleanPath}`;
+  };
+
   const logEl = $("log");
   const log = (t="") => {
     if (!logEl) {
@@ -116,6 +145,656 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 2000); // Check every 2 seconds
   };
 
+  // ---- Server File Browser for Extract Tab ----
+  const serverFileModal = $('server-file-modal');
+  const serverFileList = $('server-file-list');
+  const serverFilePath = $('server-file-path');
+  const selectArchiveBtn = $('select-archive-btn');
+  const selectedArchivePathSpan = $('selected-archive-path');
+  const selectDestBtn = $('select-dest-btn');
+  const selectedDestPathSpan = $('selected-dest-path');
+  const copyArchiveBtn = $('copy-archive-btn');
+  const destinationSelectBlock = document.getElementById('destination-select-block');
+  const closeModalBtn = $('close-server-file-modal');
+  
+  // Extract section elements (always visible)
+  const browseExtractFileBtn = $('browse-extract-file-btn');
+  const browsedExtractFilePathSpan = $('browsed-extract-file-path');
+  const extractFileInfo = $('extract-file-info');
+  const extractArchiveBtn = $('extract-archive-btn');
+  
+  // Navigation buttons
+  const navHomeBtn = $('nav-home-btn');
+  const navRootBtn = $('nav-root-btn');
+  const navTmpBtn = $('nav-tmp-btn');
+  const navVarBtn = $('nav-var-btn');
+
+  let currentServerDir = '/root';
+  let selectedExtractFilePath = null;
+
+  // Backend implementation using shell commands via cockpit
+  async function listServerDir(path) {
+    try {
+      // Version check - if you see this, the new code is loaded
+      
+      // Validate and sanitize the path to prevent directory traversal attacks
+      const sanitizedPath = path.replace(/\.\.+/g, '').replace(/\/+/g, '/');
+      
+      
+      // Check if directory exists and is accessible
+      try {
+        await runCommand(['test', '-d', sanitizedPath]);
+      } catch (e) {
+        return [];
+      }
+      
+      // List directory contents with detailed info
+      const { stdout } = await runCommand([
+        'ls', '-la', '--time-style=+%Y-%m-%d %H:%M', sanitizedPath
+      ]);
+      
+      if (!stdout || !stdout.trim()) {
+        return [];
+      }
+      
+      
+      const lines = stdout.trim().split('\n');
+      const items = [];
+      
+      
+      // Skip the first line (total) and parse each entry
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        // Split by whitespace, but keep the last field (filename) even if it contains spaces
+        // ls -la --time-style=+%Y-%m-%d %H:%M output: perms, links, owner, group, size, date, time, name
+        // e.g. drwxr-x---  4 xloud xloud 4096 2025-09-11 05:28 xloud
+        const parts = line.split(/\s+/);
+        if (parts.length < 8) {
+          continue;
+        }
+        // The filename is always the last field (or fields if spaces)
+        const name = parts.slice(7).join(' ');
+        if (name === '.' || name === '..') {
+          continue;
+        }
+        const perms = parts[0];
+        const isDir = perms[0] === 'd';
+        const size = parseInt(parts[4], 10);
+        const date = parts[5];
+        const time = parts[6];
+        const item = {
+          name,
+          type: isDir ? 'dir' : (perms[0] === 'l' ? 'link' : 'file'),
+          size: !isDir ? size : null,
+          modified: `${date} ${time}`,
+          permissions: perms,
+          user: parts[2],
+          group: parts[3]
+        };
+        items.push(item);
+      }
+      
+      
+      // Filter out hidden files (name starts with '.') and symlinks (type === 'link')
+      const visibleItems = items.filter(item => !item.name.startsWith('.') && item.type !== 'link');
+
+      // Sort: directories first, then files, both alphabetically
+      visibleItems.sort((a, b) => {
+        if (a.type === 'dir' && b.type !== 'dir') return -1;
+        if (a.type !== 'dir' && b.type === 'dir') return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      return visibleItems;
+      
+    } catch (error) {
+      console.error(`Error listing directory ${path}:`, error.message);
+      return [];
+    }
+  }
+
+  async function openServerFileModal(startPath = '/') {
+    try {
+      
+      // Test multiple common directories and log results
+      const testPaths = ['/home', '/root', '/tmp', '/var', '/opt', '/usr', '/'];
+      
+      let accessiblePaths = [];
+      for (const testPath of testPaths) {
+        try {
+          await runCommand(['test', '-d', testPath]);
+          accessiblePaths.push(testPath);
+        } catch (e) {
+        }
+      }
+      
+      
+      // Try to start from the specified path, but have fallbacks
+      let initialPath = startPath;
+      
+      // Use the first accessible directory from our preferred list
+      const preferredPaths = [startPath, '/home', '/tmp', '/var', '/'];
+      for (const testPath of preferredPaths) {
+        if (accessiblePaths.includes(testPath)) {
+          initialPath = testPath;
+          break;
+        }
+      }
+      
+      if (initialPath !== startPath) {
+      }
+      
+      serverFileModal.style.display = 'flex';
+      await renderServerFileList(initialPath);
+    } catch (error) {
+      log(`🚨 Error opening file browser: ${error.message}`);
+      serverFileModal.style.display = 'none';
+    }
+  }
+
+  // Create breadcrumb navigation
+  function createBreadcrumb(path) {
+    const segments = path.split('/').filter(segment => segment !== '');
+    const breadcrumbHtml = [];
+    
+    // Add root
+    breadcrumbHtml.push(`<a class="breadcrumb-segment" data-path="/" title="Go to root">/</a>`);
+    
+    // Add each path segment
+    let currentPath = '';
+    segments.forEach((segment, index) => {
+      currentPath += '/' + segment;
+      breadcrumbHtml.push(`<span class="breadcrumb-separator">/</span>`);
+      breadcrumbHtml.push(`<a class="breadcrumb-segment" data-path="${currentPath}" title="Go to ${currentPath}">${segment}</a>`);
+    });
+    
+    return breadcrumbHtml.join('');
+  }
+
+  async function renderServerFileList(path) {
+    try {
+      currentServerDir = path;
+      // Update breadcrumb navigation
+      serverFilePath.innerHTML = createBreadcrumb(path);
+      // Add click handlers to breadcrumb segments
+      serverFilePath.querySelectorAll('.breadcrumb-segment').forEach(segment => {
+        segment.addEventListener('click', (e) => {
+          e.preventDefault();
+          const targetPath = segment.getAttribute('data-path');
+          renderServerFileList(targetPath);
+        });
+      });
+      serverFileList.innerHTML = '';
+      // Add parent directory navigation (except for root)
+      if (path !== '/') {
+        const parentPath = path.replace(/\/[^/]*$/, '') || '/';
+        const parentLi = document.createElement('li');
+        parentLi.className = 'parent-dir';
+  parentLi.innerHTML = '<div><i class="fa-solid fa-level-up-alt file-icon icon-up"></i><strong>.. (Parent Directory)</strong></div><div></div>';
+        parentLi.title = `Go to ${parentPath}`;
+        parentLi.onclick = () => renderServerFileList(parentPath);
+        serverFileList.appendChild(parentLi);
+      }
+
+      // Ensure modal footer exists
+      // Prefer to use .modal-actions if it exists, else fallback to #server-file-modal-footer
+      let modalFooter = serverFileModal.querySelector('.modal-actions');
+      if (!modalFooter) {
+        modalFooter = document.getElementById('server-file-modal-footer');
+      }
+      if (!modalFooter) {
+        // Try to find the modal and append a footer if missing
+        if (serverFileModal) {
+          modalFooter = document.createElement('div');
+          modalFooter.id = 'server-file-modal-footer';
+          modalFooter.className = 'modal-footer';
+          let modalContent = serverFileModal.querySelector('.modal-content') || serverFileModal;
+          modalContent.appendChild(modalFooter);
+        }
+      }
+      // Remove any existing select-folder-footer button
+      if (modalFooter) {
+        const oldBtn = document.getElementById('select-folder-footer-btn');
+        if (oldBtn) oldBtn.remove();
+      }
+      if (fileBrowserMode === 'select-dest' && modalFooter) {
+        // Add 'Select this folder' button to modal footer
+        const selectFolderBtn = document.createElement('button');
+        selectFolderBtn.id = 'select-folder-footer-btn';
+        selectFolderBtn.className = 'btn btn-brand'; // Use brand color class
+  selectFolderBtn.innerHTML = `<i class=\"fa-solid fa-check-circle\"></i> Select this folder`;
+        selectFolderBtn.onclick = () => {
+          selectedDestPath = path;
+          selectedDestPathSpan.innerHTML = formatPathWithIcon(path);
+          serverFileModal.style.display = 'none';
+          if (selectedArchivePath && selectedDestPath) {
+            copyArchiveBtn.disabled = false;
+          }
+        };
+        // Always insert before the Cancel/Close button if it exists
+        const cancelBtn = modalFooter.querySelector('#close-server-file-modal');
+        if (cancelBtn) {
+          modalFooter.insertBefore(selectFolderBtn, cancelBtn);
+        } else {
+          modalFooter.appendChild(selectFolderBtn);
+        }
+      }
+
+      const items = await listServerDir(path);
+      if (items.length === 0) {
+        const emptyLi = document.createElement('li');
+        emptyLi.className = 'empty';
+  emptyLi.innerHTML = '<div><i class="fa-solid fa-info-circle file-icon icon-info"></i><em>Directory is empty or not accessible</em></div><div></div>';
+        serverFileList.appendChild(emptyLi);
+        return;
+      }
+      for (const item of items) {
+        const li = document.createElement('li');
+        let iconClass, colorClass;
+        li.dataset.path = path === '/' ? '/' + item.name : path + '/' + item.name;
+        li.dataset.isdir = item.type === 'dir' ? 'true' : 'false';
+        if (item.type === 'dir') {
+    iconClass = 'fa-solid fa-folder';
+          colorClass = 'icon-folder';
+          li.title = `Open directory: ${item.name}`;
+          li.dataset.selectable = 'true';
+          // In destination select mode, only navigate into directory on click (do not select)
+          li.onclick = () => renderServerFileList(path + '/' + item.name);
+        } else if (item.type === 'link') {
+    iconClass = 'fa-solid fa-link';
+          colorClass = 'icon-link';
+          li.title = `Symbolic link: ${item.name}`;
+          li.classList.add('file-disabled');
+          li.dataset.selectable = 'false';
+        } else {
+          if (item.name.endsWith('.tar.gz')) {
+            iconClass = 'fa-solid fa-file-archive';
+            colorClass = 'icon-file-archive';
+            li.classList.add('file-selectable');
+            li.title = `Select this .tar.gz archive: ${item.name}`;
+            li.dataset.selectable = 'true';
+          } else {
+            iconClass = 'fa-solid fa-file';
+            colorClass = 'icon-file';
+            li.classList.add('file-disabled');
+            li.title = 'Only .tar.gz files can be selected';
+            li.dataset.selectable = 'false';
+          }
+        }
+        // Main content
+        const mainDiv = document.createElement('div');
+  mainDiv.innerHTML = `<i class="${iconClass} file-icon ${colorClass}"></i><strong>${item.name}</strong>`;
+        const infoDiv = document.createElement('div');
+        infoDiv.className = 'file-info';
+        if (item.type === 'file' && item.size && item.modified) {
+          const sizeFormatted = formatFileSize(parseInt(item.size));
+          infoDiv.textContent = `${sizeFormatted} • ${item.modified}`;
+        } else if (item.type === 'dir') {
+    infoDiv.innerHTML = '<i class="fa-solid fa-chevron-right icon-chevron"></i>';
+        }
+        li.appendChild(mainDiv);
+        li.appendChild(infoDiv);
+        serverFileList.appendChild(li);
+      }
+      
+    } catch (error) {
+      console.error('Error rendering server file list:', error);
+  serverFileList.innerHTML = `<li class="error"><div><i class="fa-solid fa-exclamation-triangle file-icon icon-warning"></i>Error loading directory: ${error.message}</div><div></div></li>`;
+    }
+  }
+
+  // Helper function to format file sizes
+  function formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  }
+
+  // Initialize server file browser event listeners
+  // --- Archive selection and destination selection logic ---
+  let selectedArchivePath = null;
+  let selectedDestPath = null;
+  let fileBrowserMode = null; // 'select-archive', 'select-dest', or 'browse-extract'
+
+  if (selectArchiveBtn && serverFileModal && closeModalBtn) {
+    selectArchiveBtn.onclick = () => {
+      fileBrowserMode = 'select-archive';
+      openServerFileModal('/');
+    };
+    if (selectDestBtn) {
+      selectDestBtn.onclick = () => {
+        fileBrowserMode = 'select-dest';
+        openServerFileModal('/');
+      };
+    }
+    
+    // Browse extract file button handler
+    if (browseExtractFileBtn) {
+      browseExtractFileBtn.onclick = () => {
+        fileBrowserMode = 'browse-extract';
+        openServerFileModal('/');
+      };
+    }
+    
+    closeModalBtn.onclick = () => {
+      serverFileModal.style.display = 'none';
+    };
+    // Navigation button handlers for modal
+    if (navHomeBtn) navHomeBtn.onclick = () => renderServerFileList('/home');
+    if (navRootBtn) navRootBtn.onclick = () => renderServerFileList('/root');
+    if (navTmpBtn) navTmpBtn.onclick = () => renderServerFileList('/tmp');
+    if (navVarBtn) navVarBtn.onclick = () => renderServerFileList('/var');
+    // Optional: close modal on outside click
+    serverFileModal.addEventListener('click', (e) => {
+      if (e.target === serverFileModal) serverFileModal.style.display = 'none';
+    });
+  }
+
+  // Patch: handle file selection in modal for archive and destination
+  if (serverFileList) {
+    serverFileList.onclick = async (e) => {
+      const li = e.target.closest('li');
+      if (!li) return;
+      const path = li.dataset.path;
+      const isDir = li.dataset.isdir === 'true';
+      const isSelectable = li.dataset.selectable === 'true';
+      
+      if (fileBrowserMode === 'select-archive') {
+        // Only allow .tar.gz files to be selected
+        if (!isDir && isSelectable && path.endsWith('.tar.gz')) {
+          selectedArchivePath = path;
+          selectedArchivePathSpan.innerHTML = formatPathWithIcon(path, true);
+          serverFileModal.style.display = 'none';
+          // Show destination select block (remove .hidden class)
+          destinationSelectBlock.classList.remove('hidden');
+          // Reset destination selection
+          selectedDestPath = null;
+          selectedDestPathSpan.textContent = '';
+          copyArchiveBtn.disabled = true;
+        }
+      } else if (fileBrowserMode === 'browse-extract') {
+        // Handle browse extract file selection
+        if (!isDir && isSelectable && path.endsWith('.tar.gz')) {
+          selectedExtractFilePath = path;
+          browsedExtractFilePathSpan.innerHTML = formatPathWithIcon(path, true);
+          serverFileModal.style.display = 'none';
+          
+          // Update extract file info and enable extract button
+          const fileName = path.split('/').pop();
+          extractFileInfo.innerHTML = `
+            <div class="file-info-item">
+              <i class="fa fa-file-archive text-blue"></i>
+              <div class="file-details">
+                <div class="file-name">${fileName}</div>
+                <div class="file-path">${formatPathWithIcon(path, true)}</div>
+                <div class="file-status"><i class="fa fa-check-circle text-green"></i> Ready for extraction</div>
+              </div>
+            </div>
+          `;
+          extractFileInfo.classList.remove('hidden');
+          extractArchiveBtn.disabled = false;
+          
+          // Set up extract button handler for browsed file
+          extractArchiveBtn.onclick = async () => {
+            await extractArchive(selectedExtractFilePath);
+          };
+        }
+      }
+      // In destination select mode, do not select dir on click, only navigate (handled in renderServerFileList)
+    };
+  }
+
+  // Copy archive button logic
+  if (copyArchiveBtn) {
+    const copyProgressContainer = document.getElementById('copy-progress-container');
+    const copyProgressBar = document.getElementById('copy-progress-bar');
+    const copyProgressText = document.getElementById('copy-progress-text');
+    const copyProgressCount = document.getElementById('copy-progress-count');
+    copyArchiveBtn.onclick = async () => {
+      if (!selectedArchivePath || !selectedDestPath) return;
+      copyArchiveBtn.disabled = true;
+      log(`Copying archive <span class="text-blue">${selectedArchivePath}</span> to <span class="text-blue">${selectedDestPath}</span> ...`);
+      // Show progress bar
+      copyProgressContainer.classList.remove('hidden');
+      copyProgressBar.style.width = '0%';
+      copyProgressText.textContent = 'Preparing copy...';
+      copyProgressCount.textContent = '';
+      try {
+        // Check if pv is available
+        let pvAvailable = false;
+        try {
+          await runCommand(['which', 'pv']);
+          pvAvailable = true;
+        } catch {}
+        const destFile = selectedDestPath.replace(/\/+$/, '') + '/' + selectedArchivePath.split('/').pop();
+        if (pvAvailable) {
+          // Get file size (in bytes)
+          let fileSize = 0;
+          try {
+            const { stdout } = await runCommand(['stat', '-c', '%s', selectedArchivePath]);
+            fileSize = parseInt(stdout.trim(), 10);
+          } catch {}
+          copyProgressText.textContent = 'Copying...';
+          // Use cockpit.spawn directly for streaming
+          const process = cockpit.spawn(['pv', '-n', selectedArchivePath], { superuser: 'require', err: 'message' });
+          let copied = 0;
+          process.stream(data => {
+            // pv -n outputs bytes copied as a number per line
+            const lines = data.split(/\r?\n/).filter(Boolean);
+            for (const line of lines) {
+              const val = parseInt(line.trim(), 10);
+              if (!isNaN(val) && fileSize > 0) {
+                copied = val;
+                const percent = Math.min(100, Math.round((copied / fileSize) * 100));
+                copyProgressBar.style.width = percent + '%';
+                copyProgressCount.textContent = `${percent}%`;
+              }
+            }
+          });
+          // Pipe pv output to destination file
+          await new Promise((resolve, reject) => {
+            const destProc = cockpit.spawn(['sh', '-c', `pv -n '${selectedArchivePath.replace(/'/g, "'\\''")}' > '${destFile.replace(/'/g, "'\\''")}'`], { superuser: 'require', err: 'message' });
+            destProc.stream(data => {
+              const lines = data.split(/\r?\n/).filter(Boolean);
+              for (const line of lines) {
+                const val = parseInt(line.trim(), 10);
+                if (!isNaN(val) && fileSize > 0) {
+                  const percent = Math.min(100, Math.round((val / fileSize) * 100));
+                  copyProgressBar.style.width = percent + '%';
+                  copyProgressCount.textContent = `${percent}%`;
+                }
+              }
+            });
+            destProc.then(resolve).catch(reject);
+          });
+          copyProgressBar.style.width = '100%';
+          copyProgressCount.textContent = '100%';
+        } else {
+          // Fallback: cp without progress
+          copyProgressText.textContent = 'Copying (no progress info)...';
+          await runCommand(['cp', '-f', selectedArchivePath, destFile], { superuser: true });
+          copyProgressBar.style.width = '100%';
+          copyProgressCount.textContent = '100%';
+        }
+        log(`<span class="text-green">Archive copied successfully.</span>`);
+        
+        // Update extract section after successful copy
+        if (extractFileInfo && extractArchiveBtn) {
+          const fileName = selectedArchivePath.split('/').pop();
+          
+          // Update the browsed file path to show the copied file
+          selectedExtractFilePath = destFile;
+          browsedExtractFilePathSpan.innerHTML = formatPathWithIcon(destFile, true);
+          
+          // Update extract file info
+          extractFileInfo.innerHTML = `
+            <div class="file-info-item">
+              <i class="fa fa-file-archive text-blue"></i>
+              <div class="file-details">
+                <div class="file-name">${fileName}</div>
+                <div class="file-path">Copied to: ${formatPathWithIcon(selectedDestPath)}</div>
+                <div class="file-status"><i class="fa fa-check-circle text-green"></i> Ready for extraction</div>
+              </div>
+            </div>
+          `;
+          extractFileInfo.classList.remove('hidden');
+          extractArchiveBtn.disabled = false;
+          
+          // Set up extract button handler for copied file
+          extractArchiveBtn.onclick = async () => {
+            await extractArchive(destFile);
+          };
+        }
+        
+      } catch (e) {
+        log(`<span class="text-red">Failed to copy archive: ${e.message || e}</span>`);
+      } finally {
+        copyArchiveBtn.disabled = false;
+        setTimeout(() => {
+          copyProgressContainer.classList.add('hidden');
+        }, 1200);
+      }
+    };
+  }
+
+  // Extract archive function with hardcoded destination
+  async function extractArchive(archivePath) {
+    const EXTRACT_DESTINATION = '/etc/xavs/xavs-images/';
+    
+    const extractBtn = document.getElementById('extract-archive-btn');
+    const extractProgressContainer = document.getElementById('extract-progress-container');
+    const extractProgressBar = document.getElementById('extract-progress-bar');
+    const extractProgressText = document.getElementById('extract-progress-text');
+    const extractProgressCount = document.getElementById('extract-progress-count');
+    
+    if (!extractBtn || !extractProgressContainer) return;
+    
+    extractBtn.disabled = true;
+    extractBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Extracting...';
+    
+    // Show progress bar
+    extractProgressContainer.classList.remove('hidden');
+    extractProgressBar.style.width = '0%';
+    extractProgressText.textContent = 'Preparing extraction...';
+    extractProgressCount.textContent = '';
+    
+    const fileName = archivePath.split('/').pop();
+    log(`Extracting archive <span class="text-blue">${fileName}</span> to <span class="text-blue">${EXTRACT_DESTINATION}</span>...`);
+    
+    try {
+      // Ensure destination directory exists
+      await runCommand(['mkdir', '-p', EXTRACT_DESTINATION]);
+      
+      // Check if pv is available for progress monitoring
+      let pvAvailable = false;
+      try {
+        await runCommand(['which', 'pv']);
+        pvAvailable = true;
+      } catch {}
+      
+      if (pvAvailable) {
+        // Get archive size for progress calculation
+        let archiveSize = 0;
+        try {
+          const { stdout } = await runCommand(['stat', '-c', '%s', archivePath]);
+          archiveSize = parseInt(stdout.trim(), 10);
+        } catch {}
+        
+        extractProgressText.textContent = 'Extracting with progress...';
+        
+        // Use pv to monitor extraction progress
+        const extractCommand = `pv -n '${archivePath.replace(/'/g, "'\\''")}' | tar -xzf - -C '${EXTRACT_DESTINATION}' --verbose`;
+        
+        const process = cockpit.spawn(['sh', '-c', extractCommand], { 
+          superuser: 'require', 
+          err: 'message' 
+        });
+        
+        let lastFile = '';
+        process.stream(data => {
+          const lines = data.split(/\r?\n/);
+          for (const line of lines) {
+            const trimmed = line.trim();
+            
+            // pv progress line (numeric percentage)
+            const progressMatch = trimmed.match(/^(\d+(?:\.\d+)?)$/);
+            if (progressMatch) {
+              const percent = Math.min(100, Math.round(parseFloat(progressMatch[1])));
+              extractProgressBar.style.width = percent + '%';
+              extractProgressCount.textContent = `${percent}%`;
+            }
+            
+            // Log extracted files (tar verbose output)
+            if (trimmed && !progressMatch && (trimmed.includes('/') || trimmed.length > 3)) {
+              lastFile = trimmed;
+              const shortPath = trimmed.length > 50 ? '...' + trimmed.slice(-47) : trimmed;
+              extractProgressText.textContent = `Extracting: ${shortPath}`;
+            }
+          }
+        });
+        
+        await process;
+        
+        extractProgressBar.style.width = '100%';
+        extractProgressCount.textContent = '100%';
+        extractProgressText.textContent = 'Extraction completed!';
+        
+      } else {
+        // Fallback: tar without progress monitoring
+        extractProgressText.textContent = 'Extracting (no progress info)...';
+        extractProgressBar.style.width = '50%';
+        
+        const tarProcess = cockpit.spawn([
+          'tar', '-xzf', archivePath, '-C', EXTRACT_DESTINATION, '--verbose'
+        ], { superuser: 'require', err: 'message' });
+        
+        // Show some file names being extracted
+        tarProcess.stream(data => {
+          const lines = data.split(/\r?\n/).filter(Boolean);
+          for (const line of lines) {
+            if (line.trim()) {
+              const shortPath = line.length > 50 ? '...' + line.slice(-47) : line;
+              extractProgressText.textContent = `Extracting: ${shortPath}`;
+            }
+          }
+        });
+        
+        await tarProcess;
+        
+        extractProgressBar.style.width = '100%';
+        extractProgressCount.textContent = '100%';
+        extractProgressText.textContent = 'Extraction completed!';
+      }
+      
+      log(`<span class="text-green">Archive extracted successfully!</span>`);
+      log(`Contents extracted to: <span class="text-blue">${EXTRACT_DESTINATION}</span>`);
+      
+      // List extracted contents
+      try {
+        const { stdout } = await runCommand(['ls', '-la', EXTRACT_DESTINATION]);
+        log(`\nExtracted contents in ${EXTRACT_DESTINATION}:\n<pre>${stdout}</pre>`);
+      } catch (e) {
+        log(`\nCould not list extracted contents: ${e.message}`);
+      }
+      
+    } catch (e) {
+      log(`<span class="text-red">Failed to extract archive: ${e.message || e}</span>`);
+      extractProgressText.textContent = `Error: ${e.message}`;
+      extractProgressBar.style.backgroundColor = '#dc2626';
+    } finally {
+      extractBtn.disabled = false;
+      extractBtn.innerHTML = '<i class="fa-solid fa-magic"></i> Extract Archive';
+      
+      setTimeout(() => {
+        extractProgressContainer.classList.add('hidden');
+        extractProgressBar.style.backgroundColor = '';
+      }, 3000);
+    }
+  }
+
   // Cockpit API helper for running commands with superuser privileges
   async function runCommand(args, options = {}) {
     return new Promise((resolve, reject) => {
@@ -176,6 +855,214 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // ---- USB Device Management ----
+  async function detectUSBDevices() {
+    const usbList = $('usb-devices-list');
+    const noDevicesMsg = $('no-usb-devices');
+    
+    if (!usbList) return; // Element not found, exit gracefully
+    
+    usbList.innerHTML = '<div class="loading-state">Scanning for USB devices...</div>';
+    if (noDevicesMsg) noDevicesMsg.style.display = 'none';
+    
+    try {
+      log('🔍 Scanning for USB storage devices...\n');
+      
+      // Get device information using lsblk in JSON format
+      // TRAN=usb filters for USB devices only
+      const { stdout } = await runCommand([
+        'lsblk', '-J', '-o', 'NAME,SIZE,TRAN,FSTYPE,MOUNTPOINT,LABEL,MODEL'
+      ]);
+      
+      // Parse the JSON response
+      const deviceData = JSON.parse(stdout);
+      
+      // Filter for USB devices only (TRAN=usb)
+      const usbDevices = [];
+      
+      // Process and flatten device tree to find all USB-connected block devices
+      function processDevices(devices, isUSB = false) {
+        if (!devices) return;
+        
+        devices.forEach(device => {
+          // Check if this is a USB device or descended from one
+          const deviceIsUSB = isUSB || device.tran === 'usb';
+          
+          // If it's a USB device with a filesystem, add it to our list
+          if (deviceIsUSB && device.fstype && !device.name.startsWith('loop')) {
+            usbDevices.push({
+              name: device.name,
+              path: `/dev/${device.name}`,
+              size: device.size,
+              fstype: device.fstype,
+              mountpoint: device.mountpoint || null,
+              label: device.label || device.name,
+              model: device.model || 'USB Storage Device'
+            });
+          }
+          
+          // Recursively process children with the USB flag
+          if (device.children) {
+            processDevices(device.children, deviceIsUSB);
+          }
+        });
+      }
+      
+      processDevices(deviceData.blockdevices);
+      
+      // Update UI based on results
+      if (usbDevices.length === 0) {
+        usbList.innerHTML = '';
+        if (noDevicesMsg) noDevicesMsg.style.display = 'block';
+        log('No USB storage devices detected\n');
+      } else {
+        if (noDevicesMsg) noDevicesMsg.style.display = 'none';
+        usbList.innerHTML = '';
+        
+        log(`Found ${usbDevices.length} USB storage devices:\n`);
+        
+        usbDevices.forEach(device => {
+          const isMounted = !!device.mountpoint;
+          const mountStatus = isMounted ? 
+            `<span class="usb-device-status status-mounted">Mounted at ${device.mountpoint}</span>` : 
+            '<span class="usb-device-status status-unmounted">Not mounted</span>';
+          
+          const deviceDiv = document.createElement('div');
+          deviceDiv.className = 'usb-device-item';
+          deviceDiv.innerHTML = `
+            <div class="usb-device-info">
+              <div class="usb-device-name">
+                <i class="fab fa-usb"></i> ${device.label || device.name}
+              </div>
+              <div class="usb-device-details">
+                ${device.path} • ${device.size} • ${device.fstype || 'Unknown filesystem'}
+                ${mountStatus}
+              </div>
+            </div>
+            <div class="usb-device-actions">
+              ${isMounted ? `
+                <button class="btn btn-sm btn-outline-primary browse-device" 
+                  data-path="${device.mountpoint}" title="Browse files">
+                  <i class="fa-solid fa-folder-open"></i> Browse
+                </button>
+                <button class="btn btn-sm btn-outline-secondary unmount-device" 
+                  data-device="${device.path}" title="Unmount device">
+                  <i class="fa-solid fa-eject"></i> Unmount
+                </button>
+              ` : `
+                <button class="btn btn-sm btn-primary mount-device" 
+                  data-device="${device.path}" data-fstype="${device.fstype}" title="Mount device">
+                  <i class="fa-solid fa-plug"></i> Mount
+                </button>
+              `}
+            </div>
+          `;
+          usbList.appendChild(deviceDiv);
+          
+          log(`• ${device.name} (${device.size}, ${device.fstype}): ${isMounted ? 'Mounted at ' + device.mountpoint : 'Not mounted'}\n`);
+        });
+        
+        // Add event listeners to the buttons
+        document.querySelectorAll('.mount-device').forEach(btn => {
+          btn.addEventListener('click', () => mountUSBDevice(btn.dataset.device, btn.dataset.fstype));
+        });
+        
+        document.querySelectorAll('.unmount-device').forEach(btn => {
+          btn.addEventListener('click', () => unmountUSBDevice(btn.dataset.device));
+        });
+        
+        document.querySelectorAll('.browse-device').forEach(btn => {
+          btn.addEventListener('click', () => openServerFileModal(btn.dataset.path));
+        });
+      }
+      
+    } catch (error) {
+      usbList.innerHTML = `<div class="error-state">Error scanning for USB devices: ${error.message}</div>`;
+      log(`Error detecting USB devices: ${error.message}\n`);
+      console.error('USB device detection error:', error);
+    }
+  }
+
+  async function mountUSBDevice(devicePath, fstype) {
+    try {
+      log(`🔌 Mounting USB device ${devicePath}...\n`);
+      
+      // Create mount point directory if it doesn't exist
+      // Using a consistent naming scheme based on device name
+      const deviceName = devicePath.split('/').pop();
+      const mountPoint = `/mnt/usb-${deviceName}`;
+      
+      // Create mount directory
+      await runCommand(['mkdir', '-p', mountPoint]);
+      log(`Created mount point: ${mountPoint}\n`);
+      
+      // Build mount options based on filesystem type
+      let mountOptions = [];
+      
+      if (fstype === 'ntfs') {
+        // For NTFS, use ntfs-3g if available
+        try {
+          await runCommand(['which', 'ntfs-3g']);
+          // If we get here, ntfs-3g is available
+          mountOptions = ['-t', 'ntfs-3g', '-o', 'uid=1000,gid=1000,dmask=027,fmask=137'];
+        } catch {
+          // Fall back to regular mount
+          mountOptions = ['-t', 'ntfs', '-o', 'uid=1000,gid=1000'];
+        }
+      } else if (fstype === 'vfat' || fstype === 'fat' || fstype === 'exfat') {
+        // FAT/exFAT options for better permissions
+        mountOptions = ['-o', 'uid=1000,gid=1000,dmask=027,fmask=137'];
+      }
+      
+      // Mount the device
+      await runCommand(['mount', ...mountOptions, devicePath, mountPoint]);
+      log(`✅ Device mounted successfully at ${mountPoint}\n`);
+      
+      // Refresh the device list after a short delay
+      setTimeout(detectUSBDevices, 500);
+      
+    } catch (error) {
+      log(`❌ Failed to mount device: ${error.message}\n`);
+      
+      // Show user-friendly error dialog
+      alert(`Failed to mount USB device: ${error.message}`);
+    }
+  }
+
+  async function unmountUSBDevice(devicePath) {
+    try {
+      log(`📤 Unmounting USB device ${devicePath}...\n`);
+      
+      // Unmount the device
+      await runCommand(['umount', devicePath]);
+      log(`✅ Device unmounted successfully\n`);
+      
+      // Refresh the device list after a short delay
+      setTimeout(detectUSBDevices, 500);
+      
+    } catch (error) {
+      log(`❌ Failed to unmount device: ${error.message}\n`);
+      
+      if (error.message.includes('target is busy')) {
+        log(`💡 Device is busy. Make sure no files are open on the device.\n`);
+        alert('Cannot unmount device: Device is busy. Close any open files or programs using this device.');
+      } else {
+        alert(`Failed to unmount USB device: ${error.message}`);
+      }
+    }
+  }
+
+  // Initialize USB device detection
+  function initUSBDevices() {
+    detectUSBDevices();
+    
+    // Add refresh button handler
+    const refreshBtn = $('refresh-usb-devices');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', detectUSBDevices);
+    }
+  }
+
   // ---- Tabs ----
   document.querySelectorAll('.nav-link').forEach((link) => {
     link.addEventListener('click', (e) => {
@@ -191,12 +1078,19 @@ document.addEventListener('DOMContentLoaded', () => {
       if (link.dataset.tab === 'tab-registry') {
         checkStatus();
         checkDockerConfig();
+        stopLocalImagesAutoRefresh(); // Stop auto-refresh when leaving extract tab
       }
-      if (link.dataset.tab === 'tab-catalog') refreshCatalog();
+      if (link.dataset.tab === 'tab-catalog') {
+        refreshCatalog();
+        stopLocalImagesAutoRefresh(); // Stop auto-refresh when leaving extract tab
+      }
       if (link.dataset.tab === 'tab-extract') {
         loadCurrentImagesList();
         loadLocalDockerImages();
         countImagesList();
+        startLocalImagesAutoRefresh(); // Start auto-refresh for local images
+        // Initialize USB device detection with a small delay to ensure DOM is ready
+        setTimeout(initUSBDevices, 100);
       }
     });
   });
@@ -210,7 +1104,7 @@ document.addEventListener('DOMContentLoaded', () => {
     countElement.textContent = '(Loading...)';
     
     try {
-      // Use the priority-based image list loading
+      // Use the simplified image list loading (only /etc/xavs/images.list)
       const imagesList = await getImagesList();
       
       if (!imagesList || imagesList.trim() === '') {
@@ -241,9 +1135,49 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       
     } catch (e) {
-      listElement.innerHTML = `<li class="error-state">Error loading images: ${e.message}</li>`;
-      countElement.textContent = '(Error)';
+      if (e.message.includes('Images list file not found')) {
+        listElement.innerHTML = `
+          <li class="error-state">
+            <div class="error-title">❌ Images configuration missing</div>
+            <div class="error-details">Images configuration file not found</div>
+            <div class="error-hint">Create the configuration file with image names (one per line)<br>
+            <small>Example: keystone, nova-api, neutron-server<br>
+            Tag :2024.1-ubuntu-jammy will be auto-added</small></div>
+          </li>`;
+        countElement.textContent = '(Missing config)';
+      } else {
+        listElement.innerHTML = `<li class="error-state">Error loading images: ${e.message}</li>`;
+        countElement.textContent = '(Error)';
+      }
     }
+  }
+
+  // ---- Auto-refresh functionality for local images ----
+  function startLocalImagesAutoRefresh(interval = AUTO_REFRESH_INTERVAL) {
+    // Stop any existing interval
+    stopLocalImagesAutoRefresh();
+    
+    isAutoRefreshActive = true;
+    localImagesRefreshInterval = setInterval(async () => {
+      if (isAutoRefreshActive) {
+        try {
+          await loadLocalDockerImages();
+        } catch (e) {
+          console.warn('Auto-refresh failed:', e.message);
+        }
+      }
+    }, interval);
+    
+    console.log(`Local images auto-refresh started (${interval}ms interval)`);
+  }
+
+  function stopLocalImagesAutoRefresh() {
+    if (localImagesRefreshInterval) {
+      clearInterval(localImagesRefreshInterval);
+      localImagesRefreshInterval = null;
+    }
+    isAutoRefreshActive = false;
+    console.log('Local images auto-refresh stopped');
   }
 
   // ---- Local Docker Images Management ----
@@ -299,10 +1233,10 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
           <div class="image-actions">
             <button class="btn-icon inspect" data-action="inspect-local" data-image-id="${imageId}" title="Inspect Image">
-              <i class="fa fa-search"></i>
+              <i class="fa-solid fa-info"></i>
             </button>
             <button class="btn-icon delete" data-action="delete-local" data-image-id="${imageId}" data-image-name="${repoTag}" title="Delete Image">
-              <i class="fa fa-trash"></i>
+              <i class="fa-solid fa-trash"></i>
             </button>
           </div>
         `;
@@ -373,7 +1307,21 @@ OS: ${imageData.Os}`;
   // Event listeners for local Docker images management
   safeAddEventListener('refresh-local-images-btn', 'click', async () => {
     await loadLocalDockerImages();
-    log('Local Docker images refreshed');
+    log('🔄 Local Docker images refreshed manually\n');
+  });
+
+  // Cleanup auto-refresh on page unload
+  window.addEventListener('beforeunload', () => {
+    stopLocalImagesAutoRefresh();
+  });
+
+  // Also stop auto-refresh if user navigates away from extract tab
+  window.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      stopLocalImagesAutoRefresh();
+    } else if (document.querySelector('[data-tab="tab-extract"]').classList.contains('active')) {
+      startLocalImagesAutoRefresh();
+    }
   });
 
   // Event delegation for dynamically created buttons
@@ -414,9 +1362,17 @@ OS: ${imageData.Os}`;
       if (extractMode) {
         $('extract-block').classList.remove('pull-block-hidden');
         $('pull-block').classList.add('pull-block-hidden');
+        // Show USB section only in Extract mode
+        if ($('usb-devices-section')) {
+          $('usb-devices-section').style.display = '';
+        }
       } else {
         $('extract-block').classList.add('pull-block-hidden');
         $('pull-block').classList.remove('pull-block-hidden');
+        // Hide USB section in Pull mode
+        if ($('usb-devices-section')) {
+          $('usb-devices-section').style.display = 'none';
+        }
       }
       log('Ready.');
     });
@@ -424,7 +1380,6 @@ OS: ${imageData.Os}`;
 
   // ---- Constants ----
   const IMAGE_LIST_PATH = '/etc/xavs/images.list';
-  const MODULE_IMAGES_LIST = '/usr/share/cockpit/xavs-images/images-list.txt';
   const DOCKER_DAEMON_JSON = '/etc/docker/daemon.json';
   const PUBLIC_REG = 'quay.io';
   const LOCAL_REG_HOST = 'docker-registry:4000';
@@ -436,7 +1391,7 @@ OS: ${imageData.Os}`;
   let imageListLoading = false; // Prevent multiple simultaneous loads
   const CACHE_TTL = 5000; // 5 seconds cache
 
-  // ---- Helper to get images list with priority order ----
+  // ---- Helper to get images list from /etc/xavs/images.list ----
   async function getImagesList() {
     // Return cached result if still valid
     const now = Date.now();
@@ -459,41 +1414,24 @@ OS: ${imageData.Os}`;
     imageListLoading = true;
 
     try {
-      // Priority order: 1. Module file, 2. System file, 3. Generate default
-      const paths = [
-        '/usr/share/cockpit/xavs-images/images-list.txt',  // Module file (highest priority)
-        './images-list.txt',                                // Development path
-        'images-list.txt',                                  // Relative path
-        '/etc/xavs/images.list'                            // System file (fallback)
-      ];
-    
-    for (const path of paths) {
+      const imagePath = '/etc/xavs/images.list';
+      
       try {
-        const content = await readFile(path);
+        const content = await readFile(imagePath);
         if (content && content.trim()) {
-          // Only log on first successful read or when switching sources
-          if (!imageListCache || imageListCache !== content.trim()) {
-            console.log(`Reading images list from: ${path}`);
-          }
           // Cache the result
           imageListCache = content.trim();
           imageListCacheTime = now;
           return imageListCache;
+        } else {
+          throw new Error('File is empty');
         }
       } catch (error) {
-        console.log(`Could not read from ${path}: ${error.message}`);
-        continue;
+        // Prompt user about missing file
+        const errorMessage = `Images list file not found. Please create the images configuration file with one image per line.\nExample content:\nkeystone\nnova-api\nneutron-server\n(Tags will be auto-added as :2024.1-ubuntu-jammy)`;
+        log(`❌ ERROR: ${errorMessage}`);
+        throw new Error(errorMessage);
       }
-    }
-    
-    // If no file found, generate default
-    console.log('No images list file found, generating default');
-    const defaultList = await generateDefaultImagesList();
-    // Cache the result
-    imageListCache = defaultList;
-    imageListCacheTime = now;
-    return imageListCache;
-    
     } finally {
       imageListLoading = false;
     }
@@ -503,77 +1441,11 @@ OS: ${imageData.Os}`;
   let currentPullProcess = null;
   let isPulling = false;
 
-  // Function to load images from module file
-  async function loadModuleImagesList() {
-    // Try multiple paths: installed path first, then relative path for development
-    const paths = [
-      '/usr/share/cockpit/xavs-images/images-list.txt',  // Production path
-      './images-list.txt',                                // Development relative path
-      'images-list.txt'                                   // Fallback
-    ];
-    
-    for (const path of paths) {
-      try {
-        console.log(`Trying to read images list from: ${path}`);
-        const content = await readFile(path);
-        if (content && content.trim()) {
-          console.log(`Successfully loaded ${content.trim().split('\n').length} lines from ${path}`);
-          return content.trim().split('\n')
-            .map(line => line.trim())
-            .filter(line => line && !line.startsWith('#'));
-        }
-      } catch (error) {
-        console.log(`Failed to read images list from ${path}:`, error.message);
-        continue; // Try next path
-      }
-    }
-    
-    console.warn('Failed to load module images list from any path, using fallback');
-    // Fallback comprehensive list
-    return [
-      'keystone',
-      'keystone-fernet',
-      'nova-api',
-      'nova-conductor',
-      'nova-scheduler',
-      'nova-compute',
-      'neutron-server',
-      'neutron-dhcp-agent',
-      'neutron-l3-agent',
-      'cinder-api',
-      'cinder-scheduler',
-      'cinder-volume',
-      'glance-api',
-      'horizon',
-      'mariadb-server',
-      'memcached',
-      'rabbitmq',
-      'heat-api',
-      'heat-engine',
-      'placement-api'
-    ];
-  }
-
-  // Generate default images list content
-  async function generateDefaultImagesList() {
-    const images = await loadModuleImagesList();
-    console.log(`loadModuleImagesList returned ${images.length} images:`, images.slice(0, 5));
-    
-    // Add the correct tag format if not already present
-    const imagesWithTags = images.map(image => {
-      if (image.includes(':')) {
-        return image; // Already has a tag
-      } else {
-        return `${image}:2024.1-ubuntu-jammy`; // Add the correct tag
-      }
-    });
-    
-    const content = `# xAVS Container Images List
-# One image per line - these will be pulled from quay.io/xavs.images/
-${imagesWithTags.join('\n')}`;
-    console.log(`Generated content length: ${content.length}`);
-    return content;
-  }
+  // Auto-refresh variables for local images
+  let localImagesRefreshInterval = null;
+  let isAutoRefreshActive = false;
+  const AUTO_REFRESH_INTERVAL = 60000; // 1 minute (60 seconds)
+  const PULL_REFRESH_INTERVAL = 30000; // 30 seconds during pull operations
 
   const DOCKER_CONFIG_TEMPLATE = {
     "bridge": "none",
@@ -586,47 +1458,11 @@ ${imagesWithTags.join('\n')}`;
     }
   };
   // ---- Actions ----
-  safeAddEventListener('extract-btn', 'click', async () => {
-    const path = $('file-path').value.trim();
-    if (!path || !path.endsWith('.tar.gz')) {
-      return log('Please enter a valid .tar.gz path.');
-    }
-    
-    log('Extracting and loading images...');
-    try {
-      // Create xdeploy directory
-      await runCommand(['mkdir', '-p', '/root/xdeploy/xdeploy-images']);
-      log('Created directory: /root/xdeploy/xdeploy-images\n');
-      
-      // Extract tar.gz
-      await runCommand(['tar', '-xzf', path, '-C', '/root/xdeploy/xdeploy-images']);
-      log(`Extracted archive: ${path}\n`);
-      
-      // Find and load all .tar files
-      const { stdout: files } = await runCommand(['find', '/root/xdeploy/xdeploy-images', '-name', '*.tar']);
-      const tarFiles = files && files.trim() ? files.split('\n').filter(f => f.trim()) : [];
-      
-      if (tarFiles.length === 0) {
-        log('No .tar files found in the extracted archive\n');
-      } else {
-        for (const tarFile of tarFiles) {
-          log(`Loading ${tarFile}...\n`);
-          await runCommand(['docker', 'load', '-i', tarFile]);
-          await runCommand(['rm', tarFile]);
-          log(`Removed ${tarFile}\n`);
-        }
-      }
-      
-      log('Extract and load completed successfully!');
-      $('push-btn').disabled = false;
-    } catch (e) {
-      log(`Error: ${e.message}`);
-    }
-  });
+  // Removed obsolete extract-btn event listener and logic (now handled by new copy/archive flow)
 
   // Test connectivity button
   $('test-connectivity-btn').addEventListener('click', async () => {
-    log('<i class="fas fa-flask text-blue"></i> CONNECTIVITY & PREREQUISITES TEST\n');
+  log('<i class="fa-solid fa-flask text-blue"></i> CONNECTIVITY & PREREQUISITES TEST\n');
     log('================================================================\n\n');
     
     const testResults = {
@@ -644,13 +1480,13 @@ ${imagesWithTags.join('\n')}`;
       const result = await runCommand(['docker', 'version']);
       const dockerVersion = result.stdout.split('\n')[0];
       testResults.docker = { status: 'pass', details: dockerVersion };
-      log('<i class="fas fa-check text-green"></i> PASS: Docker daemon is running and accessible\n');
+  log('<i class="fa-solid fa-check text-green"></i> PASS: Docker daemon is running and accessible\n');
       log(`    Version: ${dockerVersion}\n\n`);
     } catch (e) {
       testResults.docker = { status: 'fail', details: e.message };
-      log('<i class="fas fa-times text-red"></i> FAIL: Docker daemon is not running or not accessible\n');
-      log(`   <i class="fas fa-exclamation-triangle text-yellow"></i> Error: ${e.message}\n`);
-      log('   <i class="fas fa-lightbulb text-blue"></i> Solution: Start Docker Desktop or run "systemctl start docker"\n\n');
+  log('<i class="fa-solid fa-times text-red"></i> FAIL: Docker daemon is not running or not accessible\n');
+  log(`   <i class="fa-solid fa-exclamation-triangle text-yellow"></i> Error: ${e.message}\n`);
+  log('   <i class="fa-solid fa-lightbulb text-blue"></i> Solution: Start Docker Desktop or run "systemctl start docker"\n\n');
       
       // If Docker fails, show summary and exit
       showTestSummary(testResults);
@@ -844,10 +1680,13 @@ ${imagesWithTags.join('\n')}`;
       return;
     }
 
-    log(' Checking prerequisites...\n');
+    log('📋 Checking prerequisites...\n');
     isPulling = true;
     $('pull-btn').textContent = 'Stop Pull';
     $('pull-btn').className = 'btn btn-danger';
+    
+    // Start faster auto-refresh during pull operation
+    startLocalImagesAutoRefresh(PULL_REFRESH_INTERVAL);
     
     // Show and initialize progress bar
     const progressContainer = $('pull-progress-container');
@@ -881,10 +1720,40 @@ ${imagesWithTags.join('\n')}`;
         log(' Docker pull command test failed, but continuing...\n');
       }
 
-    log(' Reading images list...\n');
+    log('📖 Reading images list...\n');
       progressText.textContent = 'Reading images list...';
-      // Use the priority-based image list loading
-      const imagesList = await getImagesList();
+      
+      let imagesList;
+      try {
+        // Use the simplified image list loading (only /etc/xavs/images.list)
+        imagesList = await getImagesList();
+      } catch (e) {
+        // Show user-friendly error for missing images list file
+        log('❌ IMAGES LIST FILE MISSING\n');
+        log('================================================================\n');
+        log('❗ The images configuration file is required and must contain one image per line.\n\n');
+        log('📝 Example content for the images list:\n');
+        log('   keystone\n');
+        log('   nova-api\n');
+        log('   neutron-server\n');
+        log('   glance-api\n');
+        log('   horizon\n\n');
+        log('ℹ️  Note: The :2024.1-ubuntu-jammy tag will be automatically added\n');
+        log('💡 Solution: Create the images configuration file with the required images\n');
+        log('================================================================\n');
+        
+        progressText.textContent = 'Error: Images list file missing';
+        progressBar.style.backgroundColor = '#dc2626'; // Red color for error
+        progressBar.style.width = '100%';
+        
+        // Hide progress bar after delay
+        setTimeout(() => {
+          progressContainer.classList.add('hidden');
+          progressBar.style.backgroundColor = ''; // Reset color
+        }, 5000);
+        
+        return;
+      }
       
       // Parse and pull images
       const images = imagesList && imagesList.trim() ? 
@@ -893,8 +1762,19 @@ ${imagesWithTags.join('\n')}`;
           .filter(line => line && !line.startsWith('#')) : [];
       
       if (images.length === 0) {
-        log('No images found in any images list file.\n');
-        log('Please add images to the module images-list.txt file or create /etc/xavs/images.list\n');
+        log('❌ No images found in the images configuration file\n');
+        log('📝 Please add images to the configuration file (one per line)\n');
+        
+        progressText.textContent = 'Error: No images configured';
+        progressBar.style.backgroundColor = '#dc2626'; // Red color for error
+        progressBar.style.width = '100%';
+        
+        // Hide progress bar after delay
+        setTimeout(() => {
+          progressContainer.classList.add('hidden');
+          progressBar.style.backgroundColor = ''; // Reset color
+        }, 3000);
+        
         return;
       }
       
@@ -909,11 +1789,18 @@ ${imagesWithTags.join('\n')}`;
       
       for (let i = 0; i < images.length; i++) {
         if (!isPulling) {
-          log('\n� Pull operation was stopped by user.\n');
+          log('\n🛑 Pull operation was stopped by user.\n');
           break;
         }
         
-        const image = images[i];
+        let image = images[i];
+        
+        // Auto-append :2024.1-ubuntu-jammy tag if no tag is specified
+        if (!image.includes(':')) {
+          image = `${image}:2024.1-ubuntu-jammy`;
+          log(`📝 Auto-appending tag: ${images[i]} → ${image}\n`);
+        }
+        
         const ref = `${PUBLIC_REG}/xavs.images/${image}`;
         
         // Update progress
@@ -922,27 +1809,27 @@ ${imagesWithTags.join('\n')}`;
         progressText.textContent = `Pulling ${image}...`;
         progressCount.textContent = `${i}/${images.length}`;
         
-        log(` [${i + 1}/${images.length}] Pulling ${image}...\n`);
-        log(` Full reference: ${ref}\n`);
+        log(`🐳 [${i + 1}/${images.length}] Pulling ${image}...\n`);
+        log(`📍 Full reference: ${ref}\n`);
         
         try {
           await runCommand(['docker', 'pull', ref]);
           successCount++;
-          log(` [${i + 1}/${images.length}] Successfully pulled ${image}\n\n`);
+          log(`✅ [${i + 1}/${images.length}] Successfully pulled ${image}\n\n`);
         } catch (error) {
           failCount++;
-          log(` [${i + 1}/${images.length}] Failed to pull ${image}\n`);
-          log(` Error details: ${error.message}\n`);
+          log(`❌ [${i + 1}/${images.length}] Failed to pull ${image}\n`);
+          log(`🔍 Error details: ${error.message}\n`);
           
           // Provide specific error diagnostics
           if (error.message.includes('manifest unknown') || error.message.includes('not found')) {
-            log(` This image may not exist in the registry. Check: https://quay.io/repository/xavs.images/${image.split(':')[0]}\n`);
+            log(`💡 This image may not exist in the registry. Check: https://quay.io/repository/xavs.images/${image.split(':')[0]}\n`);
           } else if (error.message.includes('connection') || error.message.includes('network')) {
-            log(` Network connectivity issue. Check internet connection and registry access.\n`);
+            log(`🌐 Network connectivity issue. Check internet connection and registry access.\n`);
           } else if (error.message.includes('unauthorized') || error.message.includes('authentication')) {
-            log(` Authentication issue. You may need to login: docker login quay.io\n`);
+            log(`🔐 Authentication issue. You may need to login: docker login quay.io\n`);
           } else if (error.message.includes('timeout')) {
-            log(` Request timeout. The registry may be slow or overloaded.\n`);
+            log(`⏱️ Request timeout. The registry may be slow or overloaded.\n`);
           }
           log('\n');
           // Continue with next image instead of stopping
@@ -963,10 +1850,13 @@ ${imagesWithTags.join('\n')}`;
         log(` Total processed: ${successCount + failCount}/${images.length} images`);
         $('push-btn').disabled = false;
         
-        // Refresh images list and counts
+        // Refresh images list and counts with final update
         setTimeout(async () => {
           await loadCurrentImagesList();
           await countImagesList();
+          await loadLocalDockerImages(); // Final refresh of local images
+          
+          log('📊 Updated images lists and counts\n');
           
           // Hide progress bar after a delay
           setTimeout(() => {
@@ -992,6 +1882,11 @@ ${imagesWithTags.join('\n')}`;
       currentPullProcess = null;
       $('pull-btn').textContent = 'Pull Images';
       $('pull-btn').className = 'btn btn-primary';
+      
+      // Restore normal auto-refresh interval after pull operation
+      if (document.querySelector('[data-tab="tab-extract"]').classList.contains('active')) {
+        startLocalImagesAutoRefresh(AUTO_REFRESH_INTERVAL);
+      }
     }
   });
 
@@ -1998,7 +2893,7 @@ ${volumeSize}
 
   async function countImagesList() {
     try {
-      // Use the priority-based image list loading
+      // Use the simplified image list loading (only /etc/xavs/images.list)
       const content = await getImagesList();
       
       if (content) {
@@ -2009,7 +2904,11 @@ ${volumeSize}
         $('images-list-count').textContent = '0 images configured';
       }
     } catch (e) {
-      $('images-list-count').textContent = 'Error';
+      if (e.message.includes('Images list file not found')) {
+        $('images-list-count').textContent = 'Images config missing';
+      } else {
+        $('images-list-count').textContent = 'Error reading images list';
+      }
     }
   }
 
@@ -2132,6 +3031,11 @@ ${volumeSize}
   
   // Load stored logs after DOM is ready
   setTimeout(loadStoredLogs, 100);
+  
+  // Initialize USB devices if Extract tab is already active on page load
+  if (document.querySelector('[data-tab="tab-extract"]').classList.contains('active')) {
+    setTimeout(initUSBDevices, 500);
+  }
   
   // Clear log functionality
   const clearLogBtn = $("btn-clear-log");

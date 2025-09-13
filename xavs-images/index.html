@@ -130,22 +130,99 @@
           <button id="toggle-pull" class="toggle-seg" type="button" aria-selected="false">Pull</button>
         </div>
 
+        <!-- USB Devices Section -->
+        <div id="usb-devices-section" class="usb-section">
+          <h4><i class="fab fa-usb"></i> USB Storage Devices</h4>
+          <div class="usb-devices-container">
+            <div id="usb-devices-list" class="usb-devices-list">
+              <div class="loading-state">Checking for USB devices...</div>
+            </div>
+            <div class="usb-controls">
+              <button id="refresh-usb-devices" class="btn btn-sm btn-outline-secondary">
+                <i class="fa fa-sync"></i> Refresh
+              </button>
+            </div>
+          </div>
+          <div id="no-usb-devices" class="alert alert-secondary hidden">
+            <i class="fa fa-info-circle"></i> No USB storage devices detected. Insert a USB drive and click Refresh.
+          </div>
+        </div>
+
         <!-- Extract block -->
         <div id="extract-block">
-          <label class="form-label" for="file-path">Path to <code>.tar.gz</code> archive on server</label>
-          <input id="file-path" class="form-control" placeholder="/root/xdeploy/images-archive.tar.gz" />
-          <div class="hint">Archive will be extracted to <code>/root/xdeploy/xdeploy-images/</code>, then all <code>.tar</code> images are <strong>docker load</strong>’ed and their tar files are removed.</div>
+          <label class="form-label">Select <code>.tar.gz</code> archive to copy from USB or mounted device</label>
+          <div class="file-path-group">
+            <button class="btn btn-outline-secondary" id="select-archive-btn" type="button" title="Select .tar.gz archive">
+              <i class="fa fa-folder-open"></i> Select Archive
+            </button>
+            <span id="selected-archive-path" class="hint ml-10"></span>
+          </div>
+          <div id="destination-select-block" class="hidden mt-16">
+            <label class="form-label">Select destination folder to copy archive to</label>
+            <div class="file-path-group">
+              <button class="btn btn-outline-secondary" id="select-dest-btn" type="button" title="Select destination folder">
+                <i class="fa fa-folder-open"></i> Select Destination
+              </button>
+              <span id="selected-dest-path" class="hint ml-10"></span>
+            </div>
+          </div>
+          <div class="hint">Selected archive will be copied to your chosen server directory for further processing.</div>
           <div class="actions">
-            <button class="btn btn-brand" id="extract-btn">Extract & Load</button>
+            <button class="btn btn-brand" id="copy-archive-btn" disabled>Copy Archive</button>
+          </div>
+          <!-- Progress bar for file copy -->
+          <div id="copy-progress-container" class="progress-container hidden">
+            <div class="progress-info">
+              <span id="copy-progress-text">Preparing copy...</span>
+              <span id="copy-progress-count" class="progress-count"></span>
+            </div>
+            <div class="progress-bar-container">
+              <div id="copy-progress-bar" class="progress-bar"></div>
+            </div>
+          </div>
+
+          <!-- Extract Section (always visible) -->
+          <div id="extract-section" class="mt-16">
+            <h4><i class="fa-solid fa-magic"></i> Extract Archive</h4>
+            <p>Select a <code>.tar.gz</code> archive to extract for image processing</p>
+            
+            <!-- File Selection -->
+            <div class="extract-file-selection">
+              <label class="form-label">Browse for Archive:</label>
+              <div class="file-path-group">
+                <button id="browse-extract-file-btn" class="btn btn-outline-secondary">
+                  <i class="fa fa-folder-open"></i> Browse for .tar.gz
+                </button>
+                <span id="browsed-extract-file-path" class="hint ml-10"></span>
+              </div>
+            </div>
+            
+            <!-- Selected File Info -->
+            <div id="extract-file-info" class="file-info-display hidden">
+              <!-- File info will be populated here -->
+            </div>
+            
+            <div class="actions">
+              <button id="extract-archive-btn" class="btn btn-primary" disabled>
+                <i class="fa-solid fa-magic"></i> Extract Archive
+              </button>
+            </div>
+            
+            <!-- Extract Progress Bar -->
+            <div id="extract-progress-container" class="progress-container hidden">
+              <div class="progress-info">
+                <span id="extract-progress-text">Preparing extraction...</span>
+                <span id="extract-progress-count">0%</span>
+              </div>
+              <div class="progress-bar-container">
+                <div id="extract-progress-bar" class="progress-bar"></div>
+              </div>
+            </div>
           </div>
         </div>
 
         <!-- Pull block -->
         <div id="pull-block" class="pull-block-hidden">
-          <p class="hint">
-            Reads image list from and pulls from
-            <code>quay.io/xavs.images/&lt;name&gt;:&lt;tag&gt;</code>.
-          </p>
           
           <!-- Current Images List -->
           <div class="images-list-section">
@@ -305,7 +382,38 @@
       </section>
     </main>
 
-    <!-- Status Bar -->
+        <!-- Modal for server file browser -->
+        <div id="server-file-modal" class="modal">
+          <div class="modal-content">
+            <h3><i class="fa fa-folder-open"></i> Browse Server Files</h3>
+            
+            <!-- Navigation bar -->
+            <div class="file-browser-nav">
+              <div class="nav-buttons">
+                <button class="btn btn-sm btn-outline-secondary" id="nav-home-btn" title="Go to /home">
+                  <i class="fa fa-home"></i> Home
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" id="nav-root-btn" title="Go to /root">
+                  <i class="fa fa-user"></i> Root
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" id="nav-tmp-btn" title="Go to /tmp">
+                  <i class="fa fa-folder"></i> Tmp
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" id="nav-var-btn" title="Go to /var">
+                  <i class="fa fa-database"></i> Var
+                </button>
+              </div>
+            </div>
+            
+            <!-- Breadcrumb path -->
+            <div id="server-file-path" class="file-path-breadcrumb"></div>
+            
+            <ul id="server-file-list"></ul>
+            <div class="modal-actions">
+              <button class="btn btn-outline-secondary" id="close-server-file-modal" type="button">Cancel</button>
+            </div>
+          </div>
+        </div>    <!-- Status Bar -->
     <div class="status-bar">
       <span id="status-text">Ready</span>
       <span class="status-actions">
