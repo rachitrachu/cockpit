@@ -314,6 +314,7 @@
             refreshHardwareDetails().catch(console.error);
             detectVirtualization().catch(console.error);
         } else if (targetPanel === 'panel-deps') {
+            log("[Tab] Dependencies tab clicked - running dependency check");
             checkDependencies().catch(console.error);
         }
     }));
@@ -941,7 +942,8 @@ End of Report
     }
     
     async function checkDependencies() {
-        log("[Deps] Check All button clicked - starting dependency check");
+        log("[Deps] Starting dependency check");
+        log("[Deps] OS Info at check time: " + JSON.stringify(osInfo));
         
         if (osInfo.isXOS) {
             setText("dep-status", "Skipped on XOS");
@@ -956,7 +958,6 @@ End of Report
         
         setTextWithSpinner("dep-status", "Checking dependencies...");
         log("[Deps] Starting dependency check for " + osInfo.branch + " system");
-        log("[Deps] OS Info: " + JSON.stringify(osInfo));
 
         try {
             if (osInfo.branch === "debian") {
@@ -2549,8 +2550,11 @@ octavia_loadbalancer_topology: "ACTIVE_STANDBY"
         refreshHardwareDetails().catch(console.error);
         detectVirtualization().catch(console.error);
         
-        // Initialize dependency checks on page load
-        checkDependencies().catch(console.error);
+        // Initialize dependency checks on page load (with small delay to ensure OS info is fully processed)
+        setTimeout(() => {
+            log("[Init] Starting automatic dependency check on page load");
+            checkDependencies().catch(console.error);
+        }, 1000);
         
         // Initialize button states (will be properly set after first dependency check)
         updateInstallButtonStates();

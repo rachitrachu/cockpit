@@ -134,7 +134,7 @@ h4 .fas, h4 .far, h4 .fa {
 }
 
 html, body { height:100%; width:100%; overflow-x:hidden; }
-body { margin:0; font-family: Tenorite,"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,"Noto Sans","Liberation Sans",sans-serif; color:var(--text); background:var(--surface); line-height:1.5; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
+body { margin:0; font-family: Tenorite,"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,"Noto Sans","Liberation Sans",sans-serif; color:var(--text); background:var(--surface); line-height:1.5; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; padding-bottom: 60px; }
 .container-fluid { width:100%; max-width:100%; padding:16px 20px; box-sizing:border-box; }
 
 /* Topbar */
