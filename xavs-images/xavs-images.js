@@ -13,22 +13,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!path) return '';
     const cleanPath = formatPath(path);
     
-    // Determine icon based on path and file type
-    let icon = '📁'; // Default folder icon
-    
-    if (isFile || cleanPath.includes('.')) {
-      if (cleanPath.endsWith('.tar.gz')) {
-        icon = '📦'; // Archive icon for tar.gz files
-      } else {
-        icon = '📄'; // Generic file icon
-      }
-    } else if (cleanPath === '/root' || cleanPath.startsWith('/root')) {
-      icon = '🏠'; // Home icon for root directory
-    } else if (cleanPath.includes('/home/')) {
-      icon = '👤'; // User icon for home directories
-    }
-    
-    return `${icon} ${cleanPath}`;
+    // Return clean path without emojis for security and readability
+    return cleanPath;
   };
 
   const logEl = $("log");
@@ -622,13 +608,13 @@ document.addEventListener('DOMContentLoaded', () => {
           copyProgressBar.style.width = '100%';
           copyProgressCount.textContent = '100%';
         }
-        log(`✅ Archive copied successfully to ${destFile}`);
+        log(`Archive copied successfully`);
         
         // Call unified workflow handler
         handleCopySuccess(selectedArchivePath, destFile);
         
         // Show success message in progress bar
-        copyProgressText.textContent = '✅ Copy completed successfully!';
+        copyProgressText.textContent = 'Copy completed successfully!';
         copyProgressText.className = 'text-success';
         copyProgressText.style.fontWeight = 'bold';
         
@@ -665,8 +651,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
       } catch (e) {
-        log(`❌ Failed to copy archive: ${e.message || e}`);
-        copyProgressText.textContent = '❌ Copy failed!';
+        log(`Failed to copy archive: ${e.message || e}`);
+        copyProgressText.textContent = 'Copy failed!';
         copyProgressText.className = 'text-error';
         copyProgressText.style.fontWeight = 'bold';
       } finally {
@@ -709,7 +695,7 @@ document.addEventListener('DOMContentLoaded', () => {
     extractProgressCount.textContent = '';
     
     const fileName = archivePath.split('/').pop();
-    log(`📦 Extracting archive ${fileName} to ${EXTRACT_DESTINATION}...`);
+    log(`Extracting archive ${fileName}...`);
     
     try {
       // Ensure destination directory exists
@@ -744,7 +730,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }).filter(Boolean);
         totalSize = fileList.reduce((sum, f) => sum + f.size, 0);
       } catch (e) {
-        log(`⚠️ Warning: Could not scan archive for file sizes. Progress bar may be less accurate.`);
+        log(`Warning: Could not scan archive for file sizes. Progress bar may be less accurate.`);
         fileList = [];
         totalSize = 0;
       }
@@ -815,7 +801,7 @@ document.addEventListener('DOMContentLoaded', () => {
       extractProgressText.textContent = `Extraction completed! (${extractedFiles} files extracted)`;
       try {
         const { stdout } = await runCommand(['ls', '-la', EXTRACT_DESTINATION]);
-        log(`\nExtracted contents in ${EXTRACT_DESTINATION}:\n${stdout}`);
+        log(`\nExtracted contents:\n${stdout}`);
       } catch (e) {
         log(`\nCould not list extracted contents: ${e.message}`);
       }
@@ -827,7 +813,7 @@ document.addEventListener('DOMContentLoaded', () => {
       handleExtractionSuccess();
       
     } catch (e) {
-      log(`❌ Failed to extract archive: ${e.message || e}`);
+      log(`Failed to extract archive: ${e.message || e}`);
       extractProgressText.textContent = `Error: ${e.message}`;
       extractProgressBar.className += ' error';
     } finally {
@@ -884,7 +870,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Show the files
         await showExtractedFiles();
-        log(`📁 Found ${tarFiles.length} existing extracted file(s) in ${EXTRACT_DESTINATION}`);
+        log(`Found ${tarFiles.length} existing extracted file(s)`);
         
         // Check if Docker images are already loaded and ready
         try {
@@ -903,8 +889,8 @@ document.addEventListener('DOMContentLoaded', () => {
               // Show loaded images immediately
               await showLoadedImages();
               
-              log(`🚀 Auto-detected ${readyImages.length} image(s) already loaded and ready for registry push!`);
-              log(`ℹ️ Workflow automatically advanced to Step 4 - Images Ready`);
+              log(`Auto-detected ${readyImages.length} image(s) already loaded and ready for registry push!`);
+              log(`Workflow automatically advanced to Step 4 - Images Ready`);
             }
           }
         } catch (e) {
@@ -923,7 +909,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {
       // Log the error for debugging
       console.log('Error checking existing extracted files:', e.message);
-      log(`ℹ️ Note: No existing extracted files found.`);
+      log(`Note: No existing extracted files found.`);
     }
   }
 
@@ -998,7 +984,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         console.log('Files HTML set, showing files');
-        log(`✅ Found ${tarFiles.length} Docker image file(s) ready to load.`);
+        log(`Found ${tarFiles.length} Docker image file(s) ready to load.`);
       }
       
     } catch (e) {
@@ -1043,7 +1029,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tarFiles = Array.from(fileItems).map(item => item.dataset.filePath);
     
     if (tarFiles.length === 0) {
-      log('❌ No Docker image files found to load.');
+      log('No Docker image files found to load.');
       return;
     }
 
@@ -1057,20 +1043,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const reload = confirm(`Found ${registryImages.length} images already loaded and tagged for registry.\n\nDo you want to reload them from the tar files?\n\nClick "OK" to reload, or "Cancel" to skip loading and use existing images.`);
         
         if (!reload) {
-          log(`🔄 Skipping load - using ${registryImages.length} existing registry-tagged image(s)`);
-          log('ℹ️ Images already loaded and ready for push to registry');
+          log(`Skipping load - using ${registryImages.length} existing registry-tagged image(s)`);
+          log('Images already loaded and ready for push to registry');
           
           // Show loaded images and advance workflow
           await showLoadedImages();
           handleLoadImagesSuccess();
           return;
         } else {
-          log(`🔄 Reloading ${tarFiles.length} Docker image(s) from tar files...`);
+          log(`Reloading ${tarFiles.length} Docker image(s) from tar files...`);
         }
       }
     } catch (e) {
       // If checking fails, proceed with normal loading
-      log('ℹ️ Unable to check existing images, proceeding with load...');
+      log('Unable to check existing images, proceeding with load...');
     }
     
     loadImagesBtn.disabled = true;
@@ -1082,7 +1068,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadImagesProgressText.textContent = 'Starting image load process...';
     loadImagesProgressCount.textContent = `0/${tarFiles.length}`;
     
-    log(`🐳 Loading ${tarFiles.length} Docker image(s) into Docker...`);
+    log(`Loading ${tarFiles.length} Docker image(s) into Docker...`);
     
     let loadedCount = 0;
     let errorCount = 0;
@@ -1110,7 +1096,7 @@ document.addEventListener('DOMContentLoaded', () => {
           statusSpan.className = 'extracted-file-status status-loaded';
           
           loadedCount++;
-          log(`✅ Loaded: ${fileName}`);
+          log(`Loaded: ${fileName}`);
           
         } catch (e) {
           // Update file status to error
@@ -1118,7 +1104,7 @@ document.addEventListener('DOMContentLoaded', () => {
           statusSpan.className = 'extracted-file-status status-error';
           
           errorCount++;
-          log(`❌ Failed to load ${fileName}: ${e.message}`);
+          log(`Failed to load ${fileName}: ${e.message}`);
         }
         
         // Update progress bar
@@ -1131,7 +1117,7 @@ document.addEventListener('DOMContentLoaded', () => {
       loadImagesProgressCount.textContent = `${tarFiles.length}/${tarFiles.length}`;
       
       if (loadedCount > 0) {
-        log(`✅ Successfully loaded ${loadedCount} Docker image(s)!`);
+        log(`Successfully loaded ${loadedCount} Docker image(s)!`);
         
         console.log('Images loaded successfully, showing loaded images and calling success handler');
         
@@ -1143,11 +1129,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       
       if (errorCount > 0) {
-        log(`❌ ${errorCount} image(s) failed to load. Check the logs above for details.`);
+        log(`${errorCount} image(s) failed to load. Check the logs above for details.`);
       }
       
     } catch (e) {
-      log(`❌ Error during image loading: ${e.message}`);
+      log(`Error during image loading: ${e.message}`);
     } finally {
       loadImagesBtn.disabled = false;
       loadImagesBtn.innerHTML = '<i class="fa-solid fa-download"></i> Load Images into Docker';
@@ -1171,7 +1157,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     
-    log('🔄 Refreshing local images list...');
+    log('Refreshing local images list...');
     try {
       // Get Docker images with detailed format
       const { stdout } = await runCommand(['docker', 'images', '--format', '{{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}\t{{.ID}}']);
@@ -1214,7 +1200,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (imagesHtml) {
           loadedImagesList.innerHTML = imagesHtml;
           console.log('Images HTML set successfully');
-          log(`✅ Found ${lines.length} Docker image(s) in local daemon.`);
+          log(`Found ${lines.length} Docker image(s) in local daemon.`);
         } else {
           loadedImagesList.innerHTML = '<div class="no-loaded-images">No named Docker images found in local daemon.</div>';
         }
@@ -1223,7 +1209,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {
       console.error('Error in showLoadedImages:', e);
       loadedImagesList.innerHTML = `<div class="no-loaded-images">Error loading Docker images: ${e.message}</div>`;
-      log(`❌ Could not list Docker images: ${e.message}`);
+      log(`Could not list Docker images: ${e.message}`);
     }
     // Set up button handlers
     if (refreshLoadedImagesBtn) {
@@ -1266,7 +1252,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Remove all files from extract destination
       await runCommand(['rm', '-rf', EXTRACT_DESTINATION + '*']);
       
-      log(`🧹 Successfully cleaned up extracted files from ${EXTRACT_DESTINATION}`);
+      log(`Successfully cleaned up extracted files`);
       
       // Refresh the extracted files list
       await showExtractedFiles();
@@ -1278,7 +1264,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       
     } catch (e) {
-      log(`❌ Error during cleanup: ${e.message}`);
+      log(`Error during cleanup: ${e.message}`);
     } finally {
       cleanupExtractedBtn.disabled = false;
       cleanupExtractedBtn.innerHTML = '<i class="fa-solid fa-trash"></i> Cleanup Extracted Files';
@@ -1522,13 +1508,13 @@ document.addEventListener('DOMContentLoaded', () => {
       
       // Mount the device
       await runCommand(['mount', ...mountOptions, devicePath, mountPoint]);
-      log(`✅ Device mounted successfully at ${mountPoint}\n`);
+      log(`Device mounted successfully\n`);
       
       // Refresh the device list after a short delay
       setTimeout(detectUSBDevices, 500);
       
     } catch (error) {
-      log(`❌ Failed to mount device: ${error.message}\n`);
+      log(`Failed to mount device: ${error.message}\n`);
       
       // Show user-friendly error dialog
       alert(`Failed to mount USB device: ${error.message}`);
@@ -1537,20 +1523,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function unmountUSBDevice(devicePath) {
     try {
-      log(`📤 Unmounting USB device ${devicePath}...\n`);
+      log(`Unmounting USB device ${devicePath}...\n`);
       
       // Unmount the device
       await runCommand(['umount', devicePath]);
-      log(`✅ Device unmounted successfully\n`);
+      log(`Device unmounted successfully\n`);
       
       // Refresh the device list after a short delay
       setTimeout(detectUSBDevices, 500);
       
     } catch (error) {
-      log(`❌ Failed to unmount device: ${error.message}\n`);
+      log(`Failed to unmount device: ${error.message}\n`);
       
       if (error.message.includes('target is busy')) {
-        log(`💡 Device is busy. Make sure no files are open on the device.\n`);
+        log(`Device is busy. Make sure no files are open on the device.\n`);
         alert('Cannot unmount device: Device is busy. Close any open files or programs using this device.');
       } else {
         alert(`Failed to unmount USB device: ${error.message}`);
@@ -1648,7 +1634,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.message.includes('Images list file not found')) {
         listElement.innerHTML = `
           <li class="error-state">
-            <div class="error-title">❌ Images configuration missing</div>
+            <div class="error-title">Images configuration missing</div>
             <div class="error-details">Images configuration file not found</div>
             <div class="error-hint">Create the configuration file with image names (one per line)<br>
             <small>Example: keystone, nova-api, neutron-server<br>
@@ -1817,7 +1803,7 @@ OS: ${imageData.Os}`;
   // Event listeners for local Docker images management
   safeAddEventListener('refresh-local-images-btn', 'click', async () => {
     await loadLocalDockerImages();
-    log('🔄 Local Docker images refreshed manually\n');
+    log('Local Docker images refreshed manually\n');
   });
 
   // Cleanup auto-refresh on page unload
@@ -2126,10 +2112,10 @@ OS: ${imageData.Os}`;
             loadedImagesList.innerHTML = '<div class="no-loaded-images">No Docker images found in local daemon.</div>';
           }
           
-          log('🧹 Cleaned up existing extracted files. Starting fresh workflow.');
+          log('Cleaned up existing extracted files. Starting fresh workflow.');
           
         } catch (e) {
-          log(`❌ Failed to cleanup existing files: ${e.message}`);
+          log(`Failed to cleanup existing files: ${e.message}`);
         } finally {
           cleanupExistingBtn.disabled = false;
           cleanupExistingBtn.innerHTML = '<i class="fa fa-trash"></i> Clean Up & Start Fresh';
@@ -2159,10 +2145,10 @@ OS: ${imageData.Os}`;
       console.log('Test files created, checking...');
       await checkExistingExtractedFiles();
       
-      log('✅ Test files created and checked successfully!');
+      log('Test files created and checked successfully!');
     } catch (e) {
       console.error('Error creating test files:', e);
-      log(`❌ Error creating test files: ${e.message}`);
+      log(`Error creating test files: ${e.message}`);
     }
   };
 
@@ -2173,10 +2159,10 @@ OS: ${imageData.Os}`;
       await runCommand(['rm', '-rf', EXTRACT_DESTINATION + 'test-image.tar']);
       console.log('Test files cleaned up');
       await showExtractedFiles(); // Refresh the display
-      log('🧹 Test files cleaned up');
+      log('Test files cleaned up');
     } catch (e) {
       console.error('Error cleaning up test files:', e);
-      log(`❌ Failed to cleanup test files: ${e.message}`);
+      log(`Failed to cleanup test files: ${e.message}`);
     }
   };
 
@@ -2193,10 +2179,10 @@ OS: ${imageData.Os}`;
       // Call the success handler
       handleLoadImagesSuccess();
       
-      log('✅ Image loading success simulation completed');
+      log('Image loading success simulation completed');
     } catch (e) {
       console.error('Error in test simulation:', e);
-      log(`❌ Test simulation failed: ${e.message}`);
+      log(`Test simulation failed: ${e.message}`);
     }
   };
 
@@ -2226,7 +2212,7 @@ OS: ${imageData.Os}`;
       log('📱 Test: No USB storage devices detected');
     } catch (e) {
       console.error('Error in no USB test:', e);
-      log(`❌ No USB test failed: ${e.message}`);
+      log(`No USB test failed: ${e.message}`);
     }
   };
 
@@ -2264,7 +2250,7 @@ OS: ${imageData.Os}`;
       log('📱 Test: USB storage device found');
     } catch (e) {
       console.error('Error in USB test:', e);
-      log(`❌ USB test failed: ${e.message}`);
+      log(`USB test failed: ${e.message}`);
     }
   };
 
@@ -2319,7 +2305,7 @@ OS: ${imageData.Os}`;
       } catch (error) {
         // Prompt user about missing file
         const errorMessage = `Images list file not found. Please create the images configuration file with one image per line.\nExample content:\nkeystone\nnova-api\nneutron-server\n(Tags will be auto-added as :2024.1-ubuntu-jammy)`;
-        log(`❌ ERROR: ${errorMessage}`);
+        log(`ERROR: ${errorMessage}`);
         throw new Error(errorMessage);
       }
     } finally {
@@ -2352,7 +2338,7 @@ OS: ${imageData.Os}`;
 
   // Test connectivity button
   $('test-connectivity-btn').addEventListener('click', async () => {
-  log('🧪 CONNECTIVITY & PREREQUISITES TEST\n');
+  log('CONNECTIVITY & PREREQUISITES TEST\n');
     log('================================================================\n\n');
     
     const testResults = {
@@ -2370,13 +2356,13 @@ OS: ${imageData.Os}`;
       const result = await runCommand(['docker', 'version']);
       const dockerVersion = result.stdout.split('\n')[0];
       testResults.docker = { status: 'pass', details: dockerVersion };
-  log('✅ PASS: Docker daemon is running and accessible\n');
+  log('PASS: Docker daemon is running and accessible\n');
       log(`    Version: ${dockerVersion}\n\n`);
     } catch (e) {
       testResults.docker = { status: 'fail', details: e.message };
-  log('❌ FAIL: Docker daemon is not running or not accessible\n');
-  log(`   ⚠️ Error: ${e.message}\n`);
-  log('   💡 Solution: Start Docker Desktop or run "systemctl start docker"\n\n');
+  log('FAIL: Docker daemon is not running or not accessible\n');
+  log(`   Error: ${e.message}\n`);
+  log('   Solution: Start Docker Desktop or run "systemctl start docker"\n\n');
       
       // If Docker fails, show summary and exit
       showTestSummary(testResults);
@@ -2394,7 +2380,7 @@ OS: ${imageData.Os}`;
       log('    Testing registry connectivity (quay.io via nslookup)...\n');
       await runCommand(['nslookup', 'quay.io'], { timeout: 10000 });
       testResults.network = { status: 'pass', details: 'Internet and registry DNS resolved' };
-      log('✅ PASS: Internet connectivity and registry DNS resolution working\n');
+      log('PASS: Internet connectivity and registry DNS resolution working\n');
       log('   � Can reach Google DNS and resolve quay.io hostname\n\n');
     } catch (e) {
       // Try alternative connectivity tests
@@ -2402,7 +2388,7 @@ OS: ${imageData.Os}`;
         log('    Fallback: Testing with curl to Google...\n');
         await runCommand(['curl', '-s', '--connect-timeout', '5', '--max-time', '10', 'http://google.com'], { timeout: 15000 });
         testResults.network = { status: 'pass', details: 'Internet reachable via HTTP' };
-        log('✅ PASS: Internet connectivity confirmed via HTTP\n');
+        log('PASS: Internet connectivity confirmed via HTTP\n');
         log('   � Alternative connectivity test successful\n\n');
       } catch (e2) {
         testResults.network = { status: 'fail', details: `Ping failed: ${e.message}, HTTP failed: ${e2.message}` };
@@ -2619,7 +2605,7 @@ OS: ${imageData.Os}`;
         imagesList = await getImagesList();
       } catch (e) {
         // Show user-friendly error for missing images list file
-        log('❌ IMAGES LIST FILE MISSING\n');
+        log('IMAGES LIST FILE MISSING\n');
         log('================================================================\n');
         log('❗ The images configuration file is required and must contain one image per line.\n\n');
         log('📝 Example content for the images list:\n');
@@ -2628,8 +2614,8 @@ OS: ${imageData.Os}`;
         log('   neutron-server\n');
         log('   glance-api\n');
         log('   horizon\n\n');
-        log('ℹ️  Note: The :2024.1-ubuntu-jammy tag will be automatically added\n');
-        log('💡 Solution: Create the images configuration file with the required images\n');
+        log('Note: The :2024.1-ubuntu-jammy tag will be automatically added\n');
+        log('Solution: Create the images configuration file with the required images\n');
         log('================================================================\n');
         
         progressText.textContent = 'Error: Images list file missing';
@@ -2652,7 +2638,7 @@ OS: ${imageData.Os}`;
           .filter(line => line && !line.startsWith('#')) : [];
       
       if (images.length === 0) {
-        log('❌ No images found in the images configuration file\n');
+        log('No images found in the images configuration file\n');
         log('📝 Please add images to the configuration file (one per line)\n');
         
         progressText.textContent = 'Error: No images configured';
@@ -2699,27 +2685,27 @@ OS: ${imageData.Os}`;
         progressText.textContent = `Pulling ${image}...`;
         progressCount.textContent = `${i}/${images.length}`;
         
-        log(`🐳 [${i + 1}/${images.length}] Pulling ${image}...\n`);
+        log(`[${i + 1}/${images.length}] Pulling ${image}...\n`);
         log(`📍 Full reference: ${ref}\n`);
         
         try {
           await runCommand(['docker', 'pull', ref]);
           successCount++;
-          log(`✅ [${i + 1}/${images.length}] Successfully pulled ${image}\n\n`);
+          log(`[${i + 1}/${images.length}] Successfully pulled ${image}\n\n`);
         } catch (error) {
           failCount++;
-          log(`❌ [${i + 1}/${images.length}] Failed to pull ${image}\n`);
+          log(`[${i + 1}/${images.length}] Failed to pull ${image}\n`);
           log(`🔍 Error details: ${error.message}\n`);
           
           // Provide specific error diagnostics
           if (error.message.includes('manifest unknown') || error.message.includes('not found')) {
-            log(`💡 This image may not exist in the registry. Check: https://quay.io/repository/xavs.images/${image.split(':')[0]}\n`);
+            log(`This image may not exist in the registry. Check: https://quay.io/repository/xavs.images/${image.split(':')[0]}\n`);
           } else if (error.message.includes('connection') || error.message.includes('network')) {
             log(`🌐 Network connectivity issue. Check internet connection and registry access.\n`);
           } else if (error.message.includes('unauthorized') || error.message.includes('authentication')) {
             log(`🔐 Authentication issue. You may need to login: docker login quay.io\n`);
           } else if (error.message.includes('timeout')) {
-            log(`⏱️ Request timeout. The registry may be slow or overloaded.\n`);
+            log(`Request timeout. The registry may be slow or overloaded.\n`);
           }
           log('\n');
           // Continue with next image instead of stopping
@@ -3274,7 +3260,7 @@ OS: ${imageData.Os}`;
     const detailsSection = $('registry-details-section');
     
     try {
-      log('ℹ️ Gathering registry information...\n');
+      log('Gathering registry information...\n');
       
       // Show the entire details section
       if (detailsSection) {
@@ -3354,7 +3340,7 @@ OS: ${imageData.Os}`;
         detailsParent.open = true;
       }
       
-      log('✅ Registry information loaded\n');
+      log('Registry information loaded\n');
       
     } catch (e) {
       // Show the details section even on error
@@ -3368,7 +3354,7 @@ OS: ${imageData.Os}`;
         placeholderEl.style.display = 'flex';
         placeholderEl.innerHTML = `<i class="fa fa-exclamation-triangle"></i><span>Error loading registry information: ${e.message}</span>`;
       }
-      log(`❌ Failed to get registry info: ${e.message}\n`);
+      log(`Failed to get registry info: ${e.message}\n`);
     }
   }
 
@@ -3460,7 +3446,7 @@ OS: ${imageData.Os}`;
         detailsParent.open = true;
       }
       
-      log('✅ Storage usage analysis complete\n');
+      log('Storage usage analysis complete\n');
       
     } catch (e) {
       // Show the details section even on error
@@ -3474,7 +3460,7 @@ OS: ${imageData.Os}`;
         placeholderEl.style.display = 'flex';
         placeholderEl.innerHTML = `<i class="fa fa-exclamation-triangle"></i><span>Error analyzing storage: ${e.message}</span>`;
       }
-      log(`❌ Storage analysis failed: ${e.message}\n`);
+      log(`Storage analysis failed: ${e.message}\n`);
     }
   }
 
@@ -3575,7 +3561,7 @@ OS: ${imageData.Os}`;
         }
       } catch (e) {
         log(`  Could not verify registry state: ${e.message}\n`);
-        log('ℹ  Registry should still be empty - verification failed\n');
+        log('Registry should still be empty - verification failed\n');
         
         // Still try to refresh catalog
         setTimeout(() => refreshCatalog(), 5000);
@@ -3665,7 +3651,7 @@ OS: ${imageData.Os}`;
         if (volumeList.length > 0) {
           log(` Removed ${volumeList.length} registry volumes\n`);
         } else {
-          log('ℹ  No registry volumes found to remove\n');
+          log('No registry volumes found to remove\n');
         }
       } catch (e) {
         log(`  Volume removal failed: ${e.message}\n`);
@@ -3718,7 +3704,7 @@ OS: ${imageData.Os}`;
       log('   • Registry volumes: DELETED\n');
       log('   • Registry data: DELETED\n');
       log('   • All images: DELETED\n\n');
-      log('ℹ  To use registry functionality again, create a new registry\n');
+      log('To use registry functionality again, create a new registry\n');
       
     } catch (e) {
       log(` Registry deletion failed: ${e.message}\n`);
