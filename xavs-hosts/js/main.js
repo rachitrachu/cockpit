@@ -17,7 +17,7 @@ const tabLinks = document.querySelectorAll('.nav-link');
 const tabPanes = document.querySelectorAll('.tab-pane');
 
 // Add Host sub-tab elements  
-const subTabBtns = document.querySelectorAll('.sub-tabs .btn');
+const subTabBtns = document.querySelectorAll('.sub-nav-tabs .nav-link');
 const subTabContents = document.querySelectorAll('.sub-tab-content');
 
 // Log elements
@@ -123,6 +123,9 @@ subTabBtns.forEach(btn => {
   btn.addEventListener('click', (e) => {
     e.preventDefault();
     const targetId = btn.getAttribute('aria-controls');
+    // Remove active from all
+    subTabBtns.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
     switchSubTab(targetId);
   });
 });
