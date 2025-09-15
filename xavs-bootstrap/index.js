@@ -1493,62 +1493,34 @@ End of Report
             missing=$(echo "$missing" | xargs)  # trim whitespace
             [ -z "$missing" ] && echo PY_OK || { echo PY_MISS; echo "Missing Python deps: $missing"; }
 
-            # System tools (checking representative packages from each installation step) - Fixed logic
-            # Step 1: Core monitoring/networking
-            step1_tools='btop htop iftop nethogs iotop'
-            missing_step1=""
-            for pkg in $step1_tools; do
+            # System tools (comprehensive package list for xDeploy requirements)
+            # Using simple space-separated list to avoid bash array parsing issues
+            PACKAGES="python3-dev python3-pip python3-venv python3-netaddr python3-rbd python3-docker build-essential libssl-dev libffi-dev git curl wget snmp snmpd bridge-utils nfs-common nfs-kernel-server open-iscsi libvirt-clients virtinst iptables-persistent netfilter-persistent ssh sshpass docker.io containerd docker-compose isc-dhcp-server tftpd-hpa dnsmasq apache2 dpkg-dev apt-utils syslinux-common pxelinux ceph-common fdisk parted gdisk lvm2 udisks2-lvm2 cryptsetup plocate btop iotop ncdu net-tools tcpdump traceroute jq pv nmon htop iftop ipmitool sysstat smartmontools hwloc-nox freeipmi-tools openipmi ipmiutil conman freeipmi-bmc-watchdog freeipmi-ipmidetect python3-sushy dmidecode lshw edac-utils memtester stress-ng nvme-cli runc bzip2 gzip zip unzip ca-certificates crudini vim nano fping tmux ethtool numactl socat lsof rsync cpu-checker bash-completion tuned shc cpufrequtils strace dstat cron chrony rsyslog logrotate auditd fail2ban"
+            
+            missing_packages=""
+            total_packages=0
+            
+            for pkg in $PACKAGES; do
+                total_packages=$((total_packages + 1))
                 if ! dpkg-query -W "$pkg" >/dev/null 2>&1; then
-                    missing_step1="$missing_step1 $pkg"
-                elif ! dpkg-query -W -f='\${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
-                    missing_step1="$missing_step1 $pkg"
+                    missing_packages="$missing_packages $pkg"
+                else
+                    # Check if package is properly installed (allow half-configured state)
+                    status=$(dpkg-query -W -f='\${Status}' "$pkg" 2>/dev/null)
+                    if ! echo "$status" | grep -q "install ok"; then
+                        missing_packages="$missing_packages $pkg"
+                    fi
                 fi
             done
             
-            # Step 2: Development tools  
-            step2_tools='git curl wget vim nano'
-            missing_step2=""
-            for pkg in $step2_tools; do
-                if ! dpkg-query -W "$pkg" >/dev/null 2>&1; then
-                    missing_step2="$missing_step2 $pkg"
-                elif ! dpkg-query -W -f='\${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
-                    missing_step2="$missing_step2 $pkg"
-                fi
-            done
+            missing_packages=$(echo "$missing_packages" | xargs)  # trim whitespace
             
-            # Step 3: System services
-            step3_tools='snmp snmpd bridge-utils build-essential'
-            missing_step3=""
-            for pkg in $step3_tools; do
-                if ! dpkg-query -W "$pkg" >/dev/null 2>&1; then
-                    missing_step3="$missing_step3 $pkg"
-                elif ! dpkg-query -W -f='\${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
-                    missing_step3="$missing_step3 $pkg"
-                fi
-            done
-            
-            # Step 4: Storage/virtualization
-            step4_tools='lvm2 parted docker.io'
-            missing_step4=""
-            for pkg in $step4_tools; do
-                if ! dpkg-query -W "$pkg" >/dev/null 2>&1; then
-                    missing_step4="$missing_step4 $pkg"
-                elif ! dpkg-query -W -f='\${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
-                    missing_step4="$missing_step4 $pkg"
-                fi
-            done
-            
-            # Check if majority of representative packages are installed (at least 75%)
-            total_checked=$(echo "$step1_tools $step2_tools $step3_tools $step4_tools" | wc -w)
-            missing_count=$(echo "$missing_step1 $missing_step2 $missing_step3 $missing_step4" | wc -w)
-            installed_count=$((total_checked - missing_count))
-            threshold=$((total_checked * 3 / 4))  # 75% threshold
-            
-            if [ $installed_count -ge $threshold ]; then
+            if [ -z "$missing_packages" ]; then
                 echo TOOLS_OK
             else
                 echo TOOLS_MISS
-                echo "Missing system tools: $(echo "$missing_step1 $missing_step2 $missing_step3 $missing_step4" | xargs)"
+                missing_count=$(echo "$missing_packages" | wc -w)
+                echo "Missing system tools ($missing_count/$total_packages): $missing_packages"
             fi
 
             # Environment
@@ -1810,45 +1782,28 @@ PY
             missing=$(echo "$missing" | xargs)  # trim whitespace
             [ -z "$missing" ] && echo PY_OK || { echo PY_MISS; echo "Missing Python deps: $missing"; }
 
-            # System tools (checking representative packages from each installation step) - Fixed logic for RPM
-            # Step 1: Core monitoring/networking
-            step1_tools='btop htop iftop nethogs iotop'
-            missing_step1=""
-            for pkg in $step1_tools; do
+            # System tools (comprehensive package list for xDeploy requirements - RPM equivalents)
+            # Using simple space-separated list to avoid bash array parsing issues
+            PACKAGES="python3-devel python3-pip python3 python3-netaddr python3-rbd python3-docker gcc gcc-c++ make openssl-devel libffi-devel git curl wget net-snmp net-snmp-utils bridge-utils nfs-utils iscsi-initiator-utils libvirt-client virt-install iptables iptables-services openssh-server sshpass docker containerd docker-compose dhcp-server tftp-server dnsmasq httpd createrepo yum-utils syslinux syslinux-tftpboot ceph-common util-linux parted gdisk lvm2 cryptsetup plocate btop iotop ncdu net-tools tcpdump traceroute jq pv nmon htop iftop ipmitool sysstat smartmontools hwloc freeipmi OpenIPMI ipmiutil conman python3-sushy dmidecode lshw edac-utils memtester stress-ng nvme-cli runc bzip2 gzip zip unzip ca-certificates crudini vim nano fping tmux ethtool numactl socat lsof rsync bash-completion tuned cpufrequtils strace dstat cronie chrony rsyslog logrotate audit fail2ban"
+            
+            missing_packages=""
+            total_packages=0
+            
+            for pkg in $PACKAGES; do
+                total_packages=$((total_packages + 1))
                 if ! rpm -q "$pkg" >/dev/null 2>&1; then
-                    missing_step1="$missing_step1 $pkg"
+                    missing_packages="$missing_packages $pkg"
                 fi
             done
             
-            # Step 2: Development tools
-            step2_tools='git curl wget vim nano'
-            missing_step2=""
-            for pkg in $step2_tools; do
-                if ! rpm -q "$pkg" >/dev/null 2>&1; then
-                    missing_step2="$missing_step2 $pkg"
-                fi
-            done
+            missing_packages=$(echo "$missing_packages" | xargs)  # trim whitespace
             
-            # Step 3: System services  
-            step3_tools='net-snmp net-snmp-utils bridge-utils'
-            missing_step3=""
-            for pkg in $step3_tools; do
-                if ! rpm -q "$pkg" >/dev/null 2>&1; then
-                    missing_step3="$missing_step3 $pkg"
-                fi
-            done
-            
-            # Check if majority of representative packages are installed (at least 75%)
-            total_checked=$(echo "$step1_tools $step2_tools $step3_tools" | wc -w)
-            missing_count=$(echo "$missing_step1 $missing_step2 $missing_step3" | wc -w)
-            installed_count=$((total_checked - missing_count))
-            threshold=$((total_checked * 3 / 4))  # 75% threshold
-            
-            if [ $installed_count -ge $threshold ]; then
+            if [ -z "$missing_packages" ]; then
                 echo TOOLS_OK
             else
                 echo TOOLS_MISS
-                echo "Missing system tools: $(echo "$missing_step1 $missing_step2 $missing_step3" | xargs)"
+                missing_count=$(echo "$missing_packages" | wc -w)
+                echo "Missing system tools ($missing_count/$total_packages): $missing_packages"
             fi
 
             # OpenStack clients (check via pip globally on RHEL)
@@ -2471,77 +2426,178 @@ octavia_loadbalancer_topology: "ACTIVE_STANDBY"
                 log("[Install:SystemTools] Updating package lists...");
                 await cockpit.spawn(["apt-get", "update"], { superuser: "require", err: "message" });
                 
-                setBadge("dep-tools", "", '<i class="fas fa-clock text-warning"></i> Installing core tools...');
-                log("[Install:SystemTools] Step 1/4: Installing core monitoring and networking tools...");
+                setBadge("dep-tools", "", '<i class="fas fa-clock text-warning"></i> Installing comprehensive system tools...');
+                log("[Install:SystemTools] Installing comprehensive xDeploy system tools and dependencies...");
                 
-                // Step 1: Core monitoring and networking tools
-                await cockpit.spawn([
-                    "apt-get", "install", "-y",
-                    "btop", "htop", "iftop", "iotop", "net-tools", "tcpdump", "traceroute", 
-                    "curl", "wget", "vim", "nano", "tmux", "jq", "pv", "rsync", "lsof"
-                ], { superuser: "require", err: "message" });
+                // Install all packages from the comprehensive list
+                const packages = [
+                    // Core Python and build dependencies
+                    "python3-dev", "python3-pip", "python3-venv", "python3-netaddr", 
+                    "python3-rbd", "python3-docker", "build-essential", "libssl-dev", 
+                    "libffi-dev", "git", "curl", "wget",
+                    
+                    // Network and monitoring tools
+                    "snmp", "snmpd", "bridge-utils",
+                    
+                    // Storage and filesystem tools
+                    "nfs-common", "nfs-kernel-server", "open-iscsi",
+                    
+                    // Virtualization tools
+                    "libvirt-clients", "virtinst",
+                    
+                    // Firewall and security
+                    "iptables-persistent", "netfilter-persistent", "ssh", "sshpass",
+                    
+                    // Container runtime
+                    "docker.io", "containerd", "docker-compose",
+                    
+                    // Network services
+                    "isc-dhcp-server", "tftpd-hpa", "dnsmasq",
+                    
+                    // Repository hosting tools
+                    "apache2", "dpkg-dev", "apt-utils",
+                    
+                    // PXE boot support
+                    "syslinux-common", "pxelinux",
+                    
+                    // Storage & Disk Management
+                    "ceph-common", "fdisk", "parted", "gdisk", "lvm2", "udisks2-lvm2", 
+                    "cryptsetup", "plocate",
+                    
+                    // Monitoring & Performance
+                    "btop", "iotop", "ncdu", "net-tools", "tcpdump", "traceroute", 
+                    "jq", "pv", "nmon", "htop", "iftop", "ipmitool", "sysstat", 
+                    "smartmontools", "hwloc-nox",
+                    
+                    // Server Management & Out-of-Band Tools
+                    "freeipmi-tools", "openipmi", "ipmiutil", "conman", 
+                    "freeipmi-bmc-watchdog", "freeipmi-ipmidetect", "python3-sushy", 
+                    "dmidecode", "lshw", "edac-utils", "memtester", "stress-ng", "nvme-cli",
+                    
+                    // System Utilities
+                    "runc", "bzip2", "gzip", "zip", "unzip", "ca-certificates", "crudini", 
+                    "vim", "nano", "fping", "tmux", "ethtool", "numactl", "socat", "lsof", 
+                    "rsync", "cpu-checker", "bash-completion", "tuned", "shc", 
+                    "cpufrequtils", "strace", "dstat",
+                    
+                    // Security & Logging
+                    "cron", "chrony", "rsyslog", "logrotate", "auditd", "fail2ban"
+                ];
                 
-                setBadge("dep-tools", "", '<i class="fas fa-clock text-warning"></i> Installing development tools...');
-                log("[Install:SystemTools] Step 2/4: Installing development and build tools...");
-                
-                // Step 2: Development tools
-                await cockpit.spawn([
-                    "apt-get", "install", "-y",
-                    "build-essential", "make", "cmake", "gcc", "git", "zip", "unzip", "bzip2"
-                ], { superuser: "require", err: "message" });
-                
-                setBadge("dep-tools", "", '<i class="fas fa-clock text-warning"></i> Installing system services...');
-                log("[Install:SystemTools] Step 3/4: Installing system services and utilities...");
-                
-                // Step 3: System services (install what's available, skip missing)
-                await cockpit.spawn([
-                    "bash", "-c", 
-                    "for pkg in docker.io apache2 chrony rsyslog logrotate auditd fail2ban ssh; do " +
-                    "  apt-get install -y $pkg 2>/dev/null || echo 'Skipping $pkg'; " +
-                    "done"
-                ], { superuser: "require", err: "message" });
-                
-                setBadge("dep-tools", "", '<i class="fas fa-clock text-warning"></i> Installing storage tools...');
-                log("[Install:SystemTools] Step 4/4: Installing storage and virtualization tools...");
-                
-                // Step 4: Storage and virtualization (install what's available)
-                await cockpit.spawn([
-                    "bash", "-c",
-                    "for pkg in lvm2 cryptsetup parted gdisk smartmontools; do " +
-                    "  apt-get install -y $pkg 2>/dev/null || echo 'Skipping $pkg'; " +
-                    "done"
-                ], { superuser: "require", err: "message" });
+                // Install packages in smaller batches with better error handling
+                const batchSize = 10; // Reduced batch size to avoid timeouts
+                for (let i = 0; i < packages.length; i += batchSize) {
+                    const batch = packages.slice(i, i + batchSize);
+                    const batchNum = Math.floor(i / batchSize) + 1;
+                    const totalBatches = Math.ceil(packages.length / batchSize);
+                    
+                    setBadge("dep-tools", "", `<i class="fas fa-clock text-warning"></i> Installing batch ${batchNum}/${totalBatches}...`);
+                    log(`[Install:SystemTools] Installing batch ${batchNum}/${totalBatches}: ${batch.join(', ')}`);
+                    
+                    try {
+                        // Fix any interrupted dpkg processes first
+                        await cockpit.spawn(["dpkg", "--configure", "-a"], { superuser: "require", err: "ignore" });
+                        
+                        // Install packages one by one to avoid issues
+                        for (const pkg of batch) {
+                            try {
+                                await cockpit.spawn([
+                                    "bash", "-c",
+                                    `timeout 60 apt-get install -y "${pkg}" || echo "Failed to install ${pkg}"`
+                                ], { superuser: "require", err: "ignore" });
+                                log(`[Install:SystemTools] ✓ Processed ${pkg}`);
+                            } catch (error) {
+                                log(`[Install:SystemTools] ✗ Failed to install ${pkg}: ${error.message}`);
+                            }
+                        }
+                    } catch (error) {
+                        log(`[Install:SystemTools] Warning: Error in batch ${batchNum}: ${error.message}`);
+                    }
+                }
                 
             } else if (osInfo.branch === "rhel") {
-                setBadge("dep-tools", "", '<i class="fas fa-clock text-warning"></i> Installing core tools...');
-                log("[Install:SystemTools] Step 1/3: Installing core monitoring and networking tools...");
+                setBadge("dep-tools", "", '<i class="fas fa-clock text-warning"></i> Installing comprehensive system tools...');
+                log("[Install:SystemTools] Installing comprehensive xDeploy system tools and dependencies...");
                 
-                // Step 1: Core tools for RHEL
-                await cockpit.spawn([
-                    "dnf", "install", "-y",
-                    "btop", "htop", "iftop", "iotop", "net-tools", "tcpdump", "traceroute",
-                    "curl", "wget", "vim", "nano", "tmux", "jq", "rsync", "lsof"
-                ], { superuser: "require", err: "message" });
+                // Install all packages from the comprehensive RHEL list
+                const packages = [
+                    // Core Python and build dependencies
+                    "python3-devel", "python3-pip", "python3", "python3-netaddr", 
+                    "python3-rbd", "python3-docker", "@development-tools", "openssl-devel", 
+                    "libffi-devel", "git", "curl", "wget",
+                    
+                    // Network and monitoring tools
+                    "net-snmp", "net-snmp-utils", "bridge-utils",
+                    
+                    // Storage and filesystem tools
+                    "nfs-utils", "iscsi-initiator-utils",
+                    
+                    // Virtualization tools
+                    "libvirt-client", "virt-install",
+                    
+                    // Firewall and security
+                    "iptables", "iptables-services", "openssh-server", "sshpass",
+                    
+                    // Container runtime
+                    "docker", "containerd", "docker-compose",
+                    
+                    // Network services
+                    "dhcp-server", "tftp-server", "dnsmasq",
+                    
+                    // Repository hosting tools
+                    "httpd", "createrepo", "yum-utils",
+                    
+                    // PXE boot support
+                    "syslinux", "syslinux-tftpboot",
+                    
+                    // Storage & Disk Management
+                    "ceph-common", "util-linux", "parted", "gdisk", "lvm2", "cryptsetup", "plocate",
+                    
+                    // Monitoring & Performance
+                    "btop", "iotop", "ncdu", "net-tools", "tcpdump", "traceroute", 
+                    "jq", "pv", "nmon", "htop", "iftop", "ipmitool", "sysstat", 
+                    "smartmontools", "hwloc",
+                    
+                    // Server Management & Out-of-Band Tools
+                    "freeipmi", "OpenIPMI", "ipmiutil", "conman", "python3-sushy", 
+                    "dmidecode", "lshw", "edac-utils", "memtester", "stress-ng", "nvme-cli",
+                    
+                    // System Utilities
+                    "runc", "bzip2", "gzip", "zip", "unzip", "ca-certificates", "crudini", 
+                    "vim", "nano", "fping", "tmux", "ethtool", "numactl", "socat", "lsof", 
+                    "rsync", "bash-completion", "tuned", "cpufrequtils", "strace", "dstat",
+                    
+                    // Security & Logging
+                    "cronie", "chrony", "rsyslog", "logrotate", "audit", "fail2ban"
+                ];
                 
-                setBadge("dep-tools", "", '<i class="fas fa-clock text-warning"></i> Installing development tools...');
-                log("[Install:SystemTools] Step 2/3: Installing development tools...");
-                
-                // Step 2: Development tools
-                await cockpit.spawn([
-                    "dnf", "install", "-y",
-                    "@development-tools", "cmake", "git", "zip", "unzip", "bzip2"
-                ], { superuser: "require", err: "message" });
-                
-                setBadge("dep-tools", "", '<i class="fas fa-clock text-warning"></i> Installing system services...');
-                log("[Install:SystemTools] Step 3/3: Installing system services and storage tools...");
-                
-                // Step 3: System services and storage tools (install what's available)
-                await cockpit.spawn([
-                    "bash", "-c",
-                    "for pkg in docker httpd chrony rsyslog logrotate audit fail2ban lvm2 cryptsetup parted gdisk smartmontools openssh-server; do " +
-                    "  dnf install -y $pkg 2>/dev/null || echo 'Skipping $pkg'; " +
-                    "done"
-                ], { superuser: "require", err: "message" });
+                // Install packages in smaller batches with better error handling
+                const batchSize = 10; // Reduced batch size to avoid timeouts
+                for (let i = 0; i < packages.length; i += batchSize) {
+                    const batch = packages.slice(i, i + batchSize);
+                    const batchNum = Math.floor(i / batchSize) + 1;
+                    const totalBatches = Math.ceil(packages.length / batchSize);
+                    
+                    setBadge("dep-tools", "", `<i class="fas fa-clock text-warning"></i> Installing batch ${batchNum}/${totalBatches}...`);
+                    log(`[Install:SystemTools] Installing batch ${batchNum}/${totalBatches}: ${batch.join(', ')}`);
+                    
+                    try {
+                        // Install packages one by one to avoid issues
+                        for (const pkg of batch) {
+                            try {
+                                await cockpit.spawn([
+                                    "bash", "-c",
+                                    `timeout 60 dnf install -y "${pkg}" || echo "Failed to install ${pkg}"`
+                                ], { superuser: "require", err: "ignore" });
+                                log(`[Install:SystemTools] ✓ Processed ${pkg}`);
+                            } catch (error) {
+                                log(`[Install:SystemTools] ✗ Failed to install ${pkg}: ${error.message}`);
+                            }
+                        }
+                    } catch (error) {
+                        log(`[Install:SystemTools] Warning: Error in batch ${batchNum}: ${error.message}`);
+                    }
+                }
             }
 
             setBadge("dep-tools", "ok", '<i class="fas fa-check text-success"></i> installed');
