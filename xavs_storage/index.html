@@ -128,6 +128,7 @@
                   <th><i class="fas fa-chart-bar"></i> Used</th>
                   <th><i class="fas fa-folder"></i> Filesystem</th>
                   <th><i class="fas fa-link"></i> Mount Point</th>
+                  <th><i class="fas fa-info-circle"></i> Status</th>
                   <th><i class="fas fa-heartbeat"></i> Health</th>
                   <th><i class="fas fa-cog"></i> Actions</th>
                 </tr>
@@ -165,7 +166,7 @@
               </div>
               <div class="form-group">
                 <label class="form-label"><i class="fas fa-tag"></i> Label (optional)</label>
-                <input id="fs-label" type="text" class="form-input" placeholder="MyData">
+                <input id="fs-label" type="text" class="form-select" placeholder="MyData">
               </div>
               <div class="form-group form-action">
                 <label class="form-label">&nbsp;</label>
@@ -193,6 +194,12 @@
         </div>
         <div class="form-grid">
           <div class="form-group">
+            <label class="checkbox-label persistent-checkbox">
+              <input type="checkbox" id="nfs-persistent"> 
+              <i class="fas fa-save"></i> Make mount persistent
+            </label>
+          </div>
+          <div class="form-group">
             <label><i class="fas fa-server"></i> NFS Server</label>
             <input id="nfs-server" type="text" class="form-control" placeholder="192.168.1.100">
           </div>
@@ -205,8 +212,27 @@
             <input id="nfs-mountpoint" type="text" class="form-control" placeholder="/mnt/nfs">
           </div>
           <div class="form-group">
-            <label><i class="fas fa-cog"></i> Options</label>
-            <input id="nfs-options" type="text" class="form-control" placeholder="rw,sync,hard,intr">
+            <label><i class="fas fa-cog"></i> Mount Options</label>
+            <div class="checkbox-grid">
+              <label class="checkbox-label">
+                <input type="checkbox" id="nfs-opt-rw" checked> Read/Write (rw)
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="nfs-opt-sync"> Synchronous (sync)
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="nfs-opt-hard" checked> Hard mount (hard)
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="nfs-opt-intr"> Interruptible (intr)
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="nfs-opt-noatime"> No access time (noatime)
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="nfs-opt-rsize"> Large read size (rsize=8192)
+              </label>
+            </div>
           </div>
         </div>
         <div class="card-footer">
@@ -229,6 +255,12 @@
           </div>
         </div>
         <div class="form-grid">
+          <div class="form-group">
+            <label class="checkbox-label persistent-checkbox">
+              <input type="checkbox" id="iscsi-persistent"> 
+              <i class="fas fa-save"></i> Make session login persistent
+            </label>
+          </div>
           <div class="form-group">
             <label><i class="fas fa-server"></i> iSCSI Target</label>
             <input id="iscsi-target" type="text" class="form-control" placeholder="192.168.1.200">
@@ -306,9 +338,9 @@
             </div>
             <div class="form-group">
               <label class="form-label"><i class="fas fa-hdd"></i> Select Disks</label>
-              <select id="raid-disks" multiple class="form-select" style="height:80px;">
-                <option disabled>Loading available disks...</option>
-              </select>
+              <div id="raid-disks" class="disk-checkbox-container">
+                <div class="loading-message">Loading available disks...</div>
+              </div>
             </div>
             <div class="form-group">
               <label class="form-label"><i class="fas fa-tag"></i> Array Name</label>
@@ -353,9 +385,9 @@
             </div>
             <div class="form-group">
               <label class="form-label"><i class="fas fa-hdd"></i> Physical Volumes</label>
-              <select id="vg-pvs" multiple class="form-select" style="height:80px;">
-                <option disabled>Loading available disks...</option>
-              </select>
+              <div id="vg-pvs" class="disk-checkbox-container">
+                <div class="loading-message">Loading available disks...</div>
+              </div>
             </div>
             <div class="form-group form-action">
               <label class="form-label">&nbsp;</label>
