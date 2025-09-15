@@ -1,0 +1,304 @@
+/**
+ * XAVS Welcome Module Styles
+ */
+
+.welcome-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: var(--xavs-spacing-lg);
+}
+
+.welcome-hero {
+    text-align: center;
+    margin-bottom: var(--xavs-spacing-xl);
+    padding: var(--xavs-spacing-xl) 0;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: var(--xavs-border-radius);
+}
+
+.welcome-hero h1 {
+    font-size: 2.5rem;
+    margin-bottom: var(--xavs-spacing-md);
+    color: var(--xavs-primary);
+    font-weight: 600;
+}
+
+.hero-subtitle {
+    font-size: var(--xavs-font-size-lg);
+    color: var(--xavs-secondary);
+    margin: 0;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.welcome-content {
+    margin-bottom: var(--xavs-spacing-xl);
+}
+
+.welcome-content > div {
+    margin-bottom: var(--xavs-spacing-xl);
+}
+
+.welcome-content h2 {
+    color: var(--xavs-dark);
+    margin-bottom: var(--xavs-spacing-lg);
+    font-size: var(--xavs-font-size-xl);
+    text-align: center;
+}
+
+/* Deployment Modes */
+.mode-cards,
+.arch-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: var(--xavs-spacing-lg);
+    margin-bottom: var(--xavs-spacing-lg);
+}
+
+.mode-card,
+.arch-card {
+    background: white;
+    border: 2px solid #dee2e6;
+    border-radius: var(--xavs-border-radius);
+    padding: var(--xavs-spacing-lg);
+    text-align: center;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.mode-card:hover,
+.arch-card:hover {
+    border-color: var(--xavs-primary);
+    box-shadow: var(--xavs-shadow-lg);
+    transform: translateY(-2px);
+}
+
+.mode-card.selected,
+.arch-card.selected {
+    border-color: var(--xavs-success);
+    background: #f8fff8;
+    box-shadow: var(--xavs-shadow-lg);
+}
+
+.mode-card.selected::before,
+.arch-card.selected::before {
+    content: "✓";
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    background: var(--xavs-success);
+    color: white;
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 0.9rem;
+}
+
+.card-icon {
+    font-size: 3rem;
+    margin-bottom: var(--xavs-spacing-md);
+}
+
+.mode-card h3,
+.arch-card h3 {
+    color: var(--xavs-dark);
+    margin-bottom: var(--xavs-spacing-md);
+    font-size: var(--xavs-font-size-lg);
+}
+
+.mode-card p,
+.arch-card p {
+    color: var(--xavs-secondary);
+    margin-bottom: var(--xavs-spacing-lg);
+    line-height: 1.5;
+}
+
+.mode-card ul,
+.arch-card ul {
+    text-align: left;
+    margin-bottom: var(--xavs-spacing-lg);
+    padding-left: var(--xavs-spacing-lg);
+}
+
+.mode-card li,
+.arch-card li {
+    margin-bottom: var(--xavs-spacing-xs);
+    color: var(--xavs-dark);
+}
+
+/* Workflow Overview */
+.workflow-steps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--xavs-spacing-lg);
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.workflow-step {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--xavs-spacing-lg);
+    padding: var(--xavs-spacing-lg);
+    background: white;
+    border-radius: var(--xavs-border-radius);
+    box-shadow: var(--xavs-shadow);
+    border-left: 4px solid var(--xavs-primary);
+}
+
+.step-number {
+    background: var(--xavs-primary);
+    color: white;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: var(--xavs-font-size-lg);
+    flex-shrink: 0;
+}
+
+.step-content h4 {
+    margin: 0 0 var(--xavs-spacing-sm) 0;
+    color: var(--xavs-dark);
+    font-size: var(--xavs-font-size-lg);
+}
+
+.step-content p {
+    margin: 0;
+    color: var(--xavs-secondary);
+    line-height: 1.5;
+}
+
+/* Getting Started */
+.start-info {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: var(--xavs-spacing-lg);
+}
+
+.info-card {
+    background: white;
+    padding: var(--xavs-spacing-lg);
+    border-radius: var(--xavs-border-radius);
+    box-shadow: var(--xavs-shadow);
+    border-top: 4px solid var(--xavs-info);
+}
+
+.info-card h4 {
+    color: var(--xavs-dark);
+    margin-bottom: var(--xavs-spacing-md);
+    font-size: var(--xavs-font-size-lg);
+}
+
+.info-card ul {
+    margin: 0;
+    padding-left: var(--xavs-spacing-lg);
+}
+
+.info-card li {
+    margin-bottom: var(--xavs-spacing-xs);
+    color: var(--xavs-dark);
+    line-height: 1.4;
+}
+
+/* Welcome Actions */
+.welcome-actions {
+    text-align: center;
+    padding: var(--xavs-spacing-xl) 0;
+    border-top: 1px solid #dee2e6;
+    margin-top: var(--xavs-spacing-xl);
+}
+
+.welcome-actions .btn {
+    margin: 0 var(--xavs-spacing-sm);
+    min-width: 200px;
+}
+
+.btn-lg {
+    padding: 0.75rem 1.5rem;
+    font-size: var(--xavs-font-size-lg);
+    min-height: 50px;
+}
+
+/* Architecture Selection Animation */
+.architecture-selection {
+    animation: slideIn 0.5s ease;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .welcome-hero h1 {
+        font-size: 2rem;
+    }
+    
+    .mode-cards,
+    .arch-cards {
+        grid-template-columns: 1fr;
+    }
+    
+    .workflow-step {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .step-number {
+        margin: 0 auto var(--xavs-spacing-md) auto;
+    }
+    
+    .start-info {
+        grid-template-columns: 1fr;
+    }
+    
+    .welcome-actions .btn {
+        display: block;
+        width: 100%;
+        margin: var(--xavs-spacing-sm) 0;
+    }
+}
+
+/* Focus states for accessibility */
+.mode-select:focus,
+.arch-select:focus {
+    outline: 2px solid var(--xavs-primary);
+    outline-offset: 2px;
+}
+
+/* Loading states */
+.mode-card.loading,
+.arch-card.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.mode-card.loading::after,
+.arch-card.loading::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid var(--xavs-primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}

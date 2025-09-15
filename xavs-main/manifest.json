@@ -1,0 +1,14 @@
+{
+    "version": "1.0.0",
+    "requires": {
+        "cockpit": "280"
+    },
+    "tools": {
+        "xavs": {
+            "label": "XAVS OpenStack Platform",
+            "path": "index.html",
+            "description": "XAVS OpenStack deployment and management platform"
+        }
+    },
+    "content-security-policy": "default-src 'self' 'unsafe-inline' 'unsafe-eval'"
+}
