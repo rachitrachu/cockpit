@@ -1,0 +1,49 @@
+#badge {
+    inline-size: 73px;
+    block-size: 69px;
+    background-image: url("logo.svg");
+    background-repeat: no-repeat;
+    background-size: contain;
+}
+
+#brand {
+    min-inline-size: 180px;
+    min-block-size: 25px;
+    background-image: url("brand-large.svg");
+    background-repeat: no-repeat;
+    background-size: contain;
+}
+
+/* Custom Rachit branding */
+.navbar-brand {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #0066cc !important;
+}
+
+/* Custom header styling */
+.navbar {
+    background: linear-gradient(135deg, #0066cc 0%, #004499 100%) !important;
+}
+
+/* Custom sidebar branding */
+.pf-c-nav__section-title {
+    color: #0066cc;
+    font-weight: 600;
+}
+
+/* Custom page titles */
+.pf-c-page__main-section h1 {
+    color: #0066cc;
+}
+
+/* Custom button styling */
+.btn-primary {
+    background-color: #0066cc;
+    border-color: #0066cc;
+}
+
+.btn-primary:hover {
+    background-color: #004499;
+    border-color: #004499;
+}
