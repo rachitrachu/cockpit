@@ -1,0 +1,429 @@
+/**
+ * XAVS Wizard UI Enhancements
+ * Additional styling for dynamically created module containers
+ * and improved user experience
+ */
+
+/* ===== CSS Variables Fallbacks ===== */
+:root {
+    --surface: #ffffff;
+    --surface-2: #f6f7f9;
+    --surface-3: #e5e7eb;
+    --text: #1f2937;
+    --text-muted: #6b7280;
+    --text-light: #9ca3af;
+    --border: #d1d5db;
+    --border-light: #e5e7eb;
+    --border-dark: #9ca3af;
+    --brand: #197560;
+    --brand-100: #dcfce7;
+    --brand-200: #86efac;
+    --brand-600: #166551;
+    --success: #10b981;
+    --error: #ef4444;
+}
+
+/* ===== Enhanced Module Container Styling ===== */
+.module-container {
+    background: var(--surface, #ffffff);
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    margin: 24px;
+    padding: 32px;
+    transition: all 0.3s ease-in-out;
+    min-height: 400px;
+    display: flex;
+    flex-direction: column;
+}
+
+.module-container:hover {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    transform: translateY(-2px);
+}
+
+/* ===== Form Element Visibility Ensure ===== */
+.module-container input,
+.module-container select,
+.module-container textarea,
+.module-container label,
+.module-container button,
+.globals-container input,
+.globals-container select,
+.globals-container textarea,
+.globals-container label,
+.globals-container button,
+.hosts-container input,
+.hosts-container select,
+.hosts-container textarea,
+.hosts-container label,
+.hosts-container button,
+.networking-container input,
+.networking-container select,
+.networking-container textarea,
+.networking-container label,
+.networking-container button,
+.storage-container input,
+.storage-container select,
+.storage-container textarea,
+.storage-container label,
+.storage-container button,
+.bootstrap-container input,
+.bootstrap-container select,
+.bootstrap-container textarea,
+.bootstrap-container label,
+.bootstrap-container button,
+.deploy-container input,
+.deploy-container select,
+.deploy-container textarea,
+.deploy-container label,
+.deploy-container button,
+.main-container input,
+.main-container select,
+.main-container textarea,
+.main-container label,
+.main-container button {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: static !important;
+    z-index: auto !important;
+}
+
+/* ===== Enhanced Form Styling ===== */
+.module-container .form-group,
+.globals-container .form-group,
+.hosts-container .form-group,
+.networking-container .form-group,
+.storage-container .form-group,
+.bootstrap-container .form-group,
+.deploy-container .form-group,
+.main-container .form-group {
+    margin-bottom: 24px !important;
+}
+
+.module-container label,
+.globals-container label,
+.hosts-container label,
+.networking-container label,
+.storage-container label,
+.bootstrap-container label,
+.deploy-container label,
+.main-container label {
+    display: block !important;
+    margin-bottom: 8px !important;
+    font-weight: 600 !important;
+    color: var(--text, #1f2937) !important;
+    font-size: 14px !important;
+    letter-spacing: 0.025em !important;
+}
+
+.module-container .form-control,
+.globals-container .form-control,
+.hosts-container .form-control,
+.networking-container .form-control,
+.storage-container .form-control,
+.bootstrap-container .form-control,
+.deploy-container .form-control,
+.main-container .form-control {
+    width: 100% !important;
+    padding: 12px 16px !important;
+    border: 2px solid var(--border, #d1d5db) !important;
+    border-radius: 8px !important;
+    font-size: 16px !important;
+    transition: all 0.2s ease-in-out !important;
+    background: var(--surface, #ffffff) !important;
+    color: var(--text, #1f2937) !important;
+    box-sizing: border-box !important;
+}
+
+.module-container .form-control:focus,
+.globals-container .form-control:focus,
+.hosts-container .form-control:focus,
+.networking-container .form-control:focus,
+.storage-container .form-control:focus,
+.bootstrap-container .form-control:focus,
+.deploy-container .form-control:focus,
+.main-container .form-control:focus {
+    outline: none !important;
+    border-color: var(--brand, #197560) !important;
+    box-shadow: 0 0 0 3px rgba(25, 117, 96, 0.1) !important;
+}
+
+.module-container .form-control:hover {
+    border-color: var(--border-dark, #9ca3af);
+}
+
+.module-container .form-control::placeholder {
+    color: var(--text-light, #9ca3af);
+}
+
+/* ===== Module Headers ===== */
+.module-container h2 {
+    color: var(--brand, #197560);
+    font-size: 28px;
+    font-weight: 700;
+    margin: 0 0 8px 0;
+    letter-spacing: -0.025em;
+}
+
+.module-container h3 {
+    color: var(--text, #1f2937);
+    font-size: 20px;
+    font-weight: 600;
+    margin: 24px 0 16px 0;
+}
+
+.module-container p {
+    color: var(--text-muted, #6b7280);
+    font-size: 16px;
+    line-height: 1.6;
+    margin: 0 0 24px 0;
+}
+
+/* ===== Enhanced Container Specific Styling ===== */
+
+/* Globals Container */
+.globals-container {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    border-left: 4px solid var(--brand, #197560);
+}
+
+/* Hosts Container */
+.hosts-container {
+    background: linear-gradient(135deg, #fef3f2 0%, #fee2e2 100%);
+    border-left: 4px solid #ef4444;
+}
+
+/* Networking Container */
+.networking-container {
+    background: linear-gradient(135deg, #f0f9ff 0%, #dbeafe 100%);
+    border-left: 4px solid #3b82f6;
+}
+
+/* Storage Container */
+.storage-container {
+    background: linear-gradient(135deg, #f7fee7 0%, #dcfce7 100%);
+    border-left: 4px solid #22c55e;
+}
+
+/* Bootstrap Container */
+.bootstrap-container {
+    background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+    border-left: 4px solid #f59e0b;
+}
+
+/* Deploy Container */
+.deploy-container {
+    background: linear-gradient(135deg, #fdf4ff 0%, #f3e8ff 100%);
+    border-left: 4px solid #a855f7;
+}
+
+/* Main Container */
+.main-container {
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border-left: 4px solid var(--brand, #197560);
+}
+
+/* ===== Enhanced Textarea Styling ===== */
+.module-container textarea.form-control {
+    min-height: 120px;
+    resize: vertical;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+/* ===== Enhanced Select Styling ===== */
+.module-container select.form-control {
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M6 8l4 4 4-4' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-position: right 12px center;
+    background-repeat: no-repeat;
+    background-size: 16px;
+    padding-right: 44px;
+    appearance: none;
+}
+
+/* ===== Loading and Animation Enhancements ===== */
+.module-container.loading {
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+.module-container.fade-in {
+    animation: fadeInUp 0.5s ease-out;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ===== Status Indicators ===== */
+.deployment-status {
+    background: var(--brand-100, #dcfce7);
+    border: 1px solid var(--brand-200, #86efac);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 24px;
+}
+
+.deployment-status h3 {
+    color: var(--brand, #197560);
+    margin: 0 0 8px 0;
+    font-size: 18px;
+}
+
+.deployment-status p {
+    color: var(--brand-600, #166551);
+    margin: 0;
+}
+
+.deployment-summary {
+    background: var(--surface-2, #f6f7f9);
+    border-radius: 8px;
+    padding: 20px;
+    margin-top: 24px;
+}
+
+/* ===== Enhanced Checkbox Styling ===== */
+.module-container input[type="checkbox"] {
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border, #d1d5db);
+    border-radius: 4px;
+    background: var(--surface, #ffffff);
+    margin-right: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+    flex-shrink: 0;
+}
+
+.module-container input[type="checkbox"]:checked {
+    background: var(--brand, #197560);
+    border-color: var(--brand, #197560);
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='white'%3E%3Cpath fill-rule='evenodd' d='M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z' clip-rule='evenodd'/%3E%3C/svg%3E");
+    background-size: 16px;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.module-container input[type="checkbox"]:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(25, 117, 96, 0.1);
+}
+
+.module-container label:has(input[type="checkbox"]) {
+    display: flex;
+    align-items: flex-start;
+    cursor: pointer;
+    font-weight: 500;
+    margin-bottom: 16px;
+}
+
+/* ===== Responsive Design ===== */
+@media (max-width: 768px) {
+    .module-container {
+        margin: 16px;
+        padding: 24px;
+    }
+    
+    .module-container h2 {
+        font-size: 24px;
+    }
+    
+    .module-container .form-control {
+        padding: 12px 14px;
+        font-size: 16px; /* Prevent zoom on iOS */
+    }
+}
+
+/* ===== Dark Mode Support ===== */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --surface: #1f2937;
+        --surface-2: #111827;
+        --surface-3: #374151;
+        --text: #f9fafb;
+        --text-muted: #d1d5db;
+        --text-light: #9ca3af;
+        --border: #4b5563;
+        --border-light: #374151;
+        --border-dark: #6b7280;
+    }
+    
+    .module-container {
+        background: var(--surface);
+        border: 1px solid var(--border);
+    }
+    
+    .globals-container {
+        background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
+    }
+    
+    .hosts-container {
+        background: linear-gradient(135deg, #2d1b1b 0%, #3c2626 100%);
+    }
+    
+    .networking-container {
+        background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+    }
+    
+    .storage-container {
+        background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
+    }
+    
+    .bootstrap-container {
+        background: linear-gradient(135deg, #2e1f0a 0%, #3d2910 100%);
+    }
+    
+    .deploy-container {
+        background: linear-gradient(135deg, #2e1e3a 0%, #3d2c4a 100%);
+    }
+}
+
+/* ===== Error States ===== */
+.module-container .form-control.error {
+    border-color: var(--error, #ef4444);
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+.module-container .error-message {
+    color: var(--error, #ef4444);
+    font-size: 14px;
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.module-container .error-message::before {
+    content: "⚠";
+    font-size: 16px;
+}
+
+/* ===== Success States ===== */
+.module-container .form-control.success {
+    border-color: var(--success, #10b981);
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+.module-container .success-message {
+    color: var(--success, #10b981);
+    font-size: 14px;
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.module-container .success-message::before {
+    content: "✓";
+    font-size: 16px;
+}

@@ -11,16 +11,21 @@
     <!-- XAVS Styles -->
     <link rel="stylesheet" href="xavs-styles.css">
     
-    <!-- Module Styles -->
-    <link rel="stylesheet" href="../xavs-welcome/welcome.css">
-    
     <!-- Cockpit Base Script -->
     <script src="../base1/cockpit.js"></script>
+    
+    <!-- XAVS Wizard Framework from static directory (load before main.js) -->
+    <script src="../static/xavs/state-manager.js"></script>
+    <script src="../static/xavs/wizard-state.js"></script>
+    <script src="../static/xavs/wizard-registry.js"></script>
+    <script src="../static/xavs/wizard-navigation.js"></script>
+    <script src="../static/xavs/module-interface.js"></script>
+    <script src="../static/xavs/module-manager.js"></script>
 </head>
 <body>
     <!-- Application content will be dynamically created by main.js -->
     
-    <!-- XAVS Main Application -->
-    <script type="module" src="main.js"></script>
+    <!-- XAVS Main Application (no longer a module) -->
+    <script src="main.js"></script>
 </body>
 </html>

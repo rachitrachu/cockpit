@@ -1,0 +1,670 @@
+# Octavia Load Balancer Deployment SOP
+## Standard Operating Procedure for Kolla Ansible
+
+**Document Version:** 1.0  
+**Date:** September 8, 2025  
+**Kolla Ansible Version:** stable/2024.1  
+**Target Audience:** Deployment Team  
+
+---
+
+## Table of Contents
+1. [Overview](#overview)
+2. [Prerequisites](#prerequisites)
+3. [Pre-Deployment Planning](#pre-deployment-planning)
+4. [Configuration Steps](#configuration-steps)
+5. [Deployment Procedure](#deployment-procedure)
+6. [Post-Deployment Tasks](#post-deployment-tasks)
+7. [Validation and Testing](#validation-and-testing)
+8. [Troubleshooting](#troubleshooting)
+9. [Rollback Procedures](#rollback-procedures)
+10. [Maintenance Tasks](#maintenance-tasks)
+
+---
+
+## 1. Overview
+
+This SOP provides step-by-step instructions for deploying OpenStack Octavia Load Balancer as a Service (LBaaS) using Kolla Ansible. Octavia provides scalable, on-demand load balancing for OpenStack environments.
+
+### 1.1 Supported Providers
+- **Amphora Provider**: Uses lightweight VM instances (recommended for production)
+- **OVN Provider**: Uses OVN networking (for OVN-based deployments)
+
+---
+
+## 2. Prerequisites
+
+### 2.1 Infrastructure Requirements
+- [ ] Kolla Ansible environment already deployed
+- [ ] OpenStack core services operational (Nova, Neutron, Glance, Keystone)
+- [ ] Minimum 3 controller nodes (recommended)
+- [ ] Network nodes with sufficient resources for Amphora instances
+- [ ] Management network accessible from controllers
+
+### 2.2 Network Requirements
+- [ ] VLAN network for Octavia management (production) OR
+- [ ] Tenant network capability (development/testing only)
+- [ ] Network interface configured on controllers for Octavia management
+- [ ] Firewall rules allowing required ports
+
+### 2.3 Resource Requirements (per Amphora instance)
+- **CPU**: 1 vCPU minimum (2 vCPUs recommended)
+- **RAM**: 1GB minimum (2GB recommended)
+- **Disk**: 5GB minimum
+- **Network**: Access to management network
+
+### 2.4 Access Requirements
+- [ ] Admin access to Kolla Ansible deployment node
+- [ ] SSH access to all OpenStack nodes
+- [ ] OpenStack admin credentials
+- [ ] Network infrastructure access (for VLAN configuration)
+
+---
+
+## 3. Pre-Deployment Planning
+
+### 3.1 Network Planning Worksheet
+
+| Parameter | Production Value | Development Value | Notes |
+|-----------|------------------|-------------------|-------|
+| octavia_network_type | provider | tenant | Use 'provider' for production |
+| Management Network CIDR | 10.1.0.0/24 | 10.1.0.0/24 | Adjust as needed |
+| VLAN ID | ___ | N/A | Required for provider networks |
+| Physical Network | physnet1 | N/A | Match your environment |
+| Network Interface | ___ | o-hm0 | Controller interface name |
+| Allocation Pool Start | 10.1.0.100 | 10.1.0.100 | First usable IP |
+| Allocation Pool End | 10.1.0.200 | 10.1.0.200 | Last usable IP |
+
+### 3.2 Security Planning
+
+| Component | Port | Protocol | Source | Destination | Purpose |
+|-----------|------|----------|--------|-------------|---------|
+| Octavia API | 9876 | TCP | Load Balancer | Controllers | API access |
+| Health Manager | 5555 | UDP | Amphorae | Controllers | Health reporting |
+| Amphora Management | 9443 | TCP | Controllers | Amphorae | Management |
+| SSH Access | 22 | TCP | Controllers | Amphorae | Management |
+| ICMP | N/A | ICMP | Controllers | Amphorae | Connectivity |
+
+---
+
+## 4. Configuration Steps
+
+### 4.1 Backup Current Configuration
+```bash
+# Create backup directory
+mkdir -p /etc/kolla/backups/$(date +%Y%m%d_%H%M%S)
+
+# Backup current configuration
+cp /etc/kolla/globals.yml /etc/kolla/backups/$(date +%Y%m%d_%H%M%S)/
+cp /etc/kolla/passwords.yml /etc/kolla/backups/$(date +%Y%m%d_%H%M%S)/
+```
+
+### 4.2 Basic Configuration (globals.yml)
+
+#### 4.2.1 Enable Octavia Service
+Add the following to `/etc/kolla/globals.yml`:
+
+```yaml
+# Enable Octavia Load Balancer Service
+enable_octavia: "yes"
+enable_horizon_octavia: "yes"
+enable_redis: "yes"  # Required for Amphora provider
+```
+
+#### 4.2.2 Provider Configuration
+
+**For Amphora Provider (Recommended for Production):**
+```yaml
+# Amphora Provider Configuration
+octavia_provider_drivers: "amphora:Amphora provider"
+octavia_provider_agents: "amphora_agent"
+octavia_auto_configure: "yes"  # Automatic resource registration
+```
+
+**For OVN Provider (OVN deployments only):**
+```yaml
+# OVN Provider Configuration
+octavia_provider_drivers: "ovn:OVN provider"
+octavia_provider_agents: "ovn"
+enable_octavia_driver_agent: "yes"
+```
+
+**For Both Providers:**
+```yaml
+# Dual Provider Configuration
+octavia_provider_drivers: "amphora:Amphora provider, ovn:OVN provider"
+octavia_provider_agents: "amphora_agent, ovn"
+enable_octavia_driver_agent: "yes"
+enable_redis: "yes"
+```
+
+### 4.3 Network Configuration
+
+#### 4.3.1 Production Configuration (Provider Network)
+```yaml
+# Network Type and Interface
+octavia_network_type: "provider"
+octavia_network_interface: "<YOUR_CONTROLLER_INTERFACE>"  # e.g., "ens8"
+
+# Management Network Configuration
+octavia_amp_network:
+  name: "lb-mgmt-net"
+  provider_network_type: "vlan"
+  provider_segmentation_id: <VLAN_ID>  # e.g., 1000
+  provider_physical_network: "physnet1"  # Match your environment
+  external: false
+  shared: false
+  subnet:
+    name: "lb-mgmt-subnet"
+    cidr: "10.1.0.0/24"  # Adjust as needed
+    allocation_pool_start: "10.1.0.100"
+    allocation_pool_end: "10.1.0.200"
+    no_gateway_ip: yes
+    enable_dhcp: yes
+```
+
+#### 4.3.2 Development Configuration (Tenant Network)
+```yaml
+# Development/Testing Configuration
+octavia_network_type: "tenant"
+enable_neutron_provider_networks: "yes"
+
+# Simplified network configuration
+octavia_amp_network:
+  name: "lb-mgmt-net"
+  shared: false
+  subnet:
+    name: "lb-mgmt-subnet"
+    cidr: "10.1.0.0/24"
+    no_gateway_ip: yes
+    enable_dhcp: yes
+```
+
+### 4.4 Amphora Configuration
+```yaml
+# Amphora Flavor Configuration
+octavia_amp_flavor:
+  name: "amphora"
+  is_public: no
+  vcpus: 2  # Increase for better performance
+  ram: 2048  # Increase for better performance
+  disk: 10   # Increase for better performance
+
+# Load Balancer Topology
+octavia_loadbalancer_topology: "SINGLE"  # or "ACTIVE_STANDBY" for HA
+
+# SSH Key Configuration
+octavia_amp_ssh_key_name: "octavia_ssh_key"
+```
+
+### 4.5 Certificate Configuration
+```yaml
+# TLS Configuration
+octavia_enable_tls_backend: "{{ kolla_enable_tls_backend }}"
+
+# Certificate Parameters (optional customization)
+octavia_certs_country: "US"
+octavia_certs_state: "YourState"
+octavia_certs_organization: "YourOrganization"
+octavia_certs_organizational_unit: "OpenStack"
+```
+
+### 4.6 Performance Tuning (Optional)
+```yaml
+# Worker Configuration
+octavia_api_workers: "{{ openstack_service_workers }}"
+
+# Large Deployment Settings (if needed)
+octavia_interface_wait_timeout: 1800  # For deployments with 2500+ ports
+
+# Health Check Configuration
+octavia_health_manager_port: "5555"
+```
+
+### 4.7 Passwords Configuration
+Add to `/etc/kolla/passwords.yml`:
+```yaml
+# Generate random password or set your own
+octavia_ca_password: "<GENERATE_RANDOM_PASSWORD>"
+```
+
+---
+
+## 5. Deployment Procedure
+
+### 5.1 Pre-Deployment Validation
+```bash
+# 1. Validate configuration syntax
+kolla-ansible -i /etc/kolla/inventory genconfig --tags octavia
+
+# 2. Check configuration
+kolla-ansible -i /etc/kolla/inventory check --tags octavia
+
+# 3. Verify prerequisites
+kolla-ansible -i /etc/kolla/inventory prechecks --tags octavia
+```
+
+### 5.2 Certificate Generation
+```bash
+# Generate Octavia certificates (Amphora provider only)
+kolla-ansible -i /etc/kolla/inventory octavia-certificates
+```
+
+**Expected Output:**
+- Certificates created in `/etc/kolla/config/octavia/`
+- Files: `client_ca.cert.pem`, `server_ca.cert.pem`, `server_ca.key.pem`, `client.cert-and-key.pem`
+
+### 5.3 Octavia Deployment
+```bash
+# Deploy Octavia services
+kolla-ansible -i /etc/kolla/inventory deploy --tags octavia
+
+# Alternative: Full deployment with Octavia
+kolla-ansible -i /etc/kolla/inventory deploy --tags common,horizon,octavia
+```
+
+### 5.4 Post-Deploy Configuration
+```bash
+# Run post-deploy tasks
+kolla-ansible -i /etc/kolla/inventory post-deploy
+```
+
+---
+
+## 6. Post-Deployment Tasks
+
+### 6.1 Amphora Image Creation and Registration
+
+#### 6.1.1 Install Dependencies
+**On CentOS/Rocky 9:**
+```bash
+sudo dnf -y install epel-release
+sudo dnf install -y debootstrap qemu-img git e2fsprogs policycoreutils-python-utils
+```
+
+**On Ubuntu:**
+```bash
+sudo apt -y install debootstrap qemu-utils git kpartx
+```
+
+#### 6.1.2 Prepare Build Environment
+```bash
+# Create working directory
+mkdir -p /opt/amphora-build
+cd /opt/amphora-build
+
+# Clone Octavia source
+git clone https://opendev.org/openstack/octavia -b stable/2024.1
+
+# Setup Python virtual environment
+python3 -m venv dib-venv
+source dib-venv/bin/activate
+pip install diskimage-builder
+```
+
+#### 6.1.3 Build Amphora Image
+```bash
+cd octavia/diskimage-create
+./diskimage-create.sh
+
+# Wait for image build completion (15-30 minutes)
+```
+
+#### 6.1.4 Register Amphora Image
+```bash
+# Source Octavia credentials
+source /etc/kolla/octavia-openrc.sh
+
+# Upload image to Glance
+openstack image create amphora-x64-haproxy \
+  --container-format bare \
+  --disk-format qcow2 \
+  --private \
+  --tag amphora \
+  --file amphora-x64-haproxy.qcow2 \
+  --property hw_architecture='x86_64' \
+  --property hw_rng_model=virtio
+
+# Verify image registration
+openstack image list --tag amphora
+```
+
+### 6.2 Service Verification
+```bash
+# Check Octavia services
+source /etc/kolla/admin-openrc.sh
+openstack loadbalancer list
+openstack loadbalancer provider list
+```
+
+---
+
+## 7. Validation and Testing
+
+### 7.1 Service Status Verification
+```bash
+# 1. Check container status
+docker ps | grep octavia
+
+# 2. Check service endpoints
+openstack endpoint list | grep octavia
+
+# 3. Verify Octavia API
+curl -k https://<OCTAVIA_VIP>:9876
+
+# 4. Check provider drivers
+openstack loadbalancer provider list
+```
+
+### 7.2 Basic Functionality Test
+```bash
+# Source admin credentials
+source /etc/kolla/admin-openrc.sh
+
+# Create test network and subnet
+openstack network create test-network
+openstack subnet create --network test-network --subnet-range 192.168.100.0/24 test-subnet
+
+# Create test load balancer
+openstack loadbalancer create --name test-lb --vip-subnet-id test-subnet
+
+# Check load balancer status
+openstack loadbalancer show test-lb
+
+# Clean up test resources
+openstack loadbalancer delete test-lb
+openstack subnet delete test-subnet
+openstack network delete test-network
+```
+
+### 7.3 Amphora Instance Verification
+```bash
+# List Amphora instances
+openstack server list --all-projects | grep amphora
+
+# Check Amphora connectivity (from controller node)
+ssh -i /etc/kolla/octavia-worker/octavia_ssh_key ubuntu@<AMPHORA_IP>
+```
+
+---
+
+## 8. Troubleshooting
+
+### 8.1 Common Issues and Solutions
+
+#### 8.1.1 Certificate Issues
+**Problem:** Certificate generation fails
+```bash
+# Check certificate directory permissions
+ls -la /etc/kolla/config/octavia/
+
+# Regenerate certificates
+kolla-ansible -i /etc/kolla/inventory octavia-certificates --force
+```
+
+#### 8.1.2 Network Connectivity Issues
+**Problem:** Amphora instances cannot communicate with controllers
+```bash
+# Check network interface status
+ip link show <octavia_network_interface>
+
+# Verify VLAN configuration
+ip link show <octavia_network_interface>.<vlan_id>
+
+# Check security group rules
+openstack security group list | grep lb-mgmt
+openstack security group rule list <security_group_id>
+```
+
+#### 8.1.3 Service Startup Issues
+**Problem:** Octavia services fail to start
+```bash
+# Check container logs
+docker logs octavia_api
+docker logs octavia_worker
+docker logs octavia_health_manager
+
+# Check configuration files
+docker exec octavia_api cat /etc/octavia/octavia.conf
+```
+
+#### 8.1.4 Amphora Image Issues
+**Problem:** Load balancer creation fails
+```bash
+# Verify amphora image
+openstack image list --tag amphora
+
+# Check image properties
+openstack image show <amphora_image_id>
+
+# Verify Nova flavor
+openstack flavor list | grep amphora
+```
+
+### 8.2 Log Locations
+```bash
+# Octavia API logs
+/var/log/kolla/octavia/octavia-api.log
+
+# Container logs
+docker logs octavia_api
+docker logs octavia_worker
+docker logs octavia_health_manager
+docker logs octavia_housekeeping
+
+# System logs
+journalctl -u docker
+journalctl -f | grep octavia
+```
+
+---
+
+## 9. Rollback Procedures
+
+### 9.1 Service Rollback
+```bash
+# 1. Stop Octavia services
+kolla-ansible -i /etc/kolla/inventory stop --tags octavia
+
+# 2. Restore configuration backup
+cp /etc/kolla/backups/<timestamp>/globals.yml /etc/kolla/globals.yml
+cp /etc/kolla/backups/<timestamp>/passwords.yml /etc/kolla/passwords.yml
+
+# 3. Remove Octavia configuration
+sed -i '/enable_octavia/d' /etc/kolla/globals.yml
+sed -i '/octavia_/d' /etc/kolla/globals.yml
+
+# 4. Reconfigure services
+kolla-ansible -i /etc/kolla/inventory reconfigure
+```
+
+### 9.2 Resource Cleanup
+```bash
+# Source admin credentials
+source /etc/kolla/admin-openrc.sh
+
+# Delete load balancers
+openstack loadbalancer list -f value -c id | xargs -I {} openstack loadbalancer delete {}
+
+# Delete Amphora instances (if needed)
+openstack server list --all-projects | grep amphora | awk '{print $2}' | xargs openstack server delete
+
+# Remove Octavia-specific resources
+openstack network delete lb-mgmt-net
+openstack flavor delete amphora
+openstack keypair delete octavia_ssh_key
+```
+
+---
+
+## 10. Maintenance Tasks
+
+### 10.1 Certificate Expiry Monitoring
+```bash
+# Check certificate expiry (7 days warning)
+kolla-ansible -i /etc/kolla/inventory octavia-certificates --check-expiry 7
+
+# Schedule regular checks (add to crontab)
+0 0 * * 0 /path/to/kolla-ansible octavia-certificates --check-expiry 30
+```
+
+### 10.2 Regular Health Checks
+```bash
+#!/bin/bash
+# Save as /opt/scripts/octavia-health-check.sh
+
+# Check service status
+source /etc/kolla/admin-openrc.sh
+
+echo "=== Octavia Service Health Check ==="
+echo "Date: $(date)"
+echo
+
+# Check API endpoint
+if curl -s -k https://localhost:9876/ > /dev/null; then
+    echo "✓ Octavia API is responding"
+else
+    echo "✗ Octavia API is not responding"
+fi
+
+# Check provider status
+echo "Provider Status:"
+openstack loadbalancer provider list
+
+# Check load balancer count
+LB_COUNT=$(openstack loadbalancer list -f value | wc -l)
+echo "Active Load Balancers: $LB_COUNT"
+
+# Check Amphora instances
+AMPHORA_COUNT=$(openstack server list --all-projects | grep amphora | wc -l)
+echo "Active Amphora Instances: $AMPHORA_COUNT"
+
+echo "=== Health Check Complete ==="
+```
+
+### 10.3 Backup Procedures
+```bash
+#!/bin/bash
+# Save as /opt/scripts/octavia-backup.sh
+
+BACKUP_DIR="/opt/backups/octavia/$(date +%Y%m%d_%H%M%S)"
+mkdir -p $BACKUP_DIR
+
+# Backup configuration
+cp -r /etc/kolla/config/octavia/ $BACKUP_DIR/
+cp /etc/kolla/globals.yml $BACKUP_DIR/
+cp /etc/kolla/passwords.yml $BACKUP_DIR/
+
+# Backup database
+source /etc/kolla/admin-openrc.sh
+mysqldump octavia > $BACKUP_DIR/octavia_db_backup.sql
+
+echo "Backup completed: $BACKUP_DIR"
+```
+
+### 10.4 Update Procedures
+```bash
+# Update Octavia containers
+kolla-ansible -i /etc/kolla/inventory pull --tags octavia
+kolla-ansible -i /etc/kolla/inventory deploy --tags octavia
+
+# Restart services if needed
+kolla-ansible -i /etc/kolla/inventory restart --tags octavia
+```
+
+---
+
+## 11. Emergency Contacts and Escalation
+
+| Role | Contact | Phone | Email | Escalation Level |
+|------|---------|-------|-------|------------------|
+| Primary Engineer | ___ | ___ | ___ | Level 1 |
+| Senior Engineer | ___ | ___ | ___ | Level 2 |
+| Team Lead | ___ | ___ | ___ | Level 3 |
+| Infrastructure Manager | ___ | ___ | ___ | Level 4 |
+
+---
+
+## 12. Appendices
+
+### Appendix A: Configuration Template
+
+**Complete globals.yml Octavia section template:**
+```yaml
+# Octavia Load Balancer Configuration
+enable_octavia: "yes"
+enable_horizon_octavia: "yes"
+enable_redis: "yes"
+
+# Provider Configuration
+octavia_provider_drivers: "amphora:Amphora provider"
+octavia_provider_agents: "amphora_agent"
+octavia_auto_configure: "yes"
+
+# Network Configuration
+octavia_network_type: "provider"
+octavia_network_interface: "<YOUR_INTERFACE>"
+
+# Management Network
+octavia_amp_network:
+  name: "lb-mgmt-net"
+  provider_network_type: "vlan"
+  provider_segmentation_id: <VLAN_ID>
+  provider_physical_network: "physnet1"
+  external: false
+  shared: false
+  subnet:
+    name: "lb-mgmt-subnet"
+    cidr: "10.1.0.0/24"
+    allocation_pool_start: "10.1.0.100"
+    allocation_pool_end: "10.1.0.200"
+    no_gateway_ip: yes
+    enable_dhcp: yes
+
+# Amphora Configuration
+octavia_amp_flavor:
+  name: "amphora"
+  is_public: no
+  vcpus: 2
+  ram: 2048
+  disk: 10
+
+octavia_loadbalancer_topology: "SINGLE"
+```
+
+### Appendix B: Validation Checklist
+
+**Pre-Deployment Checklist:**
+- [ ] Infrastructure requirements met
+- [ ] Network planning completed
+- [ ] Configuration backup created
+- [ ] Certificate requirements understood
+- [ ] Team notified of deployment window
+
+**Deployment Checklist:**
+- [ ] Configuration validated
+- [ ] Certificates generated
+- [ ] Octavia services deployed
+- [ ] Post-deploy tasks completed
+- [ ] Amphora image built and registered
+
+**Post-Deployment Checklist:**
+- [ ] Service status verified
+- [ ] API endpoints accessible
+- [ ] Provider drivers available
+- [ ] Basic functionality tested
+- [ ] Documentation updated
+- [ ] Team trained on new service
+
+---
+
+**Document Control:**
+- **Created by:** Deployment Team
+- **Approved by:** Infrastructure Manager
+- **Next Review Date:** [6 months from creation]
+- **Version History:**
+  - v1.0: Initial creation (September 8, 2025)
+
+---
+
+*This SOP should be reviewed and updated regularly to reflect changes in the environment and best practices.*

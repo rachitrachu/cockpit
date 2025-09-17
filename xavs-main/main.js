@@ -1,15 +1,15 @@
 /**
  * XAVS Main Application
  * Entry point for the XAVS OpenStack deployment platform
+ * Now enhanced with integrated wizard functionality
  */
-
-import { xavsModules } from '../xavs-common/module-manager.js';
-import { xavsState } from '../xavs-common/state-manager.js';
 
 class XAVSApplication {
     constructor() {
         this.initialized = false;
         this.rbacEnabled = true;
+        this.wizardMode = false;
+        this.isWizardAvailable = false;
     }
 
     /**
@@ -19,36 +19,157 @@ class XAVSApplication {
         try {
             console.log('[XAVS App] Starting XAVS OpenStack Deployment Platform...');
             
+            // Check if wizard mode should be used
+            await this.checkWizardMode();
+            
             // Check user permissions
             await this.checkPermissions();
             
-            // Initialize UI
-            this.initializeUI();
-            
-            // Initialize module manager
-            const mainContainer = document.getElementById('main-content');
-            await xavsModules.initialize(mainContainer);
-            
-            // Setup event handlers
-            this.setupEventHandlers();
-            
-            // Initialize RBAC if enabled
-            if (this.rbacEnabled) {
-                await this.initializeRBAC();
+            // Initialize UI based on mode
+            if (this.wizardMode) {
+                await this.initializeWizardMode();
+            } else {
+                await this.initializeStandardMode();
             }
             
             this.initialized = true;
             console.log('[XAVS App] Application initialized successfully');
             
             // Log successful startup
-            await xavsState.auditLog('application_started', {
+            await window.xavsState.auditLog('application_started', {
                 version: '1.0.0',
-                rbacEnabled: this.rbacEnabled
+                rbacEnabled: this.rbacEnabled,
+                wizardMode: this.wizardMode
             });
             
         } catch (error) {
             console.error('[XAVS App] Initialization failed:', error);
             this.showInitError(error);
+        }
+    }
+
+    /**
+     * Check if wizard mode should be activated
+     */
+    async checkWizardMode() {
+        try {
+            // Check URL parameters
+            const urlParams = new URLSearchParams(window.location.search);
+            const forceWizard = urlParams.get('wizard') === 'true';
+            const forceStandard = urlParams.get('wizard') === 'false';
+            
+            if (forceWizard) {
+                this.wizardMode = true;
+                this.isWizardAvailable = true;
+                console.log('[XAVS App] Wizard mode forced via URL parameter');
+                return;
+            }
+            
+            if (forceStandard) {
+                this.wizardMode = false;
+                console.log('[XAVS App] Standard mode forced via URL parameter');
+                return;
+            }
+            
+            // Check if wizard state exists and workflow is active
+            if (!window.xavsWizardState) {
+                console.log('[XAVS App] Wizard modules not loaded, using standard mode');
+                return;
+            }
+            
+            await window.xavsWizardState.initialize();
+            const summary = window.xavsWizardState.getWorkflowSummary();
+            
+            if (summary.isResumable) {
+                this.wizardMode = true;
+                this.isWizardAvailable = true;
+                console.log('[XAVS App] Resuming existing wizard workflow');
+                return;
+            }
+            
+            // Check if this is a first-time setup (no previous deployment)
+            const hasExistingConfig = await this.checkExistingDeployment();
+            if (!hasExistingConfig) {
+                this.wizardMode = true;
+                this.isWizardAvailable = true;
+                console.log('[XAVS App] First-time setup detected, using wizard mode');
+                return;
+            }
+            
+            // Default to standard mode for existing deployments
+            this.wizardMode = false;
+            this.isWizardAvailable = true;
+            console.log('[XAVS App] Existing deployment detected, using standard mode');
+            
+        } catch (error) {
+            console.warn('[XAVS App] Failed to check wizard mode, defaulting to standard:', error);
+            this.wizardMode = false;
+            this.isWizardAvailable = false;
+        }
+    }
+
+    /**
+     * Check if there's an existing OpenStack deployment
+     */
+    async checkExistingDeployment() {
+        try {
+            // Check for existing configuration files
+            const configPaths = [
+                '/etc/kolla/globals.yml',
+                '/etc/kolla/passwords.yml',
+                '/etc/xavs/deployment.json'
+            ];
+            
+            for (const path of configPaths) {
+                try {
+                    await cockpit.file(path).read();
+                    console.log(`[XAVS App] Found existing config: ${path}`);
+                    return true;
+                } catch (error) {
+                    // File doesn't exist, continue checking
+                }
+            }
+            
+            return false;
+        } catch (error) {
+            console.warn('[XAVS App] Error checking existing deployment:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Initialize wizard mode
+     */
+    async initializeWizardMode() {
+        console.log('[XAVS App] Initializing wizard mode...');
+        
+        // Redirect to wizard interface
+        window.location.href = 'wizard.html';
+    }
+
+    /**
+     * Initialize standard mode (existing functionality)
+     */
+    async initializeStandardMode() {
+        console.log('[XAVS App] Initializing standard mode...');
+        
+        // Initialize UI
+        this.initializeUI();
+        
+        // Initialize module manager
+        const mainContainer = document.getElementById('main-content');
+        if (window.xavsModules) {
+            await window.xavsModules.initialize(mainContainer);
+        } else {
+            console.warn('[XAVS App] Module manager not available, skipping module initialization');
+        }
+        
+        // Setup event handlers
+        this.setupEventHandlers();
+        
+        // Initialize RBAC if enabled
+        if (this.rbacEnabled) {
+            await this.initializeRBAC();
         }
     }
 
@@ -151,7 +272,7 @@ class XAVSApplication {
         
         // Handle window unload
         window.addEventListener('beforeunload', () => {
-            xavsState.auditLog('application_closed', {
+            window.xavsState.auditLog('application_closed', {
                 timestamp: new Date().toISOString()
             });
         });
@@ -281,6 +402,9 @@ class XAVSApplication {
             const statusElement = document.getElementById('connection-status');
             const activityElement = document.getElementById('last-activity');
             
+            // Only update if elements exist
+            if (!statusElement || !activityElement) return;
+            
             if (cockpit.transport && cockpit.transport.ready) {
                 statusElement.textContent = 'Connected';
                 statusElement.className = 'status-connected';
@@ -310,7 +434,7 @@ class XAVSApplication {
             console.log('[XAVS App] Emergency stop initiated');
             
             // Log emergency stop
-            await xavsState.auditLog('emergency_stop', {
+            await window.xavsState.auditLog('emergency_stop', {
                 timestamp: new Date().toISOString(),
                 reason: 'User initiated'
             });
@@ -388,7 +512,7 @@ class XAVSApplication {
             const systemLogs = await this.getSystemLogs();
             
             // Get XAVS state and audit logs
-            const xavsData = await xavsState.exportState();
+            const xavsData = await window.xavsState.exportState();
             
             // Combine all data
             const exportData = {
@@ -512,8 +636,10 @@ class XAVSApplication {
             try {
                 const meminfo = await cockpit.file('/proc/meminfo').read();
                 const lines = meminfo.split('\n');
-                info.memTotal = lines.find(l => l.startsWith('MemTotal:'))?.split(/\\s+/)[1] || 'unknown';
-                info.memAvailable = lines.find(l => l.startsWith('MemAvailable:'))?.split(/\\s+/)[1] || 'unknown';
+                const memTotalLine = lines.find(l => l.startsWith('MemTotal:'));
+                const memAvailableLine = lines.find(l => l.startsWith('MemAvailable:'));
+                info.memTotal = memTotalLine ? memTotalLine.split(/\\s+/)[1] : 'unknown';
+                info.memAvailable = memAvailableLine ? memAvailableLine.split(/\\s+/)[1] : 'unknown';
             } catch (error) {
                 info.memory = 'unknown';
             }
@@ -565,11 +691,12 @@ class XAVSApplication {
     }
 }
 
+// Make class globally available
+window.XAVSApplication = XAVSApplication;
+
 // Initialize application when DOM is ready
 document.addEventListener('DOMContentLoaded', async () => {
     const app = new XAVSApplication();
+    window.xavsApp = app; // Make instance globally available
     await app.initialize();
 });
-
-// Make app globally available
-window.xavsApp = XAVSApplication;

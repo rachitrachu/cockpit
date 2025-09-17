@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interface Count Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+    </style>
+</head>
+<body>
+    <h1>Interface Count Debug Test</h1>
+    <div id="test-results"></div>
+    
+    <script>
+        const results = document.getElementById('test-results');
+        
+        function addResult(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `test-result ${type}`;
+            div.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+            results.appendChild(div);
+        }
+        
+        function testTableCount() {
+            addResult('Testing table interface count...');
+            
+            // Simulate the same logic as in search-filter.js
+            const rows = document.querySelectorAll('#table-interfaces tbody tr');
+            addResult(`Found ${rows.length} table rows`);
+            
+            if (rows.length === 0) {
+                addResult('No rows found - this explains why count shows 0', 'error');
+            } else {
+                addResult('Rows found successfully', 'success');
+            }
+            
+            // Check if table exists
+            const table = document.querySelector('#table-interfaces');
+            if (table) {
+                addResult('Table #table-interfaces exists', 'success');
+                const tbody = table.querySelector('tbody');
+                if (tbody) {
+                    addResult('Table tbody exists', 'success');
+                } else {
+                    addResult('Table tbody missing!', 'error');
+                }
+            } else {
+                addResult('Table #table-interfaces missing!', 'error');
+            }
+        }
+        
+        // Create a mock table to test
+        const mockTable = document.createElement('table');
+        mockTable.id = 'table-interfaces';
+        mockTable.innerHTML = `
+            <thead>
+                <tr><th>Interface</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>eth0</td><td>actions</td></tr>
+                <tr><td>wlan0</td><td>actions</td></tr>
+                <tr><td>enp0s3</td><td>actions</td></tr>
+            </tbody>
+        `;
+        document.body.appendChild(mockTable);
+        
+        addResult('Created mock table with 3 interfaces');
+        testTableCount();
+        
+        // Test the actual search function logic
+        setTimeout(() => {
+            addResult('--- Testing Search Function Logic ---');
+            const performSearch = (query) => {
+                const rows = document.querySelectorAll('#table-interfaces tbody tr');
+                let totalInterfaces = 0;
+                let visibleCount = 0;
+                
+                rows.forEach(row => {
+                    totalInterfaces++;
+                    const isVisible = query === '' || row.textContent.toLowerCase().includes(query.toLowerCase());
+                    row.style.display = isVisible ? '' : 'none';
+                    if (isVisible) visibleCount++;
+                });
+                
+                const statusText = query 
+                    ? `Showing ${visibleCount} of ${totalInterfaces} interfaces`
+                    : `Showing all ${totalInterfaces} interfaces`;
+                    
+                addResult(`Search result: "${statusText}"`, visibleCount > 0 ? 'success' : 'error');
+                return { totalInterfaces, visibleCount, statusText };
+            };
+            
+            const result = performSearch('');
+            addResult(`Total interfaces: ${result.totalInterfaces}`);
+            addResult(`Visible interfaces: ${result.visibleCount}`);
+        }, 100);
+    </script>
+</body>
+</html>

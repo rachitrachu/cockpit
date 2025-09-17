@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>XAVS Module Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-result { padding: 10px; margin: 5px 0; border-radius: 4px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+    </style>
+    <script src="../base1/cockpit.js"></script>
+</head>
+<body>
+    <h1>XAVS Module Loading Test</h1>
+    <div id="results"></div>
+
+    <!-- Load modules in order from static directory -->
+    <script src="../static/xavs/state-manager.js"></script>
+    <script src="../static/xavs/wizard-state.js"></script>
+    <script src="../static/xavs/wizard-registry.js"></script>
+    <script src="../static/xavs/wizard-navigation.js"></script>
+    <script src="../static/xavs/module-interface.js"></script>
+    <script src="../static/xavs/module-manager.js"></script>
+
+    <script>
+        function addResult(message, type = 'info') {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `test-result ${type}`;
+            div.textContent = message;
+            results.appendChild(div);
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            addResult('Testing XAVS module loading...', 'info');
+
+            // Test global variables
+            const tests = [
+                { name: 'XAVSStateManager', obj: window.XAVSStateManager },
+                { name: 'xavsState', obj: window.xavsState },
+                { name: 'XAVSWizardState', obj: window.XAVSWizardState },
+                { name: 'xavsWizardState', obj: window.xavsWizardState },
+                { name: 'XAVS_WIZARD_REGISTRY', obj: window.XAVS_WIZARD_REGISTRY },
+                { name: 'XAVSWizardNavigation', obj: window.XAVSWizardNavigation },
+                { name: 'xavsWizardNavigation', obj: window.xavsWizardNavigation },
+                { name: 'ModuleInterface', obj: window.ModuleInterface },
+                { name: 'XAVSModuleManager', obj: window.XAVSModuleManager },
+                { name: 'xavsModules', obj: window.xavsModules }
+            ];
+
+            let successCount = 0;
+            let totalCount = tests.length;
+
+            tests.forEach(test => {
+                if (test.obj) {
+                    addResult(`✅ ${test.name} loaded successfully`, 'success');
+                    successCount++;
+                } else {
+                    addResult(`❌ ${test.name} failed to load`, 'error');
+                }
+            });
+
+            addResult(`\nSummary: ${successCount}/${totalCount} modules loaded successfully`, 
+                     successCount === totalCount ? 'success' : 'error');
+
+            // Test cockpit availability
+            if (typeof cockpit !== 'undefined') {
+                addResult('✅ Cockpit framework available', 'success');
+            } else {
+                addResult('❌ Cockpit framework not available', 'error');
+            }
+
+            // Test wizard registry integration
+            if (window.XAVS_WIZARD_REGISTRY) {
+                addResult('✅ Wizard registry loaded', 'success');
+                addResult(`📋 Registry contains ${window.XAVS_WIZARD_REGISTRY.steps.length} steps`, 'info');
+                
+                // List the steps
+                window.XAVS_WIZARD_REGISTRY.steps.forEach((step, index) => {
+                    addResult(`   ${index + 1}. ${step.title} (${step.moduleId})`, 'info');
+                });
+            }
+
+            // Test wizard navigation integration
+            if (window.xavsWizardNavigation) {
+                addResult('✅ Wizard navigation initialized', 'success');
+                
+                // Test navigation methods
+                try {
+                    const currentModule = window.xavsWizardNavigation.getCurrentModule();
+                    addResult(`📍 Current module: ${currentModule || 'none'}`, 'info');
+                    
+                    const currentStepIndex = window.xavsWizardNavigation.getCurrentStepIndex();
+                    addResult(`📍 Current step index: ${currentStepIndex}`, 'info');
+                    
+                    const completedSteps = window.xavsWizardNavigation.getCompletedSteps();
+                    addResult(`✅ Completed steps: ${completedSteps.length}`, 'info');
+                    
+                    // Test navigation to first step
+                    if (window.XAVS_WIZARD_REGISTRY && window.XAVS_WIZARD_REGISTRY.steps.length > 0) {
+                        const firstStep = window.XAVS_WIZARD_REGISTRY.steps[0];
+                        addResult(`🧭 Testing navigation to: ${firstStep.moduleId}`, 'info');
+                        // Note: We don't actually navigate as it would change the page
+                    }
+                    
+                } catch (error) {
+                    addResult(`❌ Wizard navigation test error: ${error.message}`, 'error');
+                }
+            }
+        });
+    </script>
+</body>
+</html>

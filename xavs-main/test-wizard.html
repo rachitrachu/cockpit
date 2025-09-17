@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>XAVS Wizard Test</title>
+    <script src="../base1/cockpit.js"></script>
+</head>
+<body>
+    <div id="test-output">
+        <h3>XAVS Wizard Module Test</h3>
+        <div id="results"></div>
+    </div>
+
+    <!-- Load wizard modules from static directory -->
+    <script src="../static/xavs/state-manager.js"></script>
+    <script src="../static/xavs/wizard-state.js"></script>
+    <script src="../static/xavs/wizard-navigation.js"></script>
+    <script src="../static/xavs/module-interface.js"></script>
+    <script src="../static/xavs/module-manager.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const results = document.getElementById('results');
+            let output = '';
+
+            // Test if modules loaded
+            if (typeof window.XAVSStateManager !== 'undefined') {
+                output += '<p>✅ State Manager loaded</p>';
+            } else {
+                output += '<p>❌ State Manager failed to load</p>';
+            }
+
+            if (typeof window.XAVSWizardState !== 'undefined') {
+                output += '<p>✅ Wizard State loaded</p>';
+            } else {
+                output += '<p>❌ Wizard State failed to load</p>';
+            }
+
+            if (typeof window.XAVSWizardNavigation !== 'undefined') {
+                output += '<p>✅ Wizard Navigation loaded</p>';
+            } else {
+                output += '<p>❌ Wizard Navigation failed to load</p>';
+            }
+
+            if (typeof window.ModuleInterface !== 'undefined') {
+                output += '<p>✅ Module Interface loaded</p>';
+            } else {
+                output += '<p>❌ Module Interface failed to load</p>';
+            }
+
+            if (typeof window.XAVSModuleManager !== 'undefined') {
+                output += '<p>✅ Module Manager loaded</p>';
+            } else {
+                output += '<p>❌ Module Manager failed to load</p>';
+            }
+
+            if (typeof window.xavsState !== 'undefined') {
+                output += '<p>✅ Global xavsState available</p>';
+            } else {
+                output += '<p>❌ Global xavsState not available</p>';
+            }
+
+            results.innerHTML = output;
+        });
+    </script>
+</body>
+</html>

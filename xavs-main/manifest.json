@@ -6,8 +6,8 @@
     "tools": {
         "xavs": {
             "label": "XAVS OpenStack Platform",
-            "path": "index.html",
-            "description": "XAVS OpenStack deployment and management platform"
+            "path": "wizard.html",
+            "description": "XAVS OpenStack deployment and management platform with guided wizard"
         }
     },
     "content-security-policy": "default-src 'self' 'unsafe-inline' 'unsafe-eval'"

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "tools": {
+    "xavs-deploy": {
+      "label": "XAVS Deploy",
+      "path": "index.html",
+      "order": 50,
+      "keywords": [
+        {"matches": ["deploy", "deployment", "kolla", "ansible", "openstack"]},
+        {"matches": ["install", "setup", "configure", "orchestration"]}
+      ]
+    }
+  },
+  "content-security-policy": "default-src 'self' data: blob:; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss: http: https:; frame-src 'self';"
+}

@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>XAVS Wizard</title>
+    <meta name="description" content="XAVS OpenStack Deployment Wizard">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <!-- Import XAVS branding styles -->
+    <link rel="stylesheet" href="../xavs-images/xavs-images.css">
+    <!-- Module styles -->
+    <link rel="stylesheet" href="../static/xavs-modules/welcome.css">
+    <!-- Wizard-specific styles -->
+    <link rel="stylesheet" href="wizard.css">
+    <!-- Enhanced wizard UI styles -->
+    <link rel="stylesheet" href="../static/xavs/wizard-enhancements.css">
+    
+    <!-- Cockpit base -->
+    <script src="../base1/cockpit.js"></script>
+</head>
+
+<body>
+    <!-- XAVS Wizard Application Container -->
+    <div id="xavs-wizard-app" class="wizard-app">
+        
+        <!-- Wizard Header with Branding -->
+        <header class="wizard-header">
+            <div class="wizard-header-brand">
+                <div class="app-title">
+                    <i class="fas fa-rocket"></i>
+                    <span>XAVS OpenStack Deployment Wizard</span>
+                </div>
+                <div class="wizard-subtitle">
+                    Guided setup for your OpenStack cloud platform
+                </div>
+            </div>
+            
+            <!-- Progress Indicator -->
+            <div class="wizard-progress-container">
+                <div class="wizard-progress-bar">
+                    <div class="wizard-progress-fill" id="progress-fill"></div>
+                </div>
+                <div class="wizard-progress-text">
+                    <span id="progress-text">Step 1 of 8</span>
+                    <span id="progress-percentage">0%</span>
+                </div>
+            </div>
+            
+            <!-- Header Actions -->
+            <div class="wizard-header-actions">
+                <button class="btn btn-sm btn-outline" id="wizard-help" title="Help & Documentation">
+                    <i class="fas fa-question-circle"></i>
+                </button>
+                <button class="btn btn-sm btn-outline" id="wizard-export" title="Export Configuration">
+                    <i class="fas fa-download"></i>
+                </button>
+                <button class="btn btn-sm btn-warning" id="wizard-reset" title="Reset Wizard">
+                    <i class="fas fa-undo"></i>
+                    Reset
+                </button>
+            </div>
+        </header>
+
+        <!-- Step Navigation Breadcrumbs -->
+        <nav class="wizard-breadcrumbs" id="wizard-breadcrumbs">
+            <!-- Dynamically populated breadcrumbs -->
+        </nav>
+
+        <!-- Main Wizard Content Area -->
+        <main class="wizard-main">
+            
+            <!-- Left Sidebar - Step Navigation -->
+            <aside class="wizard-sidebar">
+                <div class="wizard-steps-list" id="wizard-steps-list">
+                    <!-- Dynamically populated steps -->
+                </div>
+                
+                <!-- Deployment Mode Indicator -->
+                <div class="wizard-mode-indicator" id="wizard-mode">
+                    <div class="mode-icon">
+                        <i class="fas fa-globe" id="mode-icon"></i>
+                    </div>
+                    <div class="mode-text">
+                        <div class="mode-title" id="mode-title">Deployment Mode</div>
+                        <div class="mode-subtitle" id="mode-subtitle">Not selected</div>
+                    </div>
+                </div>
+                
+                <!-- Architecture Indicator -->
+                <div class="wizard-arch-indicator" id="wizard-arch" style="display: none;">
+                    <div class="arch-icon">
+                        <i class="fas fa-server" id="arch-icon"></i>
+                    </div>
+                    <div class="arch-text">
+                        <div class="arch-title" id="arch-title">Architecture</div>
+                        <div class="arch-subtitle" id="arch-subtitle">Not selected</div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Content Container -->
+            <section class="wizard-content">
+                
+                <!-- Step Header -->
+                <div class="wizard-step-header" id="wizard-step-header">
+                    <div class="step-icon" id="step-icon">
+                        <i class="fas fa-home"></i>
+                    </div>
+                    <div class="step-info">
+                        <h2 class="step-title" id="step-title">Welcome</h2>
+                        <p class="step-description" id="step-description">Choose your deployment mode and get started</p>
+                    </div>
+                    <div class="step-status" id="step-status">
+                        <!-- Status indicators -->
+                    </div>
+                </div>
+
+                <!-- Dynamic Module Container -->
+                <div class="wizard-module-container" id="wizard-module-container">
+                    <!-- Module content loaded dynamically -->
+                    <div class="wizard-loading" id="wizard-loading">
+                        <div class="loading-spinner"></div>
+                        <div class="loading-text">Loading wizard step...</div>
+                    </div>
+                    
+                    <!-- Individual Module Containers -->
+                    <div id="xavs-welcome-container" class="module-container" data-module-id="xavs-welcome" style="display: none;">
+                        <div class="welcome-container">
+                            <div class="welcome-hero">
+                                <h1>🚀 Welcome to XAVS OpenStack Platform</h1>
+                                <p class="hero-subtitle">
+                                    Your comprehensive solution for OpenStack deployment and management
+                                </p>
+                            </div>
+
+                            <div class="welcome-content">
+                                <div class="deployment-modes">
+                                    <h2>Choose Your Deployment Mode</h2>
+                                    <div class="mode-cards">
+                                        <div class="mode-card" data-mode="online">
+                                            <div class="card-icon">🌐</div>
+                                            <h3>Online Deployment</h3>
+                                            <p>Deploy with internet connectivity for package downloads and updates</p>
+                                            <ul>
+                                                <li>Automatic package downloads</li>
+                                                <li>Latest container images</li>
+                                                <li>Real-time updates</li>
+                                                <li>Cloud integration ready</li>
+                                            </ul>
+                                            <button class="btn btn-primary mode-select" data-mode="online">
+                                                Select Online Mode
+                                            </button>
+                                        </div>
+                                        
+                                        <div class="mode-card" data-mode="offline">
+                                            <div class="card-icon">📦</div>
+                                            <h3>Offline Deployment</h3>
+                                            <p>Deploy using pre-downloaded packages and container images</p>
+                                            <ul>
+                                                <li>Pre-staged packages</li>
+                                                <li>Local container registry</li>
+                                                <li>Air-gapped networks</li>
+                                                <li>Secure environments</li>
+                                            </ul>
+                                            <button class="btn btn-primary mode-select" data-mode="offline">
+                                                Select Offline Mode
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="welcome-features">
+                                    <h2>What You'll Accomplish</h2>
+                                    <div class="feature-grid">
+                                        <div class="feature-item">
+                                            <i class="fas fa-cog"></i>
+                                            <h4>Global Configuration</h4>
+                                            <p>Set up OpenStack service parameters and networking</p>
+                                        </div>
+                                        <div class="feature-item">
+                                            <i class="fas fa-server"></i>
+                                            <h4>Host Management</h4>
+                                            <p>Configure deployment targets and inventory</p>
+                                        </div>
+                                        <div class="feature-item">
+                                            <i class="fas fa-network-wired"></i>
+                                            <h4>Network Setup</h4>
+                                            <p>Design network topology and security</p>
+                                        </div>
+                                        <div class="feature-item">
+                                            <i class="fas fa-database"></i>
+                                            <h4>Storage Config</h4>
+                                            <p>Configure storage backends and policies</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <input type="hidden" id="deployment-mode" name="deploymentMode" value="">
+                            <input type="hidden" id="wizard-started" name="wizardStarted" value="true">
+                        </div>
+                    </div>
+                    
+                    <div id="xavs-globals-container" class="module-container" data-module-id="xavs-globals" style="display: none;">
+                        <h2>Global Configuration</h2>
+                        <p>Configure global OpenStack settings.</p>
+                    </div>
+                    
+                    <div id="xavs-hosts-container" class="module-container" data-module-id="xavs-hosts" style="display: none;">
+                        <h2>Host Management</h2>
+                        <p>Configure deployment hosts and inventory.</p>
+                    </div>
+                    
+                    <div id="xavs-networking-container" class="module-container" data-module-id="xavs-networking" style="display: none;">
+                        <h2>Network Configuration</h2>
+                        <p>Configure network topology and settings.</p>
+                    </div>
+                    
+                    <div id="xavs-storage-container" class="module-container" data-module-id="xavs-storage" style="display: none;">
+                        <h2>Storage Configuration</h2>
+                        <p>Configure storage backends and policies.</p>
+                    </div>
+                    
+                    <div id="xavs-bootstrap-container" class="module-container" data-module-id="xavs-bootstrap" style="display: none;">
+                        <h2>Bootstrap</h2>
+                        <p>Initial system configuration and requirements.</p>
+                    </div>
+                    
+                    <div id="xavs-deploy-container" class="module-container" data-module-id="xavs-deploy" style="display: none;">
+                        <h2>Deployment</h2>
+                        <p>Execute OpenStack deployment.</p>
+                    </div>
+                    
+                    <div id="xavs-main-container" class="module-container" data-module-id="xavs-main" style="display: none;">
+                        <h2>Deployment Summary</h2>
+                        <p>Review and finalize deployment.</p>
+                    </div>
+                </div>
+
+                <!-- Validation Messages -->
+                <div class="wizard-validation" id="wizard-validation" style="display: none;">
+                    <div class="validation-content" id="validation-content">
+                        <!-- Validation messages -->
+                    </div>
+                </div>
+
+            </section>
+        </main>
+
+        <!-- Wizard Footer with Navigation -->
+        <footer class="wizard-footer">
+            
+            <!-- Left Section - Workflow Info -->
+            <div class="wizard-footer-info">
+                <div class="workflow-status" id="workflow-status">
+                    <i class="fas fa-clock"></i>
+                    <span id="workflow-time">Not started</span>
+                </div>
+                <div class="auto-save-indicator" id="auto-save">
+                    <i class="fas fa-save"></i>
+                    <span>Auto-saved</span>
+                </div>
+            </div>
+
+            <!-- Center Section - Current Step Info -->
+            <div class="wizard-footer-center">
+                <div class="current-step-info">
+                    <span class="step-counter" id="footer-step-counter">Step 1 of 8</span>
+                    <span class="step-name" id="footer-step-name">Welcome</span>
+                </div>
+            </div>
+
+            <!-- Right Section - Navigation Buttons -->
+            <div class="wizard-footer-actions">
+                <button class="btn btn-secondary" id="wizard-prev" disabled>
+                    <i class="fas fa-chevron-left"></i>
+                    Previous
+                </button>
+                
+                <button class="btn btn-outline" id="wizard-skip" style="display: none;">
+                    Skip
+                </button>
+                
+                <button class="btn btn-primary" id="wizard-next">
+                    Next
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+                
+                <button class="btn btn-success" id="wizard-deploy" style="display: none;">
+                    <i class="fas fa-rocket"></i>
+                    Deploy OpenStack
+                </button>
+            </div>
+        </footer>
+
+        <!-- Overlay for Validation/Error States -->
+        <div class="wizard-overlay" id="wizard-overlay" style="display: none;">
+            <div class="overlay-content">
+                <div class="overlay-header">
+                    <h3 id="overlay-title">Validation Required</h3>
+                    <button class="overlay-close" id="overlay-close">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="overlay-body" id="overlay-body">
+                    <!-- Dynamic content -->
+                </div>
+                <div class="overlay-footer">
+                    <button class="btn btn-secondary" id="overlay-cancel">Cancel</button>
+                    <button class="btn btn-primary" id="overlay-confirm">Continue</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Emergency Stop Dialog -->
+        <div class="wizard-emergency" id="wizard-emergency" style="display: none;">
+            <div class="emergency-content">
+                <div class="emergency-icon">
+                    <i class="fas fa-exclamation-triangle"></i>
+                </div>
+                <h3>Emergency Stop</h3>
+                <p>This will immediately halt all deployment processes and return to the welcome screen. Any unsaved progress will be lost.</p>
+                <div class="emergency-actions">
+                    <button class="btn btn-secondary" id="emergency-cancel">Cancel</button>
+                    <button class="btn btn-danger" id="emergency-confirm">
+                        <i class="fas fa-stop"></i>
+                        Emergency Stop
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Wizard Application Scripts - Using static directory -->
+    <script src="../static/xavs/state-manager.js"></script>
+    <script src="../static/xavs/wizard-state.js"></script>
+    <script src="../static/xavs/wizard-registry.js"></script>
+    <script src="../static/xavs/wizard-navigation.js"></script>
+    <script src="../static/xavs/module-interface.js"></script>
+    <script src="../static/xavs/module-manager.js"></script>
+    <!-- Enhanced UI utilities -->
+    <script src="../static/xavs/wizard-ui-enhancements.js"></script>
+    <script src="wizard-app.js"></script>
+    
+    <!-- Inline script for welcome module functionality -->
+    <script>
+        // Handle deployment mode selection
+        document.addEventListener('DOMContentLoaded', function() {
+            const modeButtons = document.querySelectorAll('.mode-select');
+            const deploymentModeInput = document.getElementById('deployment-mode');
+            
+            modeButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const mode = this.getAttribute('data-mode');
+                    
+                    // Update hidden input
+                    deploymentModeInput.value = mode;
+                    
+                    // Update UI to show selected mode
+                    document.querySelectorAll('.mode-card').forEach(card => {
+                        card.classList.remove('selected');
+                    });
+                    this.closest('.mode-card').classList.add('selected');
+                    
+                    // Save to wizard state
+                    if (window.xavsWizardState) {
+                        window.xavsWizardState.setData('deploymentMode', mode);
+                        window.xavsWizardState.setData('wizardStarted', true);
+                    }
+                    
+                    console.log('[Welcome] Deployment mode selected:', mode);
+                });
+            });
+        });
+    </script>
+</body>
+</html>

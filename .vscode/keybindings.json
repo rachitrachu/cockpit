@@ -1,0 +1,20 @@
+[
+    {
+        "key": "ctrl+shift+w",
+        "command": "workbench.action.tasks.runTask",
+        "args": "🚀 Open XAVS Wizard",
+        "when": "!terminalFocus"
+    },
+    {
+        "key": "ctrl+shift+c",
+        "command": "workbench.action.tasks.runTask", 
+        "args": "🖥️ Open Cockpit Dashboard",
+        "when": "!terminalFocus"
+    },
+    {
+        "key": "ctrl+shift+s",
+        "command": "workbench.action.tasks.runTask",
+        "args": "🔄 Sync Cockpit Files",
+        "when": "!terminalFocus"
+    }
+]

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>XAVS Static Directory Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+        .info { color: blue; }
+        .test-section { margin: 15px 0; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+    </style>
+    <script src="../base1/cockpit.js"></script>
+</head>
+<body>
+    <h1>🧪 XAVS Static Directory Access Test</h1>
+    <p class="info">Testing if JavaScript modules load correctly from <code>../static/xavs/</code></p>
+    
+    <div id="results">
+        <div class="test-section">
+            <h3>Loading Status:</h3>
+            <div id="loading-status">⏳ Loading modules...</div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Module Availability:</h3>
+            <div id="module-status"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Console Output:</h3>
+            <div id="console-output"></div>
+        </div>
+    </div>
+
+    <!-- Load XAVS modules from static directory -->
+    <script src="../static/xavs/state-manager.js"></script>
+    <script src="../static/xavs/wizard-state.js"></script>
+    <script src="../static/xavs/wizard-navigation.js"></script>
+    <script src="../static/xavs/module-interface.js"></script>
+    <script src="../static/xavs/module-manager.js"></script>
+
+    <script>
+        function updateStatus(elementId, message, className = 'info') {
+            const element = document.getElementById(elementId);
+            if (element) {
+                element.innerHTML = `<span class="${className}">${message}</span>`;
+            }
+        }
+
+        function logToConsole(message) {
+            console.log(message);
+            const consoleOutput = document.getElementById('console-output');
+            if (consoleOutput) {
+                consoleOutput.innerHTML += `<div>${new Date().toLocaleTimeString()}: ${message}</div>`;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            logToConsole('DOM loaded, starting module tests...');
+            
+            setTimeout(() => {
+                updateStatus('loading-status', '✅ All script tags processed', 'success');
+                
+                // Test if global objects are available
+                const tests = [
+                    { name: 'XAVSStateManager class', obj: window.XAVSStateManager, type: 'class' },
+                    { name: 'xavsState instance', obj: window.xavsState, type: 'instance' },
+                    { name: 'XAVSWizardState class', obj: window.XAVSWizardState, type: 'class' },
+                    { name: 'xavsWizardState instance', obj: window.xavsWizardState, type: 'instance' },
+                    { name: 'XAVSWizardNavigation class', obj: window.XAVSWizardNavigation, type: 'class' },
+                    { name: 'xavsNavigation instance', obj: window.xavsNavigation, type: 'instance' },
+                    { name: 'ModuleInterface class', obj: window.ModuleInterface, type: 'class' },
+                    { name: 'XAVSModuleInterface class', obj: window.XAVSModuleInterface, type: 'class' },
+                    { name: 'XAVSModuleManager class', obj: window.XAVSModuleManager, type: 'class' },
+                    { name: 'xavsModules instance', obj: window.xavsModules, type: 'instance' }
+                ];
+
+                let moduleHtml = '';
+                let successCount = 0;
+                let totalCount = tests.length;
+
+                tests.forEach(test => {
+                    if (test.obj) {
+                        const typeInfo = test.type === 'class' ? '(Class)' : '(Instance)';
+                        moduleHtml += `<div class="success">✅ ${test.name} ${typeInfo}</div>`;
+                        successCount++;
+                        logToConsole(`✅ ${test.name} loaded successfully`);
+                    } else {
+                        moduleHtml += `<div class="error">❌ ${test.name}</div>`;
+                        logToConsole(`❌ ${test.name} not found`);
+                    }
+                });
+
+                // Test basic functionality
+                if (window.xavsState && typeof window.xavsState.initialize === 'function') {
+                    moduleHtml += `<div class="success">✅ State Manager methods available</div>`;
+                    logToConsole('✅ State Manager has initialize method');
+                } else {
+                    moduleHtml += `<div class="error">❌ State Manager methods not available</div>`;
+                }
+
+                if (window.xavsWizardState && typeof window.xavsWizardState.getWorkflowSummary === 'function') {
+                    moduleHtml += `<div class="success">✅ Wizard State methods available</div>`;
+                    logToConsole('✅ Wizard State has getWorkflowSummary method');
+                    
+                    // List available methods for debugging
+                    const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(window.xavsWizardState))
+                        .filter(name => typeof window.xavsWizardState[name] === 'function' && name !== 'constructor');
+                    logToConsole(`Available Wizard State methods: ${methods.join(', ')}`);
+                } else {
+                    moduleHtml += `<div class="error">❌ Wizard State methods not available</div>`;
+                    logToConsole('❌ Wizard State getWorkflowSummary method not found');
+                }
+
+                moduleHtml += `<hr><div class="${successCount === totalCount ? 'success' : 'error'}">
+                    Summary: ${successCount}/${totalCount} modules loaded successfully
+                </div>`;
+
+                updateStatus('module-status', moduleHtml);
+
+                // Test Cockpit availability
+                if (typeof cockpit !== 'undefined') {
+                    logToConsole('✅ Cockpit framework available');
+                } else {
+                    logToConsole('❌ Cockpit framework not available');
+                }
+
+                logToConsole('Module loading test completed');
+            }, 100);
+        });
+    </script>
+</body>
+</html>

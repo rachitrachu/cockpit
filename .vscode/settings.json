@@ -1,0 +1,41 @@
+{
+    "workbench.editorAssociations": {
+        "*.html": "default"
+    },
+    "liveServer.settings.port": 8080,
+    "liveServer.settings.root": "/",
+    "liveServer.settings.CustomBrowser": "chrome",
+    "simpleBrowser.defaultUrl": "https://localhost:9090/xavs",
+    "remote.autoForwardPorts": true,
+    "remote.autoForwardPortsSource": "hybrid",
+    "remote.portsAttributes": {
+        "9090": {
+            "label": "Cockpit XAVS Wizard",
+            "protocol": "https",
+            "onAutoForward": "openBrowserOnce",
+            "requireLocalPort": false
+        },
+        "8080": {
+            "label": "Development Server",
+            "protocol": "http",
+            "onAutoForward": "silent"
+        }
+    },
+    "http.proxyStrictSSL": false,
+    "security.workspace.trust.untrustedFiles": "open",
+    "files.associations": {
+        "*.html": "html",
+        "*.js": "javascript",
+        "*.css": "css"
+    },
+    "emmet.includeLanguages": {
+        "html": "html"
+    },
+    "html.suggest.html5": true,
+    "css.validate": true,
+    "javascript.validate.enable": true,
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.fixAll": "explicit"
+    }
+}

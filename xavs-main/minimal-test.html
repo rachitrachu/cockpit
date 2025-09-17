@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Minimal XAVS Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f0f0f0;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 XAVS Minimal Test</h1>
+        <p>Testing basic rendering...</p>
+        
+        <div class="status">
+            ✅ HTML and CSS are working
+        </div>
+        
+        <div id="js-test" class="status">
+            ⏳ Testing JavaScript...
+        </div>
+        
+        <div id="cockpit-test" class="status">
+            ⏳ Testing Cockpit base...
+        </div>
+        
+        <div id="wizard-test" class="status">
+            ⏳ Testing wizard modules...
+        </div>
+        
+        <h2>Next Steps</h2>
+        <p>If all tests pass, try: <a href="wizard.html">Full Wizard</a></p>
+    </div>
+    
+    <!-- Test basic JavaScript -->
+    <script>
+        console.log('[Test] Basic JavaScript working');
+        document.getElementById('js-test').innerHTML = '✅ JavaScript is working';
+    </script>
+    
+    <!-- Test Cockpit base -->
+    <script src="../base1/cockpit.js"></script>
+    <script>
+        console.log('[Test] Cockpit script loaded');
+        document.getElementById('cockpit-test').innerHTML = '✅ Cockpit base loaded';
+    </script>
+    
+    <!-- Test wizard modules one by one -->
+    <script src="../static/xavs/state-manager.js"></script>
+    <script>
+        console.log('[Test] State manager loaded');
+        setTimeout(() => {
+            document.getElementById('wizard-test').innerHTML = '✅ Wizard modules loading...';
+        }, 100);
+    </script>
+</body>
+</html>

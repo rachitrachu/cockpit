@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>xAVS Deployment</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="../base1/cockpit.js"></script>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="fontawesome/css/all.min.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Header with Logo and Help -->
+    <div class="topbar">
+      <h1 class="app-title">
+        <img src="logo-x.png" alt="X" class="logo-x">AVS Deployment
+      </h1>
+      <div class="help" data-tip="This module helps deploy and manage xAVS cloud infrastructure:
+• Deploy complete cloud infrastructure with automated tools
+• Manage services with targeted deployment operations  
+• Monitor real-time deployment progress and logs
+• Use host targeting for specific server deployments">?</div>
+    </div>
+
+    <!-- SIMPLE TABLE-STYLE LAYOUT -->
+    <table class="layout-table">
+      <tr>
+        <td class="controls-column">
+          <!-- CONTROLS CARD -->
+          <div class="card controls-card">
+            <header><i class="fas fa-cog"></i>Controls</header>
+            <div class="body">
+              <div class="controls-grid">
+                
+                <!-- Left Column: Command and Options -->
+                <div class="controls-section">
+                  <div class="flex-col">
+                    <div class="hdr">Action</div>
+                    <select id="command" class="btn" aria-label="xAVS command">
+                      <!-- Core Deployment Workflow -->
+                      <option value="prechecks">prechecks</option>
+                      <option value="bootstrap-servers" selected>bootstrap-servers</option>
+                      <option value="deploy">deploy</option>
+                      <option value="post-deploy">post-deploy</option>
+                      
+                      <!-- Service Management -->
+                      <option value="pull">pull</option>
+                      <option value="reconfigure">reconfigure</option>
+                      <option value="upgrade">upgrade</option>
+                      <option value="stop">stop</option>
+                      <option value="destroy">destroy</option>
+                      
+                      <!-- Container Operations -->
+                      <option value="deploy-containers">deploy-containers</option>
+                      <option value="nova-libvirt-cleanup">nova-libvirt-cleanup</option>
+                      
+                      <!-- Database Operations -->
+                      <option value="mariadb_recovery">mariadb_recovery</option>
+                      <option value="mariadb_backup">mariadb_backup</option>
+                      
+                      <!-- Message Queue Operations -->
+                      <option value="rabbitmq-reset-state">rabbitmq-reset-state</option>
+                      <option value="rabbitmq-upgrade">rabbitmq-upgrade</option>
+                      
+                      <!-- Bifrost Operations -->
+                      <option value="deploy-bifrost">deploy-bifrost</option>
+                      <option value="deploy-servers">deploy-servers</option>
+                      <option value="upgrade-bifrost">upgrade-bifrost</option>
+                      
+                      <!-- Certificate Management -->
+                      <option value="certificates">certificates</option>
+                      <option value="octavia-certificates">octavia-certificates</option>
+                      
+                      <!-- Configuration Management -->
+                      <option value="genconfig">genconfig</option>
+                      <option value="validate-config">validate-config</option>
+                      <option value="gather-facts">gather-facts</option>
+                    </select>
+                  </div>
+
+                  <!-- Options -->
+                  <div class="flex-col">
+                    <div class="hdr">Options</div>
+                    <div class="option-controls">
+                      <label class="checkbox-label">
+                        <input type="checkbox" id="dryRunCheck" class="bxc">
+                        <span>Dry Run (--check)</span>
+                      </label>
+                      <small class="help-text">Preview changes without applying them</small>
+                    </div>
+                    
+                    <!-- Backup type (only shown for mariadb_backup) -->
+                    <div id="backup-options" class="backup-options" style="display: none;">
+                      <div class="hdr">Backup Type</div>
+                      <select id="backupType" class="btn">
+                        <option value="full" selected>Full Backup (--full)</option>
+                        <option value="incremental">Incremental Backup (--incremental)</option>
+                      </select>
+                      <small class="help-text">Full backup is recommended before major changes</small>
+                    </div>
+                    
+                    <!-- Danger warning (shown for dangerous commands) -->
+                    <div id="danger-warning" style="display: none;"></div>
+                  </div>
+                </div>
+
+                <!-- Right Column: Services with Multiselect -->
+                <div class="controls-section">
+                  <div id="services-section" class="flex-col">
+                    <div class="hdr">Services (--tags)</div>
+                    <div class="service-status-info">
+                      <small class="help-text" id="service-help">Select xAVS services to target deployment operations</small>
+                      <div id="service-status" class="service-status-indicator"></div>
+                    </div>
+                    
+                    <!-- Multiselect Dropdown for Services -->
+                    <div class="multiselect-container">
+                      <div class="multiselect-dropdown" id="services-dropdown">
+                        <div class="multiselect-trigger" id="services-trigger">
+                          <span id="services-placeholder">Select services...</span>
+                          <span class="multiselect-arrow">▼</span>
+                        </div>
+                        <div class="multiselect-content" id="services-content">
+                          <div class="multiselect-search">
+                            <input type="text" id="services-search" placeholder="Search services..." class="btn ghost">
+                          </div>
+                          <div class="multiselect-options" id="services-options">
+                            <!-- Core xAVS services -->
+                            <div class="multiselect-group">
+                              <div class="multiselect-group-label">Core xAVS services</div>
+                              <label class="multiselect-option">
+                                <input type="checkbox" value="keystone"> 
+                                <span class="option-label">keystone</span>
+                                <span class="option-description">Identity Service</span>
+                              </label>
+                              <label class="multiselect-option">
+                                <input type="checkbox" value="glance"> 
+                                <span class="option-label">glance</span>
+                                <span class="option-description">Image Service</span>
+                              </label>
+                              <label class="multiselect-option">
+                                <input type="checkbox" value="nova"> 
+                                <span class="option-label">nova</span>
+                                <span class="option-description">Compute Service</span>
+                              </label>
+                              <label class="multiselect-option">
+                                <input type="checkbox" value="neutron"> 
+                                <span class="option-label">neutron</span>
+                                <span class="option-description">Networking Service</span>
+                              </label>
+                              <label class="multiselect-option">
+                                <input type="checkbox" value="placement"> 
+                                <span class="option-label">placement</span>
+                                <span class="option-description">Placement Service</span>
+                              </label>
+                              <label class="multiselect-option">
+                                <input type="checkbox" value="cinder"> 
+                                <span class="option-label">cinder</span>
+                                <span class="option-description">Block Storage Service</span>
+                              </label>
+                              <label class="multiselect-option">
+                                <input type="checkbox" value="horizon"> 
+                                <span class="option-label">horizon</span>
+                                <span class="option-description">Dashboard Service</span>
+                              </label>
+                            </div>
+                            
+                            <!-- Additional xAVS services -->
+                            <div class="multiselect-group">
+                              <div class="multiselect-group-label">Additional xAVS services</div>
+                              <label class="multiselect-option">
+                                <input type="checkbox" value="heat"> 
+                                <span class="option-label">heat</span>
+                                <span class="option-description">Orchestration Service</span>
+                              </label>
+                              <label class="multiselect-option">
+                                <input type="checkbox" value="swift"> 
+                                <span class="option-label">swift</span>
+                                <span class="option-description">Object Storage Service</span>
+                              </label>
+                              <label class="multiselect-option">
+                                <input type="checkbox" value="barbican"> 
+                                <span class="option-label">barbican</span>
+                                <span class="option-description">Key Manager Service</span>
+                              </label>
+                              <label class="multiselect-option">
+                                <input type="checkbox" value="magnum"> 
+                                <span class="option-label">magnum</span>
+                                <span class="option-description">Container Infrastructure</span>
+                              </label>
+                              <label class="multiselect-option">
+                                <input type="checkbox" value="octavia"> 
+                                <span class="option-label">octavia</span>
+                                <span class="option-description">Load Balancer Service</span>
+                              </label>
+                              <label class="multiselect-option">
+                                <input type="checkbox" value="masakari"> 
+                                <span class="option-label">masakari</span>
+                                <span class="option-description">Instance High Availability</span>
+                              </label>
+                            </div>
+                            
+                            <!-- Infrastructure Services -->
+                            <div class="multiselect-group">
+                              <div class="multiselect-group-label">Infrastructure Services</div>
+                              <label class="multiselect-option">
+                                <input type="checkbox" value="mariadb"> 
+                                <span class="option-label">mariadb</span>
+                                <span class="option-description">Database Service</span>
+                              </label>
+                              <label class="multiselect-option">
+                                <input type="checkbox" value="rabbitmq"> 
+                                <span class="option-label">rabbitmq</span>
+                                <span class="option-description">Message Queue Service</span>
+                              </label>
+                              <label class="multiselect-option">
+                                <input type="checkbox" value="haproxy"> 
+                                <span class="option-label">haproxy</span>
+                                <span class="option-description">Load Balancer</span>
+                              </label>
+                              <label class="multiselect-option">
+                                <input type="checkbox" value="memcached"> 
+                                <span class="option-label">memcached</span>
+                                <span class="option-description">Caching Service</span>
+                              </label>
+                            </div>
+                            
+                            <!-- Monitoring & Logging -->
+                            <div class="multiselect-group">
+                              <div class="multiselect-group-label">Monitoring & Logging</div>
+                              <label class="multiselect-option">
+                                <input type="checkbox" value="prometheus"> 
+                                <span class="option-label">prometheus</span>
+                                <span class="option-description">Monitoring Service</span>
+                              </label>
+                              <label class="multiselect-option">
+                                <input type="checkbox" value="fluentd"> 
+                                <span class="option-label">fluentd</span>
+                                <span class="option-description">Log Collector</span>
+                              </label>
+                              <label class="multiselect-option">
+                                <input type="checkbox" value="grafana"> 
+                                <span class="option-label">grafana</span>
+                                <span class="option-description">Analytics & Monitoring</span>
+                              </label>
+                              <label class="multiselect-option">
+                                <input type="checkbox" value="elasticsearch"> 
+                                <span class="option-label">elasticsearch</span>
+                                <span class="option-description">Search & Analytics</span>
+                              </label>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <input id="custom-services" class="btn ghost mono" placeholder="Additional services (comma separated, e.g., manila,designate)">
+                    <div id="services-summary" class="services-summary"></div>
+                  </div>
+                </div>
+
+                <!-- hosts -->
+                <div class="flex-col">
+                  <div class="hdr">
+                    Host Targeting (--limit)
+                    <button id="refreshHostsBtn" class="btn ghost small" style="margin-left: 8px;">↻ Refresh</button>
+                  </div>
+                  <div class="host-guidance">
+                    <small class="help-text">Choose how to target hosts for deployment operations</small>
+                  </div>
+                  
+                  <!-- Host selection tabs -->
+                  <div class="host-tabs">
+                    <button class="host-tab active" data-tab="all">All Hosts</button>
+                    <button class="host-tab" data-tab="limit">Select Hosts</button>
+                    <button class="host-tab" data-tab="tags">Host Patterns</button>
+                  </div>
+                  
+                  <!-- All hosts mode -->
+                  <div id="all-hosts-tab" class="host-tab-content active">
+                    <div class="host-option">
+                      <label><input type="radio" name="host-mode" value="all" checked> <i class="fas fa-globe"></i> Deploy to all hosts in inventory</label>
+                      <div class="host-description">
+                        <small>This will run the command on all hosts defined in your inventory file. Recommended for initial deployments and updates.</small>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <!-- Limit hosts mode -->
+                  <div id="limit-hosts-tab" class="host-tab-content">
+                    <div class="host-option">
+                      <label><input type="radio" name="host-mode" value="limit"> <i class="fas fa-bullseye"></i> Deploy to specific hosts only</label>
+                      <div class="host-description">
+                        <small>Select individual hosts from the list below. Useful for targeted maintenance or gradual rollouts.</small>
+                      </div>
+                    </div>
+                    <div class="host-instruction">
+                      <div class="instruction-icon"><i class="fas fa-lightbulb"></i></div>
+                      <div class="instruction-text">Check the boxes below to select specific hosts for deployment:</div>
+                    </div>
+                    <div id="limit-hosts-box" class="host-selection-box brand-outline"></div>
+                  </div>
+                  
+                  <!-- Tag hosts mode -->
+                  <div id="tags-hosts-tab" class="host-tab-content">
+                    <div class="host-option">
+                      <label><input type="radio" name="host-mode" value="tags"> <i class="fas fa-tags"></i> Deploy using host patterns</label>
+                      <div class="host-description">
+                        <small>Use Ansible inventory patterns to target hosts. Advanced users can specify groups, wildcards, or complex patterns.</small>
+                      </div>
+                    </div>
+                    <div class="host-instruction">
+                      <div class="instruction-icon"><i class="fas fa-lightbulb"></i></div>
+                      <div class="instruction-text">Enter host patterns in the field below:</div>
+                    </div>
+                    <div class="tag-selection">
+                      <input id="tag-input" class="btn ghost mono" placeholder="e.g., control,compute01:compute05,controller-*,!compute03" disabled>
+                      <div class="pattern-examples">
+                        <small class="help-text"><strong>Examples:</strong></small>
+                        <div class="example-list">
+                          <small>• <code>control</code> - all hosts in control group</small>
+                          <small>• <code>compute01:compute05</code> - range of hosts</small>
+                          <small>• <code>controller-*</code> - wildcard pattern</small>
+                          <small>• <code>!compute03</code> - exclude specific host</small>
+                          <small>• <code>control,network</code> - multiple groups</small>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div class="host-info-section">
+                    <div class="hdr">Host Information</div>
+                    <div id="available-hosts" class="host-list"></div>
+                    <div class="hdr">Selected Configuration</div>
+                    <div id="selected-hosts" class="selected-config"></div>
+                  </div>
+                </div>
+
+                <div class="controls-actions">
+                  <button id="runBtn" class="btn primary"><i class="fas fa-play"></i>Run</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </td>
+        
+        <td class="progress-column">
+          <!-- DEPLOYMENT PROGRESS CARD -->
+          <div class="card deployment-progress-card">
+            <header>
+              <div class="console-toolbar">
+                <span><i class="fas fa-chart-line"></i>Deployment Progress</span>
+                <div class="toolbar-actions">
+                  <button id="clearBtn" class="btn ghost small">Clear</button>
+                </div>
+              </div>
+            </header>
+            <div class="body" id="progress-body">
+              <!-- Progress Section -->
+              <div id="progress-section" class="progress-section">
+                <div id="playbook-progress" class="playbook-progress"></div>
+                <div id="summary-stats" class="summary-stats"></div>
+              </div>
+              
+              <!-- Task Progress -->
+              <div class="tasks-container">
+                <div class="tasks-header">
+                  <span>Task Progress</span>
+                  <span class="task-count" id="task-count">(0 tasks)</span>
+                  <button id="toggleTasksBtn" class="btn ghost small">−</button>
+                </div>
+                <div id="tasks-list" class="tasks-list"></div>
+              </div>
+            </div>
+          </div>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Bottom Row: Raw Output -->
+    <div class="card console-card">
+      <header>
+        <div class="console-toolbar">
+          <span><i class="fas fa-terminal"></i>Raw Output</span>
+          <button id="toggleConsoleBtn" class="btn ghost small">−</button>
+        </div>
+      </header>
+      <div class="body" id="console-body">
+        <div id="console-output" class="scroll mono console-output"></div>
+      </div>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+      <span id="status-text">Ready</span>
+      <span class="status-actions">
+        <a href="#" class="status-link" id="view-progress-link">View Progress</a>
+      </span>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
+
+
+

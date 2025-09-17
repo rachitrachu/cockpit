@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>XAVS Wizard Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🚀 XAVS Wizard Test Page</h1>
+        <p>Testing basic HTML rendering and resource loading...</p>
+        
+        <div id="status-container">
+            <div class="status success">✅ Basic HTML loaded successfully</div>
+        </div>
+        
+        <h2>Resource Loading Test</h2>
+        <div id="resource-tests">
+            <!-- Will be populated by JavaScript -->
+        </div>
+        
+        <h2>Original Wizard</h2>
+        <p><a href="wizard.html">Click here to test the original wizard</a></p>
+    </div>
+
+    <script>
+        console.log('Test page JavaScript is working');
+        
+        // Test resource loading
+        const resourceTests = document.getElementById('resource-tests');
+        
+        const resources = [
+            '../base1/cockpit.js.gz',
+            '../static/xavs/wizard-state.js',
+            '../static/xavs/wizard-registry.js',
+            '../xavs-main/wizard.css',
+            '../static/xavs-modules/welcome.css'
+        ];
+        
+        resources.forEach(resource => {
+            fetch(resource)
+                .then(response => {
+                    const status = response.ok ? 'success' : 'error';
+                    const message = response.ok ? '✅' : '❌';
+                    resourceTests.innerHTML += `<div class="status ${status}">${message} ${resource} (${response.status})</div>`;
+                })
+                .catch(error => {
+                    resourceTests.innerHTML += `<div class="status error">❌ ${resource} (Failed to fetch)</div>`;
+                });
+        });
+        
+        // Test if we can access the wizard page
+        setTimeout(() => {
+            resourceTests.innerHTML += '<h3>Ready to test wizard!</h3>';
+        }, 2000);
+    </script>
+</body>
+</html>
