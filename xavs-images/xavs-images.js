@@ -17,8 +17,13 @@ document.addEventListener('DOMContentLoaded', () => {
     let icon = '📁'; // Default folder icon
     
     if (isFile || cleanPath.includes('.')) {
-      if (cleanPath.endsWith('.tar.gz') || cleanPath.endsWith('.tar')) {
-        icon = '📦'; // Archive icon for tar files
+      if (cleanPath.endsWith('.tar.gz') || cleanPath.endsWith('.tar') || cleanPath.endsWith('.gz')) {
+        // Check if it's likely a Docker image
+        if (cleanPath.includes('docker') || cleanPath.includes('image')) {
+          icon = '🐳'; // Docker whale icon for Docker-related archives
+        } else {
+          icon = '📦'; // Archive icon for general archives
+        }
       } else {
         icon = '📄'; // Generic file icon
       }
@@ -32,6 +37,8 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const logEl = $("log");
+  let currentProgressLine = null; // Track current progress line for in-place updates
+  
   const log = (t="") => {
     if (!logEl) {
       console.warn('Log element not found');
@@ -80,6 +87,58 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e2) {
             console.warn('Could not store logs:', e2);
         }
+    }
+  };
+  
+  // Progress logging function that updates the same line (like CLI progress)
+  const logProgress = (message, isUpdate = false, progressId = 'default') => {
+    if (!logEl) {
+      console.warn('Log element not found');
+      return;
+    }
+    
+    const timestamp = new Date().toLocaleTimeString();
+    const logEntry = `[${timestamp}] ${message}`;
+    
+    if (isUpdate && currentProgressLine && currentProgressLine.dataset.progressId === progressId) {
+      // Update existing progress line
+      currentProgressLine.textContent = logEntry;
+    } else {
+      // Create new progress line
+      const progressDiv = document.createElement('div');
+      progressDiv.textContent = logEntry;
+      progressDiv.dataset.progressId = progressId;
+      progressDiv.classList.add('progress-line');
+      
+      // Remove previous progress line with same ID if exists
+      const existingProgress = logEl.querySelector(`[data-progress-id="${progressId}"]`);
+      if (existingProgress && existingProgress !== currentProgressLine) {
+        existingProgress.remove();
+      }
+      
+      logEl.appendChild(progressDiv);
+      currentProgressLine = progressDiv;
+    }
+    
+    logEl.scrollTop = logEl.scrollHeight;
+    
+    // Update status bar
+    const statusElement = $('status-text');
+    if (statusElement) {
+      const cleanText = message.replace(/<[^>]*>/g, '').trim() || "Ready";
+      statusElement.textContent = cleanText;
+    }
+  };
+  
+  // Finalize progress line (make it permanent and allow new progress)
+  const finalizeProgress = (progressId = 'default') => {
+    const progressLine = logEl.querySelector(`[data-progress-id="${progressId}"]`);
+    if (progressLine) {
+      progressLine.classList.remove('progress-line');
+      progressLine.removeAttribute('data-progress-id');
+      if (currentProgressLine === progressLine) {
+        currentProgressLine = null;
+      }
     }
   };
   
@@ -408,17 +467,24 @@ document.addEventListener('DOMContentLoaded', () => {
           li.classList.add('file-disabled');
           li.dataset.selectable = 'false';
         } else {
-          if (item.name.endsWith('.tar.gz') || item.name.endsWith('.tar')) {
+          if (item.name.endsWith('.tar.gz') || item.name.endsWith('.tar') || item.name.endsWith('.gz')) {
             iconClass = 'fa-solid fa-file-archive';
             colorClass = 'icon-file-archive';
             li.classList.add('file-selectable');
-            li.title = `Select this archive file: ${item.name}`;
+            
+            // Enhanced tooltip for Docker-related archives
+            if (item.name.includes('docker') || item.name.includes('image') || 
+                item.name.match(/\.(tar|tar\.gz|gz)$/)) {
+              li.title = `Select this archive (may contain Docker images): ${item.name}`;
+            } else {
+              li.title = `Select this archive file: ${item.name}`;
+            }
             li.dataset.selectable = 'true';
           } else {
             iconClass = 'fa-solid fa-file';
             colorClass = 'icon-file';
             li.classList.add('file-disabled');
-            li.title = 'Only .tar and .tar.gz files can be selected';
+            li.title = 'Only .tar, .tar.gz, and .gz files can be selected for extraction';
             li.dataset.selectable = 'false';
           }
         }
@@ -502,9 +568,20 @@ document.addEventListener('DOMContentLoaded', () => {
       const isDir = li.dataset.isdir === 'true';
       const isSelectable = li.dataset.selectable === 'true';
       
+      // Debug logging to help troubleshoot selection issues
+      console.log('File clicked:', {
+        path: path,
+        isDir: isDir,
+        isSelectable: isSelectable,
+        fileBrowserMode: fileBrowserMode,
+        endsWithTar: path?.endsWith('.tar'),
+        endsWithTarGz: path?.endsWith('.tar.gz'),
+        endsWithGz: path?.endsWith('.gz')
+      });
+      
       if (fileBrowserMode === 'select-archive') {
-        // Allow both .tar and .tar.gz files to be selected
-        if (!isDir && isSelectable && (path.endsWith('.tar.gz') || path.endsWith('.tar'))) {
+        // Allow .tar, .tar.gz, and .gz files to be selected
+        if (!isDir && isSelectable && (path.endsWith('.tar.gz') || path.endsWith('.tar') || path.endsWith('.gz'))) {
           selectedArchivePath = path;
           selectedArchivePathSpan.innerHTML = formatPathWithIcon(path, true);
           serverFileModal.style.display = 'none';
@@ -514,19 +591,29 @@ document.addEventListener('DOMContentLoaded', () => {
           selectedDestPath = null;
           selectedDestPathSpan.textContent = '';
           copyArchiveBtn.disabled = true;
+          console.log('Archive selected for copying:', path);
         }
       } else if (fileBrowserMode === 'browse-extract') {
-        // Handle browse extract file selection - support both .tar and .tar.gz
-        if (!isDir && isSelectable && (path.endsWith('.tar.gz') || path.endsWith('.tar'))) {
+        // Handle browse extract file selection - support .tar, .tar.gz, and .gz
+        if (!isDir && isSelectable && (path.endsWith('.tar.gz') || path.endsWith('.tar') || path.endsWith('.gz'))) {
           selectedExtractFilePath = path;
           browsedExtractFilePathSpan.innerHTML = formatPathWithIcon(path, true);
           serverFileModal.style.display = 'none';
           
           // Update extract file info and enable extract button
           const fileName = path.split('/').pop();
+          
+          // Determine file type for better display
+          let fileTypeIcon = 'fa-file-archive';
+          let fileTypeDesc = 'Archive file';
+          if (fileName.includes('docker') || fileName.includes('image')) {
+            fileTypeIcon = 'fa-brands fa-docker';
+            fileTypeDesc = 'Docker image archive';
+          }
+          
           extractFileInfo.innerHTML = `
             <div class="file-info-item">
-              <i class="fa fa-file-archive text-blue"></i>
+              <i class="fa ${fileTypeIcon} text-blue"></i>
               <div class="file-details">
                 <div class="file-name">${fileName}</div>
                 <div class="file-path">${formatPathWithIcon(path, true)}</div>
@@ -541,6 +628,17 @@ document.addEventListener('DOMContentLoaded', () => {
           extractArchiveBtn.onclick = async () => {
             await extractArchive(selectedExtractFilePath);
           };
+          
+          console.log('File selected for extraction:', path);
+          log(`📁 Selected archive for extraction: ${fileName}`);
+        } else {
+          console.log('File not selectable for extraction:', {
+            isDir: isDir,
+            isSelectable: isSelectable,
+            path: path,
+            reason: !isSelectable ? 'not marked as selectable' : 
+                   !(path.endsWith('.tar.gz') || path.endsWith('.tar') || path.endsWith('.gz')) ? 'not a supported archive file' : 'unknown'
+          });
         }
       }
       // In destination select mode, do not select dir on click, only navigate (handled in renderServerFileList)
@@ -660,6 +758,132 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 
+  // Function to detect and load Docker images from extracted directory
+  async function detectAndLoadDockerImages(extractDir) {
+    log(`\n🔍 Scanning for Docker image files in: ${extractDir}`);
+    
+    try {
+      // Find all potential Docker image files (.tar, .tar.gz, .gz) recursively
+      // Using find command to recursively search the entire directory tree
+      const { stdout } = await runCommand([
+        'find', extractDir, '-type', 'f', 
+        '(', '-name', '*.tar', '-o', '-name', '*.tar.gz', '-o', '-name', '*.gz', ')',
+        '-print'
+      ]);
+      
+      if (!stdout || !stdout.trim()) {
+        log(`📄 No Docker image files found in extracted contents`);
+        return;
+      }
+      
+      const imageFiles = stdout.trim().split('\n')
+        .filter(file => file.trim())
+        .sort(); // Sort for consistent processing order
+      
+      log(`📦 Found ${imageFiles.length} potential Docker image files:`);
+      imageFiles.forEach((file, index) => {
+        const fileName = file.split('/').pop();
+        const relativePath = file.replace(extractDir, '').replace(/^\//, '');
+        log(`   ${index + 1}. ${relativePath}`);
+      });
+      
+      let loadedCount = 0;
+      let skippedCount = 0;
+      let errorCount = 0;
+      const loadedImages = [];
+      
+      log(`\n🐳 Starting Docker image loading process...`);
+      
+      for (let i = 0; i < imageFiles.length; i++) {
+        const imageFile = imageFiles[i];
+        const fileName = imageFile.split('/').pop();
+        const progress = `[${i + 1}/${imageFiles.length}]`;
+        
+        log(`\n${progress} Processing: ${fileName}`);
+        
+        try {
+          // Attempt to load the image with docker load
+          log(`   ⏳ Loading Docker image...`);
+          
+          // Use docker load to import the image
+          const loadResult = await runCommand(['docker', 'load', '-i', imageFile]);
+          
+          // Parse the load result to see what was loaded
+          if (loadResult.stdout) {
+            const loadedImageLines = loadResult.stdout.split('\n')
+              .filter(line => line.includes('Loaded image'))
+              .map(line => line.replace(/^Loaded image:\s*/, '').trim());
+            
+            if (loadedImageLines.length > 0) {
+              loadedCount++;
+              log(`   ✅ Successfully loaded Docker image(s):`);
+              loadedImageLines.forEach(img => {
+                log(`      🏷️ ${img}`);
+                loadedImages.push(img);
+              });
+            } else if (loadResult.stdout.includes('already exists') || loadResult.stdout.includes('Image ID')) {
+              log(`   ℹ️ Image already exists in Docker (skipped)`);
+              skippedCount++;
+            } else {
+              log(`   ℹ️ Docker load completed with no output`);
+              skippedCount++;
+            }
+          } else {
+            log(`   ℹ️ Docker load completed with no output`);
+            skippedCount++;
+          }
+          
+        } catch (e) {
+          errorCount++;
+          const errorMsg = e.message.toLowerCase();
+          
+          if (errorMsg.includes('not a tar archive') || errorMsg.includes('invalid tar header')) {
+            log(`   ⚠️ Skipped: ${fileName} - Not a valid Docker image tar file`);
+          } else if (errorMsg.includes('no space left')) {
+            log(`   ❌ Error: ${fileName} - Insufficient disk space`);
+          } else if (errorMsg.includes('permission denied')) {
+            log(`   ❌ Error: ${fileName} - Permission denied`);
+          } else if (errorMsg.includes('manifest unknown') || errorMsg.includes('malformed')) {
+            log(`   ⚠️ Skipped: ${fileName} - Invalid or corrupted Docker image`);
+          } else {
+            log(`   ❌ Error loading ${fileName}: ${e.message}`);
+          }
+        }
+      }
+      
+      // Summary of Docker image loading
+      log(`\n📊 DOCKER IMAGE LOADING SUMMARY`);
+      log(`${'═'.repeat(50)}`);
+      log(`   ✅ Successfully loaded: ${loadedCount} images`);
+      if (skippedCount > 0) {
+        log(`   ℹ️ Skipped/Already exists: ${skippedCount} images`);
+      }
+      if (errorCount > 0) {
+        log(`   ❌ Failed to load: ${errorCount} images`);
+      }
+      log(`   📊 Total processed: ${loadedCount + skippedCount + errorCount}/${imageFiles.length} files`);
+      
+      if (loadedImages.length > 0) {
+        log(`\n🏷️ NEWLY LOADED DOCKER IMAGES:`);
+        loadedImages.forEach((img, index) => {
+          log(`   ${index + 1}. ${img}`);
+        });
+      }
+      
+      if (loadedCount > 0) {
+        log(`\n🔄 Refreshing Docker images list...`);
+        // Refresh the local Docker images list to show newly loaded images
+        setTimeout(async () => {
+          await loadLocalDockerImages();
+          log(`✅ Docker images list updated with ${loadedCount} new images`);
+        }, 1000);
+      }
+      
+    } catch (e) {
+      log(`❌ Error scanning for Docker images: ${e.message}`);
+    }
+  }
+
   // Extract archive function with hardcoded destination
   async function extractArchive(archivePath) {
     const EXTRACT_DESTINATION = '/etc/xavs/xavs-images/';
@@ -688,12 +912,41 @@ document.addEventListener('DOMContentLoaded', () => {
       // Ensure destination directory exists
       await runCommand(['mkdir', '-p', EXTRACT_DESTINATION]);
       
-      // Determine the appropriate tar options based on file extension
-      const isGzipped = archivePath.toLowerCase().endsWith('.tar.gz');
-      const tarOptions = isGzipped ? '-xzf' : '-xf';
-      const fileTypeMsg = isGzipped ? 'gzipped tar archive' : 'tar archive';
+      // Determine the appropriate extraction method based on file extension
+      const archiveLower = archivePath.toLowerCase();
+      let extractMethod = 'tar';
+      let tarOptions = '';
+      let fileTypeMsg = '';
       
-      log(`Detected ${fileTypeMsg}, using tar options: ${tarOptions}`);
+      if (archiveLower.endsWith('.tar.gz')) {
+        tarOptions = '-xzf';
+        fileTypeMsg = 'gzipped tar archive';
+      } else if (archiveLower.endsWith('.tar')) {
+        tarOptions = '-xf';
+        fileTypeMsg = 'tar archive';
+      } else if (archiveLower.endsWith('.gz')) {
+        // For standalone .gz files, we need to gunzip first then potentially tar
+        extractMethod = 'gunzip';
+        fileTypeMsg = 'gzip compressed file';
+        
+        // First gunzip the file
+        log(`Detected ${fileTypeMsg}, decompressing with gunzip...`);
+        const decompressedPath = archivePath.replace(/\.gz$/, '');
+        await runCommand(['gunzip', '-c', archivePath], { stdout: decompressedPath });
+        
+        // Check if the decompressed file is a tar archive
+        if (decompressedPath.toLowerCase().endsWith('.tar')) {
+          extractMethod = 'tar';
+          tarOptions = '-xf';
+          archivePath = decompressedPath; // Use decompressed path for tar
+          fileTypeMsg = 'decompressed tar archive';
+        }
+      } else {
+        tarOptions = '-xf';
+        fileTypeMsg = 'archive file';
+      }
+      
+      log(`Detected ${fileTypeMsg}, using extraction method: ${extractMethod} ${tarOptions}`);
       
       // Check if pv is available for progress monitoring
       let pvAvailable = false;
@@ -702,7 +955,7 @@ document.addEventListener('DOMContentLoaded', () => {
         pvAvailable = true;
       } catch {}
       
-      if (pvAvailable) {
+      if (pvAvailable && extractMethod === 'tar') {
         // Get archive size for progress calculation
         let archiveSize = 0;
         try {
@@ -734,22 +987,28 @@ document.addEventListener('DOMContentLoaded', () => {
               extractProgressCount.textContent = `${percent}%`;
             }
             
-            // Log extracted files (tar verbose output)
+            // Log extracted files (tar verbose output) with in-place updates
             if (trimmed && !progressMatch && (trimmed.includes('/') || trimmed.length > 3)) {
               lastFile = trimmed;
               const shortPath = trimmed.length > 50 ? '...' + trimmed.slice(-47) : trimmed;
               extractProgressText.textContent = `Extracting: ${shortPath}`;
+              
+              // Use progress logging for real-time file extraction updates
+              logProgress(`📦 Extracting: ${shortPath}`, true, 'extract-progress');
             }
           }
         });
         
         await process;
         
+        // Finalize the extraction progress
+        finalizeProgress('extract-progress');
+        
         extractProgressBar.style.width = '100%';
         extractProgressCount.textContent = '100%';
         extractProgressText.textContent = 'Extraction completed!';
         
-      } else {
+      } else if (extractMethod === 'tar') {
         // Fallback: tar without progress monitoring
         extractProgressText.textContent = 'Extracting (no progress info)...';
         extractProgressBar.style.width = '50%';
@@ -774,15 +1033,34 @@ document.addEventListener('DOMContentLoaded', () => {
         extractProgressBar.style.width = '100%';
         extractProgressCount.textContent = '100%';
         extractProgressText.textContent = 'Extraction completed!';
+        
+      } else if (extractMethod === 'gunzip') {
+        // Handle gunzip extraction (for standalone .gz files)
+        extractProgressText.textContent = 'Decompressing gzip file...';
+        extractProgressBar.style.width = '50%';
+        
+        const outputFile = `${EXTRACT_DESTINATION}/${fileName.replace(/\.gz$/, '')}`;
+        await runCommand(['gunzip', '-c', archivePath], { 
+          superuser: 'require',
+          stdout: outputFile 
+        });
+        
+        extractProgressBar.style.width = '100%';
+        extractProgressCount.textContent = '100%';
+        extractProgressText.textContent = 'Decompression completed!';
       }
       
       log(`<span class="text-green">Archive extracted successfully!</span>`);
       log(`Contents extracted to: <span class="text-blue">${EXTRACT_DESTINATION}</span>`);
       
-      // List extracted contents
+      // List extracted contents and check for Docker images
       try {
         const { stdout } = await runCommand(['ls', '-la', EXTRACT_DESTINATION]);
         log(`\nExtracted contents in ${EXTRACT_DESTINATION}:\n<pre>${stdout}</pre>`);
+        
+        // Look for Docker image files in the extracted contents
+        await detectAndLoadDockerImages(EXTRACT_DESTINATION);
+        
       } catch (e) {
         log(`\nCould not list extracted contents: ${e.message}`);
       }
@@ -805,32 +1083,169 @@ document.addEventListener('DOMContentLoaded', () => {
   // Cockpit API helper for running commands with superuser privileges
   async function runCommand(args, options = {}) {
     return new Promise((resolve, reject) => {
+      const { timeout, adaptiveTimeout, ...spawnOptions } = options;
+      
       const process = cockpit.spawn(args, { 
         superuser: "require",
         err: "message",
-        ...options
+        ...spawnOptions
       });
       
       let stdout = "";
       let stderr = "";
+      let lastProgressLine = "";
+      let completedLayers = new Set();
+      let timeoutId = null;
+      let lastActivityTime = Date.now();
+      let totalLayers = 0;
+      let downloadedBytes = 0;
+      let lastDownloadTime = Date.now();
+      
+      // Enhanced timeout management for Docker pulls
+      const setupTimeout = (initialTimeout = timeout) => {
+        if (timeoutId) clearTimeout(timeoutId);
+        
+        if (!initialTimeout) return;
+        
+        const currentTime = Date.now();
+        const timeSinceLastActivity = currentTime - lastActivityTime;
+        
+        // For Docker pulls with adaptive timeout, use intelligent timeout calculation
+        if (args[0] === 'docker' && args[1] === 'pull' && adaptiveTimeout) {
+          // Base timeout starts at 10 minutes for inactivity
+          let adaptiveTimeoutMs = 600000; // 10 minutes base
+          
+          // Extend timeout based on image complexity
+          if (totalLayers > 10) adaptiveTimeoutMs += (totalLayers - 10) * 30000; // +30s per layer above 10
+          if (downloadedBytes > 100000000) adaptiveTimeoutMs += 300000; // +5min for images >100MB
+          
+          // Cap the adaptive timeout at the max timeout
+          adaptiveTimeoutMs = Math.min(adaptiveTimeoutMs, initialTimeout);
+          
+          timeoutId = setTimeout(() => {
+            log(`⏰ Docker pull timeout (${adaptiveTimeoutMs/1000}s of inactivity, ${totalLayers} layers, ${(downloadedBytes/1024/1024).toFixed(1)}MB) - terminating: ${args[2]}`);
+            process.close('terminated');
+            reject(new Error(`Docker pull timed out after ${adaptiveTimeoutMs/1000}s of inactivity`));
+          }, adaptiveTimeoutMs);
+          
+        } else {
+          // Standard timeout behavior
+          timeoutId = setTimeout(() => {
+            if (args[0] === 'docker' && args[1] === 'pull') {
+              log(`⏰ Command timeout (${initialTimeout/1000}s of inactivity) - terminating: ${args[2]}`);
+            }
+            process.close('terminated');
+            reject(new Error(`Command timed out after ${initialTimeout/1000} seconds of inactivity`));
+          }, initialTimeout);
+        }
+      };
+      
+      // Initialize timeout
+      if (timeout) setupTimeout();
       
       process.stream((data) => {
         stdout += data;
-        // Show real-time output for docker pull commands
+        lastActivityTime = Date.now();
+        
+        // Reset timeout on any activity
+        if (timeout) setupTimeout();
+        
+        // Enhanced progress tracking for docker pull commands
         if (args[0] === 'docker' && args[1] === 'pull') {
           // Extract meaningful progress info from docker output
           const lines = data.split('\n');
           for (const line of lines) {
-            if (line.trim() && (line.includes('Pulling') || line.includes('Download') || line.includes('Pull complete') || line.includes('Status'))) {
-              log(line.trim() + '\n');
+            if (line.trim()) {
+              
+              // Count total layers from pull output
+              if (line.includes('Pulling fs layer')) {
+                totalLayers++;
+              }
+              
+              // Extract download size information
+              const sizeMatch = line.match(/(\d+(?:\.\d+)?)\s*(B|KB|MB|GB)/i);
+              if (sizeMatch && line.includes('Download')) {
+                const size = parseFloat(sizeMatch[1]);
+                const unit = sizeMatch[2].toUpperCase();
+                let bytes = size;
+                if (unit === 'KB') bytes *= 1024;
+                else if (unit === 'MB') bytes *= 1024 * 1024;
+                else if (unit === 'GB') bytes *= 1024 * 1024 * 1024;
+                downloadedBytes += bytes;
+                lastDownloadTime = Date.now();
+              }
+              
+              // Track unique progress messages to avoid spam and use in-place updates
+              if (line.includes('Pulling') || line.includes('Waiting') || line.includes('Downloading') || line.includes('Extracting')) {
+                // Only update if it's a new progress message
+                if (line !== lastProgressLine) {
+                  // Add enhanced progress info for complex images
+                  let progressInfo = line.trim();
+                  if (totalLayers > 5) {
+                    progressInfo += ` (${completedLayers.size}/${totalLayers} layers)`;
+                  }
+                  if (downloadedBytes > 10000000) { // > 10MB
+                    progressInfo += ` [${(downloadedBytes/1024/1024).toFixed(1)}MB]`;
+                  }
+                  
+                  // Use progress logging for real-time updates
+                  const progressId = `pull-${args[2] ? args[2].split(':')[0] : 'image'}`;
+                  logProgress(progressInfo, true, progressId);
+                  lastProgressLine = line;
+                }
+              } else if (line.includes('Pull complete')) {
+                // Track completed layers
+                const layerMatch = line.match(/([a-f0-9]+):/);
+                if (layerMatch) {
+                  const layerId = layerMatch[1];
+                  if (!completedLayers.has(layerId)) {
+                    completedLayers.add(layerId);
+                    const progressPercent = totalLayers > 0 ? Math.round((completedLayers.size / totalLayers) * 100) : 0;
+                    
+                    // Finalize previous progress and log completion
+                    const progressId = `pull-${args[2] ? args[2].split(':')[0] : 'image'}`;
+                    finalizeProgress(progressId);
+                    log(`✅ Layer completed: ${layerId.substring(0, 12)} (${completedLayers.size}/${totalLayers} - ${progressPercent}%)`);
+                  }
+                }
+              } else if (line.includes('Status') || line.includes('Digest') || line.includes('already exists')) {
+                // Finalize progress for status messages
+                const progressId = `pull-${args[2] ? args[2].split(':')[0] : 'image'}`;
+                finalizeProgress(progressId);
+                log(line.trim());
+              }
             }
           }
         }
       });
       
       process.then(() => {
+        // Clear timeout if it exists
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        
+        // For docker pull commands, add a clear completion message
+        if (args[0] === 'docker' && args[1] === 'pull') {
+          // Finalize any remaining progress lines
+          const progressId = `pull-${args[2] ? args[2].split(':')[0] : 'image'}`;
+          finalizeProgress(progressId);
+          log(`🎉 Docker pull completed successfully for: ${args[2]}`);
+        }
         resolve({ stdout: stdout.trim(), stderr: stderr.trim() });
       }).catch((error) => {
+        // Clear timeout if it exists
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        
+        // For docker pull commands, add clear error message
+        if (args[0] === 'docker' && args[1] === 'pull') {
+          // Finalize any remaining progress lines
+          const progressId = `pull-${args[2] ? args[2].split(':')[0] : 'image'}`;
+          finalizeProgress(progressId);
+          log(`❌ Docker pull failed for: ${args[2]} - ${error.message}`);
+        }
         reject(new Error(`Command failed: ${error.message}`));
       });
     });
@@ -1805,7 +2220,17 @@ OS: ${imageData.Os}`;
         return;
       }
       
-      log(`Found ${images.length} images to pull\n\n`);
+      log(`Found ${images.length} images to pull\n`);
+      
+      // For large image sets (>50 images), offer batching options
+      if (images.length > 50) {
+        log(`📊 LARGE IMAGE SET DETECTED (${images.length} images)\n`);
+        log('🔄 Using optimized batch processing for better reliability:\n');
+        log('   • Extended adaptive timeouts (60min max, 10min inactivity base)\n');
+        log('   • Enhanced progress tracking with layer counting\n');
+        log('   • Automatic retry on network errors\n');
+        log('   • Memory-optimized processing\n');
+      }
       
       // Initialize progress
       progressText.textContent = 'Starting image pulls...';
@@ -1813,6 +2238,8 @@ OS: ${imageData.Os}`;
       
       let successCount = 0;
       let failCount = 0;
+      let retryCount = 0;
+      const maxRetries = 2; // Retry failed pulls up to 2 times
       
       for (let i = 0; i < images.length; i++) {
         if (!isPulling) {
@@ -1836,17 +2263,89 @@ OS: ${imageData.Os}`;
         progressText.textContent = `Pulling ${image}...`;
         progressCount.textContent = `${i}/${images.length}`;
         
-        log(`🐳 [${i + 1}/${images.length}] Pulling ${image}...\n`);
-        log(`📍 Full reference: ${ref}\n`);
+        log(`🐳 [${i + 1}/${images.length}] Starting pull for: ${image}`);
+        log(`📍 Full reference: ${ref}`);
+        log(`⏳ Initiating Docker pull command...`);
         
         try {
-          await runCommand(['docker', 'pull', ref]);
-          successCount++;
-          log(`✅ [${i + 1}/${images.length}] Successfully pulled ${image}\n\n`);
+          // Clear any previous progress indicators for this image
+          progressText.textContent = `Pulling ${image}... (starting)`;
+          
+          let pullSuccess = false;
+          let attemptCount = 0;
+          let lastError = null;
+          
+          // Retry loop for network resilience with large image sets
+          while (!pullSuccess && attemptCount <= maxRetries && isPulling) {
+            attemptCount++;
+            
+            try {
+              if (attemptCount > 1) {
+                log(`🔄 Retry attempt ${attemptCount}/${maxRetries + 1} for: ${image}`);
+                retryCount++;
+                
+                // Brief pause before retry to let network settle
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                progressText.textContent = `Pulling ${image}... (retry ${attemptCount})`;
+              }
+              
+              // Execute the pull command with adaptive timeout for large image sets
+              const pullResult = await runCommand(['docker', 'pull', ref], { 
+                timeout: 3600000, // 60 minute max timeout
+                adaptiveTimeout: true // Enable smart timeout that extends on progress
+              });
+              
+              // Pull completed successfully
+              pullSuccess = true;
+              
+            } catch (error) {
+              lastError = error;
+              
+              // Check if we should retry this error
+              const errorLower = error.message.toLowerCase();
+              const isRetryable = errorLower.includes('network') || 
+                                 errorLower.includes('timeout') || 
+                                 errorLower.includes('connection') ||
+                                 errorLower.includes('temporary failure') ||
+                                 errorLower.includes('service unavailable');
+              
+              if (!isRetryable || attemptCount > maxRetries) {
+                break; // Don't retry non-network errors or after max retries
+              }
+              
+              log(`⚠️ Retryable error on attempt ${attemptCount}: ${error.message}`);
+            }
+          }
+          
+          if (pullSuccess) {
+            successCount++;
+            
+            // Update progress for successful completion
+            const completedProgress = ((i + 1) / images.length) * 100;
+            progressBar.style.width = `${completedProgress}%`;
+            progressText.textContent = `Pulled ${image} successfully`;
+            progressCount.textContent = `${i + 1}/${images.length}`;
+            
+            log(`✅ [${i + 1}/${images.length}] Successfully completed pull for: ${image}${attemptCount > 1 ? ` (after ${attemptCount} attempts)` : ''}`);
+            log(`📊 Progress: ${i + 1}/${images.length} images completed`);
+            log('─'.repeat(60)); // Visual separator
+            
+          } else {
+            // All retries failed
+            throw lastError;
+          }
+          
         } catch (error) {
           failCount++;
-          log(`❌ [${i + 1}/${images.length}] Failed to pull ${image}\n`);
-          log(`🔍 Error details: ${error.message}\n`);
+          
+          // Update progress for failed pull
+          const completedProgress = ((i + 1) / images.length) * 100;
+          progressBar.style.width = `${completedProgress}%`;
+          progressText.textContent = `Failed to pull ${image}`;
+          progressCount.textContent = `${i + 1}/${images.length}`;
+          
+          log(`❌ [${i + 1}/${images.length}] Failed to pull: ${image}`);
+          log(`🔍 Error details: ${error.message}`);
           
           // Provide specific error diagnostics based on error type
           const errorLower = error.message.toLowerCase();
@@ -1881,11 +2380,11 @@ OS: ${imageData.Os}`;
             log(`🧹 Free up disk space and try again\n`);
             log(`📊 Check: docker system df\n`);
           } else {
-            log(`❓ UNKNOWN ERROR: Unexpected issue during image pull.\n`);
-            log(`🔧 This might be a temporary registry issue or Docker daemon problem.\n`);
-            log(`💡 Try: docker system prune (to clean up) or restart Docker\n`);
+            log(`❓ UNKNOWN ERROR: Unexpected issue during image pull.`);
+            log(`🔧 This might be a temporary registry issue or Docker daemon problem.`);
+            log(`💡 Try: docker system prune (to clean up) or restart Docker`);
           }
-          log('\n');
+          log('─'.repeat(60)); // Visual separator for failed pulls too
           // Continue with next image instead of stopping
         }
       }
@@ -1893,16 +2392,30 @@ OS: ${imageData.Os}`;
       if (isPulling) {
         // Complete progress bar
         progressBar.style.width = '100%';
-        progressText.textContent = 'Pull operation completed!';
+        progressText.textContent = 'All images processed!';
         progressCount.textContent = `${images.length}/${images.length}`;
         
-        log(` Pull operation completed!`);
-        log(` Success: ${successCount} images`);
+        log('🎯 PULL OPERATION SUMMARY');
+        log('═'.repeat(60));
+        log(`✅ Successfully pulled: ${successCount} images`);
         if (failCount > 0) {
-          log(` Failed: ${failCount} images`);
+          log(`❌ Failed to pull: ${failCount} images`);
         }
-        log(` Total processed: ${successCount + failCount}/${images.length} images`);
-        $('push-btn').disabled = false;
+        if (retryCount > 0) {
+          log(`� Total retry attempts: ${retryCount}`);
+        }
+        log(`�📊 Total processed: ${successCount + failCount}/${images.length} images`);
+        if (images.length > 50) {
+          log(`🚀 Large image set processing completed with optimized batching`);
+        }
+        log(`🏁 Pull operation completed at ${new Date().toLocaleTimeString()}`);
+        log('═'.repeat(60));
+        
+        // Enable push button if we have successful pulls
+        if (successCount > 0) {
+          $('push-btn').disabled = false;
+          log(`✅ Push button enabled - ${successCount} images ready to push`);
+        }
         
         // Refresh images list and counts with final update
         setTimeout(async () => {
@@ -2323,9 +2836,18 @@ OS: ${imageData.Os}`;
       const { stdout } = await runCommand(['docker', 'ps', '--format', '{{.Names}}', '--filter', `name=${REGISTRY_CONTAINER_NAME}`]);
       const running = stdout.trim() === REGISTRY_CONTAINER_NAME;
       
-      $('registry-status').textContent = running ? 'Running' : 'Not running';
-      $('registry-dot').classList.toggle('ok', running);
-      $('registry-dot').classList.toggle('bad', !running);
+      // Safely update registry status elements
+      const registryStatus = $('registry-status');
+      const registryDot = $('registry-dot');
+      
+      if (registryStatus) {
+        registryStatus.textContent = running ? 'Running' : 'Not running';
+      }
+      
+      if (registryDot) {
+        registryDot.classList.toggle('ok', running);
+        registryDot.classList.toggle('bad', !running);
+      }
       
       // Update toggle button based on status
       const toggleBtn = $('toggle-registry-btn');
@@ -2343,8 +2865,17 @@ OS: ${imageData.Os}`;
       console.log(`Registry status: ${running ? 'Running' : 'Not running'}`);
       
     } catch (e) {
-      $('registry-status').textContent = 'Unknown';
-      $('registry-dot').classList.remove('ok','bad');
+      // Safely update error state
+      const registryStatus = $('registry-status');
+      const registryDot = $('registry-dot');
+      
+      if (registryStatus) {
+        registryStatus.textContent = 'Unknown';
+      }
+      
+      if (registryDot) {
+        registryDot.classList.remove('ok','bad');
+      }
       
       // Set button to default state on error
       const toggleBtn = $('toggle-registry-btn');
@@ -2847,19 +3378,45 @@ ${volumeSize}
         currentConfig = 'No daemon.json found';
       }
       
-      $('docker-config-status').textContent = configured ? 'Configured' : 'Not configured';
-      $('docker-config-dot').classList.toggle('ok', configured);
-      $('docker-config-dot').classList.toggle('bad', !configured);
-      $('current-docker-config').textContent = currentConfig;
+      // Safely update DOM elements if they exist
+      const dockerConfigStatus = $('docker-config-status');
+      const dockerConfigDot = $('docker-config-dot');
+      const currentDockerConfig = $('current-docker-config');
+      const applyDockerConfigBtn = $('apply-docker-config-btn');
       
-      if (configured) {
-        $('apply-docker-config-btn').textContent = 'Reconfigure Docker';
-      } else {
-        $('apply-docker-config-btn').textContent = 'Apply Docker Config';
+      if (dockerConfigStatus) {
+        dockerConfigStatus.textContent = configured ? 'Configured' : 'Not configured';
+      }
+      
+      if (dockerConfigDot) {
+        dockerConfigDot.classList.toggle('ok', configured);
+        dockerConfigDot.classList.toggle('bad', !configured);
+      }
+      
+      if (currentDockerConfig) {
+        currentDockerConfig.textContent = currentConfig;
+      }
+      
+      if (applyDockerConfigBtn) {
+        if (configured) {
+          applyDockerConfigBtn.textContent = 'Reconfigure Docker';
+        } else {
+          applyDockerConfigBtn.textContent = 'Apply Docker Config';
+        }
       }
     } catch (e) {
-      $('docker-config-status').textContent = 'Unknown';
-      $('docker-config-dot').classList.remove('ok','bad');
+      // Safely update error state if elements exist
+      const dockerConfigStatus = $('docker-config-status');
+      const dockerConfigDot = $('docker-config-dot');
+      
+      if (dockerConfigStatus) {
+        dockerConfigStatus.textContent = 'Unknown';
+      }
+      
+      if (dockerConfigDot) {
+        dockerConfigDot.classList.remove('ok','bad');
+      }
+      
       log(`Docker config check error: ${e.message}`);
     }
   }
@@ -2882,25 +3439,52 @@ ${volumeSize}
       const { stdout: status } = await runCommand(['systemctl', 'is-active', 'docker']);
       const isRunning = status.trim() === 'active';
       
-      $('docker-status').textContent = isRunning ? 'Running' : 'Stopped';
-      $('docker-status-dot').classList.toggle('ok', isRunning);
-      $('docker-status-dot').classList.toggle('bad', !isRunning);
+      // Safely update Docker status elements
+      const dockerStatus = $('docker-status');
+      const dockerStatusDot = $('docker-status-dot');
+      const dockerVersion = $('docker-version');
+      
+      if (dockerStatus) {
+        dockerStatus.textContent = isRunning ? 'Running' : 'Stopped';
+      }
+      
+      if (dockerStatusDot) {
+        dockerStatusDot.classList.toggle('ok', isRunning);
+        dockerStatusDot.classList.toggle('bad', !isRunning);
+      }
       
       // Get Docker version
       try {
         const { stdout: version } = await runCommand(['docker', '--version']);
-        if (version) {
-          $('docker-version').textContent = version.replace('Docker version ', '').split(',')[0];
-        } else {
-          $('docker-version').textContent = 'Unknown';
+        if (dockerVersion) {
+          if (version) {
+            dockerVersion.textContent = version.replace('Docker version ', '').split(',')[0];
+          } else {
+            dockerVersion.textContent = 'Unknown';
+          }
         }
       } catch {
-        $('docker-version').textContent = 'Unknown';
+        if (dockerVersion) {
+          dockerVersion.textContent = 'Unknown';
+        }
       }
     } catch (e) {
-      $('docker-status').textContent = 'Unknown';
-      $('docker-status-dot').classList.remove('ok', 'bad');
-      $('docker-version').textContent = 'Error';
+      // Safely update error state
+      const dockerStatus = $('docker-status');
+      const dockerStatusDot = $('docker-status-dot');
+      const dockerVersion = $('docker-version');
+      
+      if (dockerStatus) {
+        dockerStatus.textContent = 'Unknown';
+      }
+      
+      if (dockerStatusDot) {
+        dockerStatusDot.classList.remove('ok', 'bad');
+      }
+      
+      if (dockerVersion) {
+        dockerVersion.textContent = 'Error';
+      }
     }
   }
 
@@ -2909,12 +3493,30 @@ ${volumeSize}
       const { stdout } = await runCommand(['docker', 'ps', '--format', '{{.Names}}', '--filter', `name=${REGISTRY_CONTAINER_NAME}`]);
       const running = stdout.trim() === REGISTRY_CONTAINER_NAME;
       
-      $('overview-registry-status').textContent = running ? 'Running' : 'Not running';
-      $('overview-registry-dot').classList.toggle('ok', running);
-      $('overview-registry-dot').classList.toggle('bad', !running);
+      // Safely update registry status elements
+      const overviewRegistryStatus = $('overview-registry-status');
+      const overviewRegistryDot = $('overview-registry-dot');
+      
+      if (overviewRegistryStatus) {
+        overviewRegistryStatus.textContent = running ? 'Running' : 'Not running';
+      }
+      
+      if (overviewRegistryDot) {
+        overviewRegistryDot.classList.toggle('ok', running);
+        overviewRegistryDot.classList.toggle('bad', !running);
+      }
     } catch (e) {
-      $('overview-registry-status').textContent = 'Unknown';
-      $('overview-registry-dot').classList.remove('ok', 'bad');
+      // Safely update error state
+      const overviewRegistryStatus = $('overview-registry-status');
+      const overviewRegistryDot = $('overview-registry-dot');
+      
+      if (overviewRegistryStatus) {
+        overviewRegistryStatus.textContent = 'Unknown';
+      }
+      
+      if (overviewRegistryDot) {
+        overviewRegistryDot.classList.remove('ok', 'bad');
+      }
     }
   }
 

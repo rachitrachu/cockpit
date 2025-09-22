@@ -1324,3 +1324,40 @@ pre.yaml-terminal {
   align-items: center;
   gap: 4px;
 }
+
+/* Progress line styling for in-place updates */
+.progress-line {
+  background-color: #f8f9fa;
+  border-left: 3px solid #007bff;
+  padding: 4px 8px;
+  margin: 2px 0;
+  font-family: monospace;
+  color: #495057;
+  border-radius: 0 4px 4px 0;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.progress-line:last-child {
+  margin-bottom: 8px;
+}
+
+@keyframes pulse {
+  0% { border-left-color: #007bff; }
+  50% { border-left-color: #28a745; }
+  100% { border-left-color: #007bff; }
+}
+
+/* Dark theme support for progress lines */
+@media (prefers-color-scheme: dark) {
+  .progress-line {
+    background-color: #2d3748;
+    color: #e2e8f0;
+    border-left-color: #4299e1;
+  }
+  
+  @keyframes pulse {
+    0% { border-left-color: #4299e1; }
+    50% { border-left-color: #68d391; }
+    100% { border-left-color: #4299e1; }
+  }
+}
