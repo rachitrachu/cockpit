@@ -240,7 +240,8 @@
         <div class="form-group">
           <label class="col-sm-2 control-label" for="ssh-remote-user">Remote username (on targets)</label>
           <div class="col-sm-10">
-            <input id="ssh-remote-user" class="form-control" type="text" value="root" placeholder="e.g. root" />
+            <input id="ssh-remote-user" class="form-control" type="text" value="xloud" placeholder="e.g. xloud, ubuntu, root" />
+            <div class="help-block">Username will be automatically converted to lowercase for Linux compatibility</div>
           </div>
         </div>
         <div class="form-group">
@@ -249,13 +250,44 @@
             <input id="ssh-remote-pass" class="form-control" type="password" placeholder="password for remote user" />
           </div>
         </div>
+        <div class="form-group">
+          <label class="col-sm-2 control-label" for="ssh-registry-ip">Registry IP (optional)</label>
+          <div class="col-sm-10">
+            <input id="ssh-registry-ip" class="form-control" type="text" placeholder="Auto-detect from local machine" />
+            <div class="help-block">Leave empty to auto-detect this machine's IP, or specify custom registry IP</div>
+          </div>
+        </div>
       </form>
 
       <div class="form-actions">
         <button id="ssh-gen" class="btn btn-default"><i class="fas fa-key"></i> Generate / Use existing key</button>
-        <button id="ssh-dist" class="btn btn-brand" disabled><i class="fas fa-share"></i> Distribute to selected</button>
-        <button id="ssh-disable-pass" class="btn btn-outline-danger" disabled><i class="fas fa-lock"></i> Disable password SSH</button>
+        <button id="ssh-dist" class="btn btn-brand" disabled><i class="fas fa-share"></i> Setup Complete SSH Access (Keys + Root)</button>
         <span id="ssh-status" class="status-text"></span>
+      </div>
+
+      <div class="form-actions">
+        <div class="control-label">Additional Operations:</div>
+        <button id="ssh-disable-password-auth" class="btn btn-secondary" disabled><i class="fas fa-lock"></i> Disable Password Authentication</button>
+        <button id="ssh-configure-registry" class="btn btn-outline-secondary" disabled><i class="fas fa-network-wired"></i> Configure Registry Aliases</button>
+        <span id="ssh-additional-status" class="status-text"></span>
+      </div>
+
+      <div class="alert alert-info">
+        <i class="fas fa-info-circle"></i> <strong>One-Click Root SSH Setup:</strong>
+        <ol class="workflow-list">
+          <li>Fill in remote username and password (any user with password access)</li>
+          <li>Select hosts and click "Setup Complete SSH Access" - This single button will:
+            <ul>
+              <li>Install SSH keys for user and root</li>
+              <li>Enable root SSH login (PermitRootLogin yes)</li>
+              <li>Disable password authentication (PasswordAuthentication no)</li>
+              <li>Setup passwordless sudo</li>
+            </ul>
+          </li>
+          <li>Done! You can now SSH directly as root: <code>ssh root@targethost</code></li>
+          <li>Optional: Use the additional buttons below to configure registry aliases or fine-tune settings</li>
+        </ol>
+        <p class="workflow-note"><small><strong>Streamlined workflow:</strong> Focus on core SSH setup first, then use separate buttons for registry and other configurations as needed.</small></p>
       </div>
 
       <div class="form-actions">

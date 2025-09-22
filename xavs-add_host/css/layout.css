@@ -140,6 +140,15 @@
 .mt-4 { margin-top: 16px; }
 .flex-1 { flex: 1; }
 
+/* Workflow list styles to replace inline styles */
+.workflow-list {
+  margin: 8px 0 0 20px;
+}
+
+.workflow-note {
+  margin: 8px 0 0 0;
+}
+
 /* Specific override for preview section headings */
 section.xd-card h3,
 .xd-card > h3 {

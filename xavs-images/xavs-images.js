@@ -2099,16 +2099,37 @@ OS: ${imageData.Os}`;
           // Already retagged, use as-is
           dest = imageTag;
         } else {
-          // Need to retag for local registry
-          dest = `${LOCAL_REG_HOST}/${repository}:${tag}`;
+          // Need to retag for local registry - remove registry hostname but keep namespace
+          let repoPath = repository;
+          
+          // Remove registry hostname (like 'quay.io') but preserve namespace and image name
+          if (repository.includes('/')) {
+            const parts = repository.split('/');
+            if (parts.length > 1) {
+              // Remove the first part (registry hostname) and keep the rest
+              repoPath = parts.slice(1).join('/');
+            }
+          }
+          
+          dest = `${LOCAL_REG_HOST}/${repoPath}:${tag}`;
         }
         
         // Update progress in both button and progress bar
         const progressPercent = Math.round((completedCount / availableImages.length) * 100);
         pushBtn.innerHTML = `<i class="fa fa-spinner fa-spin"></i> Pushing ${completedCount + 1}/${availableImages.length}`;
         
+        // Extract clean path for display (remove registry hostname but keep namespace)
+        let displayName = repository;
+        if (repository.includes('/')) {
+          const parts = repository.split('/');
+          if (parts.length > 1) {
+            // Remove the first part (registry hostname) and keep the rest
+            displayName = parts.slice(1).join('/');
+          }
+        }
+        
         if (progressContainer) {
-          progressText.textContent = `Processing: ${repository}:${tag}`;
+          progressText.textContent = `Processing: ${displayName}:${tag}`;
           progressCount.textContent = `${completedCount}/${availableImages.length}`;
           progressBar.style.width = `${progressPercent}%`;
         }
@@ -2132,7 +2153,7 @@ OS: ${imageData.Os}`;
         try {
           // Update progress for push phase
           if (progressContainer) {
-            progressText.textContent = `Pushing: ${repository}:${tag}`;
+            progressText.textContent = `Pushing: ${displayName}:${tag}`;
           }
           
           log(`� [${completedCount + 1}/${availableImages.length}] Pushing ${dest}...\n`);

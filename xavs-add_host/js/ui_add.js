@@ -103,7 +103,7 @@ function refreshSelect() {
   ph.value = ""; ph.disabled = true; ph.selected = true; ph.textContent = "Select role…";
   addRoleSelect.appendChild(ph);
 
-  const roles = ["control","network","compute","storage","monitoring","deployment"];
+  const roles = ROLES;
   roles.forEach(r => {
     // Hide 'deployment' if another host already has it and it's not selected here
     if (r === "deployment" && !addRoles.includes("deployment") && anyHasDeployment()) return;
@@ -153,7 +153,7 @@ addForm.addEventListener("submit", (e) => {
   if (!ip)       { setStatus(addStatus,"IP is required","err"); return; }
   if (!isValidIPv4(ip)) { setStatus(addStatus,"Invalid IP format","err"); return; }
 
-  const newHost = { hostname, ip, roles:[...addRoles] };
+  const newHost = { hostname, ip, roles:[...new Set(addRoles)] }; // Deduplicate roles
   const list = getHosts();
 
   if (list.some(h => h.hostname === hostname || h.ip === ip)) {

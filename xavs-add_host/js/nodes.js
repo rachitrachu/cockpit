@@ -1,7 +1,7 @@
 import { ROLES } from "./constants.js";
 
 /**
- * Patch the /root/xdeploy/nodes file.
+ * Patch the /etc/xavs/nodes file.
  *
  * Structure:
  * 1. Top header (2 fixed comment lines)
@@ -29,9 +29,14 @@ export function patchNodesFile(existingText, currentHosts) {
   const roleLines = new Map();
   for (const role of ROLES) {
     const hostsForRole = currentHosts
-      .filter(h => (h.roles || []).includes(role))
+      .filter(h => {
+        // Deduplicate roles for each host and check if this role exists
+        const uniqueRoles = [...new Set(h.roles || [])];
+        return uniqueRoles.includes(role);
+      })
       .map(h => (h.hostname || "").trim())
-      .filter(Boolean);
+      .filter(Boolean)
+      .filter((hostname, index, arr) => arr.indexOf(hostname) === index); // Remove duplicate hostnames
     roleLines.set(role, hostsForRole);
   }
 

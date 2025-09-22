@@ -201,7 +201,7 @@ if (refreshBtn) {
 const etcToggle = document.getElementById("etc-hosts-toggle");
 const etcStatus = document.getElementById("etc-hosts-status");
 
-// Debounced auto-persist to /root/xdeploy/hosts.json and /root/xdeploy/nodes
+// Debounced auto-persist to /etc/xavs/hosts.json and /etc/xavs/nodes
 let persistTimer = null;
 function persistDebounced(reason = "Auto-saved.") {
   clearTimeout(persistTimer);
