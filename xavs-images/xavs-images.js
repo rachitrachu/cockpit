@@ -503,8 +503,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const isSelectable = li.dataset.selectable === 'true';
       
       if (fileBrowserMode === 'select-archive') {
-        // Only allow .tar.gz files to be selected
-        if (!isDir && isSelectable && path.endsWith('.tar.gz')) {
+        // Allow both .tar and .tar.gz files to be selected
+        if (!isDir && isSelectable && (path.endsWith('.tar.gz') || path.endsWith('.tar'))) {
           selectedArchivePath = path;
           selectedArchivePathSpan.innerHTML = formatPathWithIcon(path, true);
           serverFileModal.style.display = 'none';
@@ -516,8 +516,8 @@ document.addEventListener('DOMContentLoaded', () => {
           copyArchiveBtn.disabled = true;
         }
       } else if (fileBrowserMode === 'browse-extract') {
-        // Handle browse extract file selection
-        if (!isDir && isSelectable && path.endsWith('.tar.gz')) {
+        // Handle browse extract file selection - support both .tar and .tar.gz
+        if (!isDir && isSelectable && (path.endsWith('.tar.gz') || path.endsWith('.tar'))) {
           selectedExtractFilePath = path;
           browsedExtractFilePathSpan.innerHTML = formatPathWithIcon(path, true);
           serverFileModal.style.display = 'none';
