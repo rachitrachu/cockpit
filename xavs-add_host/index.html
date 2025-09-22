@@ -32,7 +32,7 @@
         <li><a class="nav-link" data-target="panel-ssh"><i class="fas fa-key"></i> SSH Access</a></li>
         <li><a class="nav-link" data-target="panel-logs"><i class="fas fa-terminal"></i> Logs</a></li>
       </ul>
-      <button class="btn btn-brand btn-tab-right" id="btn-refresh" type="button"><i class="fas fa-sync"></i> Refresh All</button>
+      <button class="btn btn-brand btn-tab-right" id="btn-refresh" type="button" title="Refresh all data and verify SSH status on configured hosts"><i class="fas fa-sync"></i> Refresh All</button>
     </div>
 
     <div class="main-content">
@@ -267,6 +267,7 @@
 
       <div class="form-actions">
         <div class="control-label">Additional Operations:</div>
+        <button id="ssh-verify-all" class="btn btn-outline-brand" title="Re-verify SSH status for all hosts that have been configured"><i class="fas fa-check-circle"></i> Verify All SSH Status</button>
         <button id="ssh-disable-password-auth" class="btn btn-secondary" disabled><i class="fas fa-lock"></i> Disable Password Authentication</button>
         <button id="ssh-configure-registry" class="btn btn-outline-secondary" disabled><i class="fas fa-network-wired"></i> Configure Registry Aliases</button>
         <span id="ssh-additional-status" class="status-text"></span>

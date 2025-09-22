@@ -25,6 +25,7 @@ const SSH_OPTS = [
   "-o", "PasswordAuthentication=no",        // Use keys only (when testing)
   "-o", "StrictHostKeyChecking=no",         // Auto-accept host keys
   "-o", "UserKnownHostsFile=/dev/null",     // Don't save host keys
+  "-o", "LogLevel=ERROR",                   // Reduce SSH verbosity
   "-o", "ConnectTimeout=6",                 // Quick connection timeout
   "-o", "ConnectionAttempts=1",             // Single attempt
   "-o", "ServerAliveInterval=5",            // Keep connection alive
@@ -378,8 +379,210 @@ async function distributeOne(ip, remoteUser, remotePass, pubPath, localUser) {
 // ===== SSH Key Verification =====
 // Test that SSH key-based authentication works for both user and root access
 
+// Comprehensive verification of SSH setup - tests all components independently
+// Returns detailed status object with individual verification results
+async function verifySSHSetupComprehensive(ip, remoteUser, privPath, localUser, registryIP = null) {
+  const results = {
+    userKeyAuth: false,
+    rootKeyAuth: false,
+    permitRootLogin: false,
+    passwordAuthDisabled: false,
+    sudoConfigured: false,
+    registryAliases: false,
+    overall: false,
+    details: {},
+    errors: []
+  };
+
+  try {
+    // Clean any conflicting host keys first
+    await cleanKnownHosts(ip, localUser);
+    
+    // Test 0: Basic connectivity test
+    console.log(`[VERIFY] Testing basic connectivity to ${ip}...`);
+    try {
+      const pingResult = await cockpit.spawn(["ping", "-c", "1", "-W", "3", ip], { superuser: "try" });
+      console.log(`[VERIFY] Host ${ip} is reachable`);
+    } catch (e) {
+      results.errors.push(`Host ${ip} is not reachable (ping failed)`);
+      console.log(`[VERIFY] Host ${ip} ping failed: ${e.message || e}`);
+      // Continue anyway - ping might be blocked but SSH could work
+    }
+    
+    // Test 1: User SSH key authentication
+    console.log(`[VERIFY] Testing user SSH key authentication for ${remoteUser}@${ip}...`);
+    try {
+      const userArgs = ["ssh", "-i", privPath, ...SSH_OPTS, `${remoteUser}@${ip}`, "echo USER_SSH_OK", "2>/dev/null || echo USER_SSH_FAIL"];
+      const userCmd = userArgs.map(a => (a.includes(" ") ? `'${a.replace(/'/g,"'\\''")}'` : a)).join(" ");
+      const userOut = await cockpit.spawn(["bash","-lc", userCmd], { superuser: "try" });
+      results.userKeyAuth = String(userOut).includes("USER_SSH_OK");
+      results.details.userKeyAuth = String(userOut).trim();
+      if (!results.userKeyAuth) results.errors.push(`User SSH key authentication failed`);
+    } catch (e) {
+      results.errors.push(`User SSH key test error: ${e.message || e}`);
+    }
+
+    // Test 2: Root SSH key authentication
+    console.log(`[VERIFY] Testing root SSH key authentication for root@${ip}...`);
+    try {
+      const rootArgs = ["ssh", "-i", privPath, ...SSH_OPTS, `root@${ip}`, "echo ROOT_SSH_OK", "2>/dev/null || echo ROOT_SSH_FAIL"];
+      const rootCmd = rootArgs.map(a => (a.includes(" ") ? `'${a.replace(/'/g,"'\\''")}'` : a)).join(" ");
+      const rootOut = await cockpit.spawn(["bash","-lc", rootCmd], { superuser: "try" });
+      results.rootKeyAuth = String(rootOut).includes("ROOT_SSH_OK");
+      results.details.rootKeyAuth = String(rootOut).trim();
+      if (!results.rootKeyAuth) results.errors.push(`Root SSH key authentication failed`);
+    } catch (e) {
+      results.errors.push(`Root SSH key test error: ${e.message || e}`);
+    }
+
+    // Test 3: SSH configuration verification (only if we have SSH access)
+    if (results.userKeyAuth || results.rootKeyAuth) {
+      console.log(`[VERIFY] Checking SSH configuration on ${ip}...`);
+      try {
+        const sshUser = results.rootKeyAuth ? "root" : remoteUser;
+        const sshConfigScript = `
+          CFG="/etc/ssh/sshd_config"
+          if [ ! -f "$CFG" ]; then echo "CONFIG_NOT_FOUND"; exit 0; fi
+          
+          # Check PermitRootLogin
+          permit_root=$(grep -E "^[[:space:]]*PermitRootLogin[[:space:]]" "$CFG" | tail -1 | awk '{print $2}')
+          if [ "$permit_root" = "yes" ]; then echo "PERMIT_ROOT_YES"; else echo "PERMIT_ROOT_NO:$permit_root"; fi
+          
+          # Check PasswordAuthentication
+          pass_auth=$(grep -E "^[[:space:]]*PasswordAuthentication[[:space:]]" "$CFG" | tail -1 | awk '{print $2}')
+          if [ "$pass_auth" = "no" ]; then echo "PASSWORD_AUTH_NO"; else echo "PASSWORD_AUTH_YES:$pass_auth"; fi
+        `;
+        
+        const configArgs = ["ssh", "-i", privPath, ...SSH_OPTS, `${sshUser}@${ip}`, sshConfigScript];
+        const configCmd = configArgs.map(a => (a.includes(" ") ? `'${a.replace(/'/g,"'\\''")}'` : a)).join(" ");
+        const configOut = await cockpit.spawn(["bash","-lc", configCmd], { superuser: "try" });
+        const configResult = String(configOut);
+        
+        results.permitRootLogin = configResult.includes("PERMIT_ROOT_YES");
+        results.passwordAuthDisabled = configResult.includes("PASSWORD_AUTH_NO");
+        results.details.sshConfig = configResult.trim();
+        
+        if (!results.permitRootLogin) results.errors.push(`PermitRootLogin not set to 'yes'`);
+        if (!results.passwordAuthDisabled) results.errors.push(`PasswordAuthentication not set to 'no'`);
+      } catch (e) {
+        results.errors.push(`SSH config verification error: ${e.message || e}`);
+      }
+    }
+
+    // Test 4: Sudo configuration (only if user access works and user is not root)
+    if (results.userKeyAuth && remoteUser !== "root") {
+      console.log(`[VERIFY] Checking sudo configuration for ${remoteUser}@${ip}...`);
+      try {
+        const sudoScript = `
+          if ! command -v sudo >/dev/null 2>&1; then echo "SUDO_NOT_INSTALLED"; exit 0; fi
+          if sudo -n true 2>/dev/null; then echo "SUDO_NOPASSWD_OK"; else echo "SUDO_NEEDS_PASSWORD"; fi
+        `;
+        
+        const sudoArgs = ["ssh", "-i", privPath, ...SSH_OPTS, `${remoteUser}@${ip}`, sudoScript];
+        const sudoCmd = sudoArgs.map(a => (a.includes(" ") ? `'${a.replace(/'/g,"'\\''")}'` : a)).join(" ");
+        const sudoOut = await cockpit.spawn(["bash","-lc", sudoCmd], { superuser: "try" });
+        results.sudoConfigured = String(sudoOut).includes("SUDO_NOPASSWD_OK");
+        results.details.sudo = String(sudoOut).trim();
+        
+        if (!results.sudoConfigured) results.errors.push(`Sudo not configured for passwordless access`);
+      } catch (e) {
+        results.errors.push(`Sudo verification error: ${e.message || e}`);
+      }
+    } else if (remoteUser === "root") {
+      results.sudoConfigured = true; // Not needed for root
+      results.details.sudo = "Not needed (root user)";
+    }
+
+    // Test 5: Registry aliases in /etc/hosts (only if registry IP provided and SSH access works)
+    if (registryIP && (results.userKeyAuth || results.rootKeyAuth)) {
+      console.log(`[VERIFY] Checking registry aliases in /etc/hosts on ${ip}...`);
+      try {
+        const sshUser = results.rootKeyAuth ? "root" : remoteUser;
+        const hostsScript = `
+          CFG="/etc/hosts"
+          if [ ! -f "$CFG" ]; then echo "HOSTS_NOT_FOUND"; exit 0; fi
+          
+          # Check for docker-registry alias
+          if grep -q "^[[:space:]]*${registryIP}[[:space:]]\\+docker-registry" "$CFG"; then 
+            echo "REGISTRY_ALIAS_OK"
+          else 
+            echo "REGISTRY_ALIAS_MISSING"
+          fi
+          
+          # Optional: Show current registry-related entries
+          grep "${registryIP}" "$CFG" | head -5 | while read line; do echo "HOSTS_ENTRY:$line"; done
+        `;
+        
+        const hostsArgs = ["ssh", "-i", privPath, ...SSH_OPTS, `${sshUser}@${ip}`, hostsScript];
+        const hostsCmd = hostsArgs.map(a => (a.includes(" ") ? `'${a.replace(/'/g,"'\\''")}'` : a)).join(" ");
+        const hostsOut = await cockpit.spawn(["bash","-lc", hostsCmd], { superuser: "try" });
+        results.registryAliases = String(hostsOut).includes("REGISTRY_ALIAS_OK");
+        results.details.hosts = String(hostsOut).trim();
+        
+        if (!results.registryAliases) results.errors.push(`Registry aliases not found in /etc/hosts`);
+      } catch (e) {
+        results.errors.push(`Registry aliases verification error: ${e.message || e}`);
+      }
+    } else if (!registryIP) {
+      results.registryAliases = true; // Not needed if no registry IP
+      results.details.hosts = "Not checked (no registry IP provided)";
+    }
+
+    // Overall assessment
+    const criticalChecks = [results.userKeyAuth || results.rootKeyAuth]; // At least one SSH method must work
+    const preferredChecks = [results.rootKeyAuth, results.permitRootLogin, results.passwordAuthDisabled];
+    const optionalChecks = [results.sudoConfigured, results.registryAliases];
+    
+    results.overall = criticalChecks.every(c => c) && preferredChecks.every(c => c);
+    
+    console.log(`[VERIFY] Comprehensive verification completed for ${ip}:`, {
+      userKeyAuth: results.userKeyAuth,
+      rootKeyAuth: results.rootKeyAuth,
+      permitRootLogin: results.permitRootLogin,
+      passwordAuthDisabled: results.passwordAuthDisabled,
+      sudoConfigured: results.sudoConfigured,
+      registryAliases: results.registryAliases,
+      overall: results.overall,
+      errors: results.errors
+    });
+    
+  } catch (e) {
+    results.errors.push(`Verification system error: ${e.message || e}`);
+    console.error(`[VERIFY] System error during verification of ${ip}:`, e);
+  }
+
+  return results;
+}
+
+// Retry verification with exponential backoff for services that may need time to restart
+async function verifyWithRetry(ip, remoteUser, privPath, localUser, registryIP = null, maxRetries = 3) {
+  let lastResult = null;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    console.log(`[RETRY] Verification attempt ${attempt}/${maxRetries} for ${ip}`);
+    
+    const result = await verifySSHSetupComprehensive(ip, remoteUser, privPath, localUser, registryIP);
+    lastResult = result;
+    
+    if (result.overall) {
+      console.log(`[RETRY] Verification successful on attempt ${attempt} for ${ip}`);
+      return result;
+    }
+    
+    if (attempt < maxRetries) {
+      const delay = Math.min(2000 * Math.pow(1.5, attempt - 1), 8000); // 2s, 3s, 4.5s, max 8s
+      console.log(`[RETRY] Verification failed, waiting ${delay}ms before retry ${attempt + 1}...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  console.log(`[RETRY] All ${maxRetries} verification attempts failed for ${ip}`);
+  return lastResult;
+}
+
 // Verify that SSH key authentication works - tests both user and root access
 // Returns true if at least user access works (root access is preferred but optional)
+// This is the legacy simple verification function - use verifySSHSetupComprehensive for detailed checks
 async function verifyKeyOne(ip, remoteUser, privPath, localUser) {
   // Clean any conflicting host keys first to avoid SSH warnings
   await cleanKnownHosts(ip, localUser);
@@ -763,6 +966,7 @@ export function createSSHUI({ getHosts }) {
     // Action buttons
     genBtn:      document.getElementById("ssh-gen"),           // Generate/verify local keys
     distBtn:     document.getElementById("ssh-dist"),          // Distribute keys to selected hosts
+    verifyAllBtn: document.getElementById("ssh-verify-all"),     // Verify all SSH status button
     disablePasswordAuthBtn: document.getElementById("ssh-disable-password-auth"), // New: Disable password authentication
     configureRegistryBtn: document.getElementById("ssh-configure-registry"),      // New: Configure registry aliases
     
@@ -1146,26 +1350,48 @@ export function createSSHUI({ getHosts }) {
       setRowMsg(t.hostname, "enabling root SSH access…", ""); renderTable();
       const rootSSHEnabled = await disablePasswordSsh(t.ip, remoteUser, kp.private, localUser);
       if (rootSSHEnabled) {
-        markPwd(t.hostname, true);
-        console.log(`✓ Root SSH access enabled on ${t.hostname}`);
+        console.log(`✓ Root SSH configuration applied on ${t.hostname}, running comprehensive verification...`);
         
-        // Final verification: Test actual root SSH connection
-        setRowMsg(t.hostname, "verifying root SSH access…", ""); renderTable();
-        const rootVerify = await verifyKeyOne(t.ip, remoteUser, kp.private, localUser);
-        if (rootVerify) {
-          // Additional specific test for root access
-          const rootSpecificTest = await cockpit.spawn(["bash","-lc", `ssh -i '${kp.private}' ${SSH_OPTS.map(opt => `'${opt}'`).join(' ')} 'root@${t.ip}' 'echo ROOT_SPECIFIC_OK' 2>/dev/null || echo ROOT_SPECIFIC_FAIL`], { superuser: "try" }).catch(()=> "ROOT_SPECIFIC_FAIL");
-          
-          if (String(rootSpecificTest).includes("ROOT_SPECIFIC_OK")) {
-            console.log(`✓ Root SSH verification successful for ${t.hostname} - You can now: ssh root@${t.ip}`);
-            setRowMsg(t.hostname, `✓ Root SSH ready! Try: ssh root@${t.ip}`, "ok");
-          } else {
-            console.log(`✓ User SSH verified but root access needs manual check for ${t.hostname}`);
-            setRowMsg(t.hostname, `✓ User SSH ready. Root access: ssh -i ${kp.private} root@${t.ip}`, "ok");
-          }
+        // COMPREHENSIVE VERIFICATION WITH RETRY
+        setRowMsg(t.hostname, "running comprehensive verification (with retry)…", ""); renderTable();
+        
+        const registryIP = el.registryIP?.value?.trim() || await getLocalPrimaryIPv4().catch(() => null);
+        const verificationResult = await verifyWithRetry(t.ip, remoteUser, kp.private, localUser, registryIP, 3);
+        
+        // Update badges based on ACTUAL verification results
+        markKey(t.hostname, verificationResult.userKeyAuth || verificationResult.rootKeyAuth);
+        markSudo(t.hostname, verificationResult.sudoConfigured);
+        markPwd(t.hostname, verificationResult.permitRootLogin && verificationResult.passwordAuthDisabled);
+        markReg(t.hostname, verificationResult.registryAliases);
+        
+        if (verificationResult.overall) {
+          console.log(`✓ Comprehensive verification PASSED for ${t.hostname} - All components verified!`);
+          setRowMsg(t.hostname, `✓ Verified: SSH keys + root access + config all working! Try: ssh root@${t.ip}`, "ok");
+          done++;
         } else {
-          console.warn(`⚠️ Root SSH verification failed for ${t.hostname}. Key location: ${kp.private}`);
-          setRowMsg(t.hostname, `⚠️ Setup complete but root SSH verification failed. Try: ssh -i ${kp.private} root@${t.ip}`, "err");
+          console.warn(`⚠️ Comprehensive verification FAILED for ${t.hostname}. Issues found:`, verificationResult.errors);
+          
+          // Generate detailed error report
+          const errorReport = generateDetailedErrorReport(t.hostname, verificationResult);
+          console.log(`[ERROR REPORT] ${errorReport.summary}`);
+          console.log("[ERROR DETAILS]", errorReport.errors);
+          console.log("[SUGGESTIONS]", errorReport.suggestions);
+          console.log("[VERIFICATION DETAILS]", errorReport.details);
+          
+          const errorSummary = verificationResult.errors.slice(0, 2).join('; '); // Show first 2 errors
+          const moreErrors = verificationResult.errors.length > 2 ? ` (+${verificationResult.errors.length - 2} more)` : '';
+          setRowMsg(t.hostname, `⚠️ Verification failed: ${errorSummary}${moreErrors}`, "err");
+          
+          // Log detailed verification results for debugging
+          console.log(`[DEBUG] Detailed verification results for ${t.hostname}:`, {
+            userKeyAuth: verificationResult.userKeyAuth,
+            rootKeyAuth: verificationResult.rootKeyAuth,
+            permitRootLogin: verificationResult.permitRootLogin,
+            passwordAuthDisabled: verificationResult.passwordAuthDisabled,
+            sudoConfigured: verificationResult.sudoConfigured,
+            registryAliases: verificationResult.registryAliases,
+            details: verificationResult.details
+          });
         }
       } else {
         console.warn(`⚠️ Failed to enable root SSH access on ${t.hostname}`);
@@ -1173,17 +1399,25 @@ export function createSSHUI({ getHosts }) {
         continue;
       }
       
-      // Mark as complete - registry configuration now handled by separate button
-      setRowMsg(t.hostname, `✓ SSH keys + root access configured`, "ok");
-      done++;
       renderTable();
     }
 
     setStatus(el.status,
-      skipped ? `Done ${done}, ${skipped} host(s) need a password to install keys.` : 
-      `Root SSH configured! Try: ssh root@${tList[0]?.ip || 'TARGET_IP'} (Key: ${kp?.private || 'unknown'})`,
-      skipped ? "err" : "ok"
+      skipped ? `Verified ${done}, ${skipped} host(s) need a password to install keys.` : 
+      done > 0 ? `Verified ${done} host(s) with comprehensive checks! Try: ssh root@${tList[0]?.ip || 'TARGET_IP'}` :
+      `No hosts processed successfully. Check logs for details.`,
+      skipped > 0 || done === 0 ? "err" : "ok"
     );
+  });
+
+  // Verify All: Comprehensive verification of all hosts with SSH status
+  el.verifyAllBtn?.addEventListener("click", async () => {
+    try {
+      await refreshWithVerification();
+    } catch (e) {
+      console.error("Verify all failed:", e);
+      setStatus(el.additionalStatus, "Verification failed - check console for details", "err");
+    }
   });
 
   // New: Disable Password Authentication button
@@ -1210,9 +1444,18 @@ export function createSSHUI({ getHosts }) {
       setRowMsg(t.hostname, "disabling password authentication…", ""); renderTable();
       const ok = await disablePasswordSsh(t.ip, remoteUser, kp.private, localUser);
       if (ok) {
-        markPwd(t.hostname, true);
-        setRowMsg(t.hostname, "password authentication disabled", "ok");
-        success++;
+        // Verify the configuration was actually applied
+        setRowMsg(t.hostname, "verifying password auth disabled…", ""); renderTable();
+        const verification = await verifySSHSetupComprehensive(t.ip, remoteUser, kp.private, localUser);
+        
+        if (verification.passwordAuthDisabled && verification.permitRootLogin) {
+          markPwd(t.hostname, true);
+          setRowMsg(t.hostname, "password authentication disabled & verified", "ok");
+          success++;
+        } else {
+          setRowMsg(t.hostname, "verification failed: password auth may still be enabled", "err");
+          failed++;
+        }
       } else {
         setRowMsg(t.hostname, "password auth disable failed", "err");
         failed++;
@@ -1256,9 +1499,18 @@ export function createSSHUI({ getHosts }) {
       setRowMsg(t.hostname, "configuring registry aliases…", ""); renderTable();
       const reg = await ensureRemoteRegistryAliases(t.ip, remoteUser, kp.private, registryIP, registryHost, localUser);
       if (reg.ok) {
-        markReg(t.hostname, true);
-        setRowMsg(t.hostname, "registry aliases configured", "ok");
-        success++;
+        // Verify the configuration was actually applied
+        setRowMsg(t.hostname, "verifying registry aliases…", ""); renderTable();
+        const verification = await verifySSHSetupComprehensive(t.ip, remoteUser, kp.private, localUser, registryIP);
+        
+        if (verification.registryAliases) {
+          markReg(t.hostname, true);
+          setRowMsg(t.hostname, "registry aliases configured & verified", "ok");
+          success++;
+        } else {
+          setRowMsg(t.hostname, "verification failed: registry aliases not found", "err");
+          failed++;
+        }
       } else {
         setRowMsg(t.hostname, `registry config failed: ${reg.msg}`, "err");
         failed++;
@@ -1279,7 +1531,57 @@ export function createSSHUI({ getHosts }) {
     setTimeout(() => { renderTable(); }, 0);
   })();
 
-  // Auto-convert remote username to lowercase for Linux compatibility
+// Enhanced error reporting for SSH verification failures
+function generateDetailedErrorReport(hostname, verificationResult) {
+  const errors = [];
+  const suggestions = [];
+  
+  if (!verificationResult.userKeyAuth && !verificationResult.rootKeyAuth) {
+    errors.push("❌ SSH key authentication failed for both user and root");
+    suggestions.push(`• Check SSH connectivity: ssh -i <keyfile> ${hostname} 'echo test'`);
+    suggestions.push("• Verify the SSH key was properly installed");
+    suggestions.push("• Check if SSH service is running on the target host");
+  }
+  
+  if (!verificationResult.rootKeyAuth && verificationResult.userKeyAuth) {
+    errors.push("❌ Root SSH key authentication failed (user works)");
+    suggestions.push("• SSH key may not be installed for root user");
+    suggestions.push(`• Try manual root key installation: ssh-copy-id -i <keyfile> root@${hostname}`);
+  }
+  
+  if (!verificationResult.permitRootLogin) {
+    errors.push("❌ Root SSH login not enabled");
+    suggestions.push("• Add 'PermitRootLogin yes' to /etc/ssh/sshd_config");
+    suggestions.push("• Restart SSH service: systemctl restart sshd");
+  }
+  
+  if (!verificationResult.passwordAuthDisabled) {
+    errors.push("❌ Password authentication not disabled");
+    suggestions.push("• Add 'PasswordAuthentication no' to /etc/ssh/sshd_config");
+    suggestions.push("• Restart SSH service: systemctl restart sshd");
+  }
+  
+  if (!verificationResult.sudoConfigured && verificationResult.userKeyAuth) {
+    errors.push("❌ Passwordless sudo not configured");
+    suggestions.push(`• Add to /etc/sudoers: <username> ALL=(ALL) NOPASSWD: ALL`);
+    suggestions.push("• Or run: echo '<username> ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/<username>");
+  }
+  
+  if (!verificationResult.registryAliases) {
+    errors.push("❌ Registry aliases not found in /etc/hosts");
+    suggestions.push("• Add registry IP and hostname to /etc/hosts");
+    suggestions.push("• Example: echo '<IP> docker-registry' >> /etc/hosts");
+  }
+  
+  return {
+    summary: `${errors.length} verification issue(s) found for ${hostname}`,
+    errors: errors,
+    suggestions: suggestions,
+    details: verificationResult.details
+  };
+}
+
+// Auto-convert remote username to lowercase for Linux compatibility
   if (el.remoteUser) {
     el.remoteUser.addEventListener("input", function() {
       const cursorPos = this.selectionStart;
@@ -1293,5 +1595,116 @@ export function createSSHUI({ getHosts }) {
   }
 
   renderTable();
-  return { refresh: renderTable };
+  
+  // Enhanced refresh function that includes comprehensive verification
+  async function refreshWithVerification() {
+    const localUser = el.localUser?.value?.trim() || "root";
+    const keyType = el.keyType?.value || "ed25519";
+    const registryIP = el.registryIP?.value?.trim() || await getLocalPrimaryIPv4().catch(() => null);
+    
+    // Get current hosts and update table
+    renderTable();
+    
+    // Check if we have a usable SSH key
+    let kp;
+    try {
+      kp = await ensureLocalKey(localUser, keyType);
+      const keyOk = await ensurePrivateKeyUsable(kp.private);
+      if (!keyOk.ok) {
+        console.warn("Local SSH key not usable, skipping verification");
+        setStatus(el.status, `SSH key not usable (${keyOk.reason}). Generate key first.`, "err");
+        return;
+      }
+    } catch (e) {
+      console.warn("No SSH key available for verification:", e);
+      setStatus(el.status, "No SSH key available. Generate key first using 'Generate / Use existing key' button.", "err");
+      return;
+    }
+    
+    // Get all hosts that have any SSH status
+    const hostsToVerify = Array.from(rowState.entries())
+      .filter(([hostname, st]) => st.ip) // Only need valid IP
+      .map(([hostname, st]) => ({ hostname, ip: st.ip }));
+    
+    if (hostsToVerify.length === 0) {
+      console.log("No hosts available to verify - add some hosts first");
+      setStatus(el.status, "No hosts available to verify. Add hosts first.", "err");
+      return;
+    }
+    
+    console.log(`[REFRESH] Starting verification of ${hostsToVerify.length} hosts...`);
+    setStatus(el.status, `Verifying SSH status on ${hostsToVerify.length} hosts...`, "");
+    
+    let verified = 0, failed = 0, skipped = 0;
+    
+    for (const host of hostsToVerify) {
+      try {
+        setRowMsg(host.hostname, "checking SSH status…", ""); 
+        renderTable();
+        
+        // Try to get the remote user from the form, default to common usernames
+        const remoteUser = (el.remoteUser?.value?.trim() || "xloud").toLowerCase();
+        
+        // Run comprehensive verification
+        const result = await verifySSHSetupComprehensive(host.ip, remoteUser, kp.private, localUser, registryIP);
+        
+        // Update badges based on actual verification results  
+        markKey(host.hostname, result.userKeyAuth || result.rootKeyAuth);
+        markSudo(host.hostname, result.sudoConfigured);
+        markPwd(host.hostname, result.permitRootLogin && result.passwordAuthDisabled);
+        markReg(host.hostname, result.registryAliases);
+        
+        if (result.overall) {
+          setRowMsg(host.hostname, "✓ verified: all SSH components working", "ok");
+          verified++;
+        } else if (result.userKeyAuth || result.rootKeyAuth) {
+          // Partial success - some SSH access works
+          const workingComponents = [];
+          const missingComponents = [];
+          
+          if (result.userKeyAuth || result.rootKeyAuth) workingComponents.push("SSH keys");
+          else missingComponents.push("SSH keys");
+          
+          if (result.sudoConfigured) workingComponents.push("sudo");
+          else missingComponents.push("sudo");
+          
+          if (result.permitRootLogin && result.passwordAuthDisabled) workingComponents.push("root access");
+          else missingComponents.push("root access");
+          
+          if (result.registryAliases) workingComponents.push("registry");
+          else missingComponents.push("registry");
+          
+          const statusMsg = missingComponents.length > 0 ? 
+            `⚠️ partial: missing ${missingComponents.slice(0,2).join(', ')}` :
+            "✓ verified: all components working";
+          
+          setRowMsg(host.hostname, statusMsg, missingComponents.length > 0 ? "err" : "ok");
+          if (missingComponents.length > 0) failed++; else verified++;
+        } else {
+          // No SSH access at all
+          setRowMsg(host.hostname, "❌ no SSH access - setup required", "err");
+          failed++;
+        }
+        
+        renderTable();
+        
+      } catch (e) {
+        console.error(`Verification failed for ${host.hostname}:`, e);
+        setRowMsg(host.hostname, "verification error", "err");
+        failed++;
+        renderTable();
+      }
+    }
+    
+    setStatus(el.status, 
+      failed === 0 && skipped === 0 ? `✓ Verification complete: ${verified} hosts fully verified` :
+      skipped > 0 ? `Verification complete: ${verified} verified, ${failed} with issues, ${skipped} skipped (no SSH key)` :
+      `Verification complete: ${verified} verified, ${failed} with issues`,
+      failed === 0 && skipped === 0 ? "ok" : "err"
+    );
+    
+    console.log(`[REFRESH] Verification complete: ${verified} verified, ${failed} failed, ${skipped} skipped`);
+  }
+  
+  return { refresh: renderTable, refreshWithVerification };
 }

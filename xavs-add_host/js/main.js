@@ -189,11 +189,25 @@ if (helpBtn) {
 // Refresh button functionality
 const refreshBtn = document.getElementById('btn-refresh');
 if (refreshBtn) {
-  refreshBtn.addEventListener('click', () => {
-    addToLog("Refreshing all data...");
+  refreshBtn.addEventListener('click', async () => {
+    addToLog("Refreshing all data and verifying SSH status...");
+    
+    // Refresh basic data
     loadConfig();
-    if (sshUI && sshUI.refresh) {
+    
+    // Refresh SSH panel with verification
+    if (sshUI && sshUI.refreshWithVerification) {
+      try {
+        await sshUI.refreshWithVerification();
+        addToLog("SSH verification refresh completed");
+      } catch (e) {
+        console.error("SSH verification refresh failed:", e);
+        addToLog("SSH verification refresh failed - check console for details");
+      }
+    } else if (sshUI && sshUI.refresh) {
+      // Fallback to basic refresh if verification not available
       sshUI.refresh();
+      addToLog("SSH panel refreshed (basic)");
     }
   });
 }
