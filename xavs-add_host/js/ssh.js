@@ -17,6 +17,7 @@ const SSH_OPTS = [
   "-o", "BatchMode=yes",
   "-o", "PasswordAuthentication=no",
   "-o", "StrictHostKeyChecking=no",
+  "-o", "UserKnownHostsFile=/dev/null",
   "-o", "ConnectTimeout=6",
   "-o", "ConnectionAttempts=1",
   "-o", "ServerAliveInterval=5",
@@ -41,6 +42,14 @@ function schedulePersist() {
 }
 
 // ===== Local host info (Cockpit machine) =====
+async function cleanKnownHosts(ip, localUser = "root") {
+  // Remove any existing host key entries for this IP to avoid conflicts
+  const userHome = localUser === "root" ? "/root" : `/home/${localUser}`;
+  const knownHostsPath = `${userHome}/.ssh/known_hosts`;
+  const cleanCmd = `ssh-keygen -f "${knownHostsPath}" -R "${ip}" 2>/dev/null || true`;
+  await cockpit.spawn(["bash","-lc", cleanCmd], { superuser: "try" }).catch(() => {});
+}
+
 async function getLocalPrimaryIPv4() {
   const cmd = `hostname -I | awk '{print $1}' | tr -d '\\n'`;
   const out = await cockpit.spawn(["bash","-lc", cmd], { superuser: "try" }).catch(() => "");
@@ -90,15 +99,31 @@ async function ensureSshpass() {
 // Create local key if missing (rsa or ed25519)
 async function ensureLocalKey(user, type) {
   const kp = localKeyPaths(user, type);
+  const userHome = user === "root" ? "/root" : `/home/${user}`;
+  
   const cmd = `
     umask 077
     key_priv="${kp.private}"; key_pub="${kp.public}";
+    
+    # Ensure .ssh directory exists with proper permissions
+    mkdir -p "${userHome}/.ssh"
+    chmod 700 "${userHome}/.ssh"
+    
+    # If not root, ensure ownership is correct
+    if [ "${user}" != "root" ] && [ "$(id -u)" = "0" ]; then
+      chown "${user}:${user}" "${userHome}/.ssh" 2>/dev/null || true
+    fi
+    
     if [ ! -f "$key_pub" ]; then
-      mkdir -p "$(dirname "$key_priv")"
       if [ "${type}" = "rsa" ]; then
         ssh-keygen -t rsa -b 4096 -N "" -f "$key_priv" -C "xdeploy@$(hostname -f)" >/dev/null
       else
         ssh-keygen -t ed25519 -N "" -f "$key_priv" -C "xdeploy@$(hostname -f)" >/dev/null
+      fi
+      
+      # Ensure proper ownership if running as root for non-root user
+      if [ "${user}" != "root" ] && [ "$(id -u)" = "0" ]; then
+        chown "${user}:${user}" "$key_priv" "$key_pub" 2>/dev/null || true
       fi
     fi
     echo "__OK__"
@@ -109,12 +134,16 @@ async function ensureLocalKey(user, type) {
 }
 
 // Copy public key to remote (first-time install)
-async function distributeOne(ip, remoteUser, remotePass, pubPath) {
+async function distributeOne(ip, remoteUser, remotePass, pubPath, localUser) {
+  // Clean any conflicting host keys first
+  await cleanKnownHosts(ip, localUser);
+  
   const safeHost = `${remoteUser}@${ip}`;
   const copyCmd = `
     sshpass -p '${remotePass.replace(/'/g,"'\\''")}' \
     ssh-copy-id -i '${pubPath}' \
       -o StrictHostKeyChecking=no \
+      -o UserKnownHostsFile=/dev/null \
       -o PreferredAuthentications=password \
       -o PubkeyAuthentication=no \
       '${safeHost}' >/dev/null 2>&1 && echo OK || echo FAIL
@@ -124,7 +153,10 @@ async function distributeOne(ip, remoteUser, remotePass, pubPath) {
 }
 
 // Verify key-only SSH works
-async function verifyKeyOne(ip, remoteUser, privPath) {
+async function verifyKeyOne(ip, remoteUser, privPath, localUser) {
+  // Clean any conflicting host keys first
+  await cleanKnownHosts(ip, localUser);
+  
   const args = ["ssh", "-i", privPath, ...SSH_OPTS, `${remoteUser}@${ip}`, "echo OK", "2>/dev/null || true"];
   const cmd  = args.map(a => (a.includes(" ") ? `'${a.replace(/'/g,"'\\''")}'` : a)).join(" ");
   const out = await cockpit.spawn(["bash","-lc", cmd], { superuser: "try" }).catch(()=> "");
@@ -132,19 +164,46 @@ async function verifyKeyOne(ip, remoteUser, privPath) {
 }
 
 // Disable password SSH on remote
-async function disablePasswordSsh(ip, remoteUser, privPath) {
+async function disablePasswordSsh(ip, remoteUser, privPath, localUser) {
+  // Clean any conflicting host keys first
+  await cleanKnownHosts(ip, localUser);
+  
+  const OK  = "__OK__";
+  const ERR = "__ERR__:";
+
   const remoteScript = `
     set -e
     CFG="/etc/ssh/sshd_config"
+
+    if ! command -v sudo >/dev/null 2>&1; then echo "${ERR}no_sudo"; exit 0; fi
+    if ! sudo -n true 2>/dev/null; then echo "${ERR}sudopw_required"; exit 0; fi
+
     sudo sed -i -E "s/^#?PasswordAuthentication\\s+.*/PasswordAuthentication no/" "$CFG" || true
     sudo grep -q "^PasswordAuthentication" "$CFG" || echo "PasswordAuthentication no" | sudo tee -a "$CFG" >/dev/null
     sudo systemctl reload sshd 2>/dev/null || sudo systemctl restart sshd 2>/dev/null || sudo systemctl restart ssh 2>/dev/null || true
-    echo OK
+    echo "${OK}"
   `;
   const args = ["timeout", `${TIMEOUT_S}s`, "ssh", "-i", privPath, ...SSH_OPTS, `${remoteUser}@${ip}`, remoteScript];
   const cmd  = args.map(a => (a.includes(" ") ? `'${a.replace(/'/g,"'\\''")}'` : a)).join(" ") + " 2>&1";
-  const out = await cockpit.spawn(["bash","-lc", cmd], { superuser: "try" }).catch(()=> "");
-  return String(out).includes("OK");
+  
+  try {
+    const out = await cockpit.spawn(["bash","-lc", cmd], { superuser: "try" });
+    const s = String(out);
+    if (s.includes(OK)) return true;
+    if (s.includes("__ERR__:no_sudo")) {
+      console.warn(`SSH disable failed (${ip}): sudo not installed`);
+      return false;
+    }
+    if (s.includes("__ERR__:sudopw_required")) {
+      console.warn(`SSH disable failed (${ip}): sudo requires password (configure NOPASSWD)`);
+      return false;
+    }
+    console.warn(`SSH disable output (${ip}):`, out);
+    return false;
+  } catch (e) {
+    console.error(`SSH disable error (${ip}):`, e);
+    return false;
+  }
 }
 
 // ===== Registry aliases on remote =====
@@ -152,7 +211,10 @@ async function disablePasswordSsh(ip, remoteUser, privPath) {
 //   <IP> docker-registry
 //   <IP> <hostFQDN>
 // Fast-fails on sudo password / immutable hosts file / missing sudo.
-async function ensureRemoteRegistryAliases(ip, remoteUser, privPath, registryIP, registryHost) {
+async function ensureRemoteRegistryAliases(ip, remoteUser, privPath, registryIP, registryHost, localUser) {
+  // Clean any conflicting host keys first
+  await cleanKnownHosts(ip, localUser);
+  
   const OK  = "__OK__";
   const ERR = "__ERR__:";
 
@@ -499,17 +561,17 @@ function renderTable() {
     for (const t of tList) {
       // verify key; install if needed and password provided
       setRowMsg(t.hostname, "Verifying key…", ""); renderTable();
-      let hasKey = await verifyKeyOne(t.ip, remoteUser, kp.private);
+      let hasKey = await verifyKeyOne(t.ip, remoteUser, kp.private, localUser);
 
       if (!hasKey && !remotePass) {
         setRowMsg(t.hostname, "no key · password required", "err"); renderTable(); skipped++; continue;
       }
       if (!hasKey && remotePass) {
         setRowMsg(t.hostname, "Copying key…", ""); renderTable();
-        const okCopy = await distributeOne(t.ip, remoteUser, remotePass, kp.public);
+        const okCopy = await distributeOne(t.ip, remoteUser, remotePass, kp.public, localUser);
         if (!okCopy) { setRowMsg(t.hostname, "copy failed", "err"); renderTable(); continue; }
         setRowMsg(t.hostname, "Verifying…", ""); renderTable();
-        hasKey = await verifyKeyOne(t.ip, remoteUser, kp.private);
+        hasKey = await verifyKeyOne(t.ip, remoteUser, kp.private, localUser);
         if (!hasKey) { setRowMsg(t.hostname, "verify failed", "err"); renderTable(); continue; }
       }
 
@@ -517,7 +579,7 @@ function renderTable() {
       markKey(t.hostname, true);
       setRowMsg(t.hostname, "adding registry aliases…", ""); renderTable();
 
-      const reg = await ensureRemoteRegistryAliases(t.ip, remoteUser, kp.private, registryIP, registryHost);
+      const reg = await ensureRemoteRegistryAliases(t.ip, remoteUser, kp.private, registryIP, registryHost, localUser);
       if (reg.ok) {
         markReg(t.hostname, true);
         setRowMsg(t.hostname, `key installed ✓ · registry=${registryIP}`, "ok");
@@ -549,18 +611,27 @@ function renderTable() {
     const tList = Array.from(rowState.entries()).filter(([,st]) => st.selected).map(([hostname, st]) => ({ hostname, ip: st.ip }));
     if (!tList.length) return setStatus(el.status, "No hosts selected.", "err");
 
+    let success = 0, failed = 0;
+
     for (const t of tList) {
       setRowMsg(t.hostname, "Disabling password SSH…", ""); renderTable();
-      const ok = await disablePasswordSsh(t.ip, remoteUser, kp.private);
+      const ok = await disablePasswordSsh(t.ip, remoteUser, kp.private, localUser);
       if (ok) {
         markPwd(t.hostname, true);
         setRowMsg(t.hostname, "password SSH disabled", "ok");
+        success++;
       } else {
-        setRowMsg(t.hostname, "disable failed", "err");
+        setRowMsg(t.hostname, "disable failed (check sudo NOPASSWD)", "err");
+        failed++;
       }
       renderTable();
     }
-    setStatus(el.status, "Hardening complete.", "ok");
+    
+    if (failed > 0) {
+      setStatus(el.status, `${success} succeeded, ${failed} failed. Ensure remote user has passwordless sudo (NOPASSWD).`, "err");
+    } else {
+      setStatus(el.status, "Hardening complete.", "ok");
+    }
   });
 
   // Rehydrate statuses from disk
