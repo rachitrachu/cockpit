@@ -410,7 +410,6 @@ async function verifySSHSetupComprehensive(ip, remoteUser, privPath, localUser, 
     }
     
     // Test 1: User SSH key authentication
-    console.log(`[VERIFY] Testing user SSH key authentication for ${remoteUser}@${ip}...`);
     try {
       const userArgs = ["ssh", "-i", privPath, ...SSH_OPTS, `${remoteUser}@${ip}`, "echo USER_SSH_OK", "2>/dev/null || echo USER_SSH_FAIL"];
       const userCmd = userArgs.map(a => (a.includes(" ") ? `'${a.replace(/'/g,"'\\''")}'` : a)).join(" ");
@@ -423,7 +422,6 @@ async function verifySSHSetupComprehensive(ip, remoteUser, privPath, localUser, 
     }
 
     // Test 2: Root SSH key authentication
-    console.log(`[VERIFY] Testing root SSH key authentication for root@${ip}...`);
     try {
       const rootArgs = ["ssh", "-i", privPath, ...SSH_OPTS, `root@${ip}`, "echo ROOT_SSH_OK", "2>/dev/null || echo ROOT_SSH_FAIL"];
       const rootCmd = rootArgs.map(a => (a.includes(" ") ? `'${a.replace(/'/g,"'\\''")}'` : a)).join(" ");
@@ -437,7 +435,6 @@ async function verifySSHSetupComprehensive(ip, remoteUser, privPath, localUser, 
 
     // Test 3: SSH configuration verification (only if we have SSH access)
     if (results.userKeyAuth || results.rootKeyAuth) {
-      console.log(`[VERIFY] Checking SSH configuration on ${ip}...`);
       try {
         const sshUser = results.rootKeyAuth ? "root" : remoteUser;
         const sshConfigScript = `
@@ -471,7 +468,6 @@ async function verifySSHSetupComprehensive(ip, remoteUser, privPath, localUser, 
 
     // Test 4: Sudo configuration (only if user access works and user is not root)
     if (results.userKeyAuth && remoteUser !== "root") {
-      console.log(`[VERIFY] Checking sudo configuration for ${remoteUser}@${ip}...`);
       try {
         const sudoScript = `
           if ! command -v sudo >/dev/null 2>&1; then echo "SUDO_NOT_INSTALLED"; exit 0; fi
@@ -495,7 +491,6 @@ async function verifySSHSetupComprehensive(ip, remoteUser, privPath, localUser, 
 
     // Test 5: Registry aliases in /etc/hosts (only if registry IP provided and SSH access works)
     if (registryIP && (results.userKeyAuth || results.rootKeyAuth)) {
-      console.log(`[VERIFY] Checking registry aliases in /etc/hosts on ${ip}...`);
       try {
         const sshUser = results.rootKeyAuth ? "root" : remoteUser;
         const hostsScript = `
@@ -535,16 +530,12 @@ async function verifySSHSetupComprehensive(ip, remoteUser, privPath, localUser, 
     
     results.overall = criticalChecks.every(c => c) && preferredChecks.every(c => c);
     
-    console.log(`[VERIFY] Comprehensive verification completed for ${ip}:`, {
-      userKeyAuth: results.userKeyAuth,
-      rootKeyAuth: results.rootKeyAuth,
-      permitRootLogin: results.permitRootLogin,
-      passwordAuthDisabled: results.passwordAuthDisabled,
-      sudoConfigured: results.sudoConfigured,
-      registryAliases: results.registryAliases,
-      overall: results.overall,
-      errors: results.errors
-    });
+    // Concise logging - only show failures or summary
+    if (results.overall) {
+      console.log(`✓ ${ip} - All SSH components verified`);
+    } else if (results.errors.length > 0) {
+      console.log(`⚠️ ${ip} - Issues: ${results.errors.slice(0,2).join('; ')}`);
+    }
     
   } catch (e) {
     results.errors.push(`Verification system error: ${e.message || e}`);
