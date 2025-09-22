@@ -2,7 +2,7 @@
   "version": 1,
   "tools": {
     "xavs-deploy": {
-      "label": "XAVS Deploy",
+      "label": "xAVS Deploy",
       "path": "index.html",
       "order": 10,
       "keywords": [

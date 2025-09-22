@@ -5,7 +5,7 @@
  */
 
 (() => {
-  const INVENTORY = "/root/xdeploy/nodes";
+  const INVENTORY = "/etc/xavs/nodes";
   const VENV_ACTIVATE = "/opt/xenv/bin/activate";
 
   // Commands that DO NOT support -t (services/tags) based on SOP
@@ -932,7 +932,7 @@
     }
 
     // Build command to match manual execution format
-    return `source ${VENV_ACTIVATE} && xavs-deploy -i ${INVENTORY} ${cmd}${tagsArg}${limitArg}${specialArgs}${extraFlags}`.trim();
+    return `source ${VENV_ACTIVATE} && xavs-ansible -i ${INVENTORY} ${cmd}${tagsArg}${limitArg}${specialArgs}${extraFlags}`.trim();
   }
 
   /* ---------- run / stop ---------- */

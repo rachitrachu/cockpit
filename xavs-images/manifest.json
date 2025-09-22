@@ -2,7 +2,7 @@
   "version": 1,
   "tools": {
     "xavs-images": {
-      "label": "XAVS Images",
+      "label": "xAVS Images",
       "path": "index.html",
       "order": 20,
       "icon": "fa-docker",
