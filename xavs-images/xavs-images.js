@@ -17,8 +17,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let icon = '📁'; // Default folder icon
     
     if (isFile || cleanPath.includes('.')) {
-      if (cleanPath.endsWith('.tar.gz')) {
-        icon = '📦'; // Archive icon for tar.gz files
+      if (cleanPath.endsWith('.tar.gz') || cleanPath.endsWith('.tar')) {
+        icon = '📦'; // Archive icon for tar files
       } else {
         icon = '📄'; // Generic file icon
       }
@@ -408,17 +408,17 @@ document.addEventListener('DOMContentLoaded', () => {
           li.classList.add('file-disabled');
           li.dataset.selectable = 'false';
         } else {
-          if (item.name.endsWith('.tar.gz')) {
+          if (item.name.endsWith('.tar.gz') || item.name.endsWith('.tar')) {
             iconClass = 'fa-solid fa-file-archive';
             colorClass = 'icon-file-archive';
             li.classList.add('file-selectable');
-            li.title = `Select this .tar.gz archive: ${item.name}`;
+            li.title = `Select this archive file: ${item.name}`;
             li.dataset.selectable = 'true';
           } else {
             iconClass = 'fa-solid fa-file';
             colorClass = 'icon-file';
             li.classList.add('file-disabled');
-            li.title = 'Only .tar.gz files can be selected';
+            li.title = 'Only .tar and .tar.gz files can be selected';
             li.dataset.selectable = 'false';
           }
         }
@@ -688,6 +688,13 @@ document.addEventListener('DOMContentLoaded', () => {
       // Ensure destination directory exists
       await runCommand(['mkdir', '-p', EXTRACT_DESTINATION]);
       
+      // Determine the appropriate tar options based on file extension
+      const isGzipped = archivePath.toLowerCase().endsWith('.tar.gz');
+      const tarOptions = isGzipped ? '-xzf' : '-xf';
+      const fileTypeMsg = isGzipped ? 'gzipped tar archive' : 'tar archive';
+      
+      log(`Detected ${fileTypeMsg}, using tar options: ${tarOptions}`);
+      
       // Check if pv is available for progress monitoring
       let pvAvailable = false;
       try {
@@ -705,8 +712,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
         extractProgressText.textContent = 'Extracting with progress...';
         
-        // Use pv to monitor extraction progress
-        const extractCommand = `pv -n '${archivePath.replace(/'/g, "'\\''")}' | tar -xzf - -C '${EXTRACT_DESTINATION}' --verbose`;
+        // Use pv to monitor extraction progress with appropriate tar options
+        const extractCommand = `pv -n '${archivePath.replace(/'/g, "'\\''")}' | tar ${tarOptions} - -C '${EXTRACT_DESTINATION}' --verbose`;
         
         const process = cockpit.spawn(['sh', '-c', extractCommand], { 
           superuser: 'require', 
@@ -748,7 +755,7 @@ document.addEventListener('DOMContentLoaded', () => {
         extractProgressBar.style.width = '50%';
         
         const tarProcess = cockpit.spawn([
-          'tar', '-xzf', archivePath, '-C', EXTRACT_DESTINATION, '--verbose'
+          'tar', tarOptions, archivePath, '-C', EXTRACT_DESTINATION, '--verbose'
         ], { superuser: 'require', err: 'message' });
         
         // Show some file names being extracted
@@ -1582,18 +1589,38 @@ OS: ${imageData.Os}`;
       log('    Images can be pulled successfully\n\n');
     } catch (e) {
       testResults.xavsRegistry = { status: 'fail', details: e.message };
-      log(' FAIL: Could not access xAVS image manifests\n');
-      log(`    Error: ${e.message}\n`);
+      log('❌ FAIL: Could not access xAVS image manifests\n');
+      log(`🔍 Error: ${e.message}\n`);
       
-      if (e.message.includes('manifest unknown') || e.message.includes('not found')) {
-        log('    Cause: Image may not exist in the registry\n');
-        log('   � Check: https://quay.io/repository/xavs.images/keystone\n');
-      } else if (e.message.includes('unauthorized')) {
-        log('    Cause: Authentication required\n');
-        log('    Solution: Run "docker login quay.io"\n');
+      const errorLower = e.message.toLowerCase();
+      
+      if (errorLower.includes('manifest unknown') || errorLower.includes('not found') || errorLower.includes('repository does not exist')) {
+        log('📋 DIAGNOSIS: The test image does not exist in the registry\n');
+        log('🔗 Verify at: https://quay.io/repository/xavs.images/keystone\n');
+        log('💡 This could mean:\n');
+        log('   • The xAVS images repository is not set up correctly\n');
+        log('   • The test image name/tag has changed\n');
+        log('   • Repository has been moved or removed\n');
+      } else if (errorLower.includes('unauthorized') || errorLower.includes('authentication') || errorLower.includes('access denied')) {
+        log('🔐 DIAGNOSIS: Authentication required for private images\n');
+        log('🔑 Solution: Run "docker login quay.io" with valid credentials\n');
+        log('ℹ️  Note: Some xAVS images may require authentication\n');
+      } else if (errorLower.includes('connection') || errorLower.includes('network') || errorLower.includes('dial tcp')) {
+        log('🌐 DIAGNOSIS: Network connectivity issue\n');
+        log('🔧 Troubleshooting:\n');
+        log('   • Check internet connection\n');
+        log('   • Verify firewall allows access to quay.io\n');
+        log('   • Test basic connectivity: ping quay.io\n');
+      } else if (errorLower.includes('timeout') || errorLower.includes('deadline exceeded')) {
+        log('⏱️ DIAGNOSIS: Request timeout\n');
+        log('🔄 Registry may be temporarily slow - try again later\n');
       } else {
-        log('    Cause: Network or registry issue\n');
-        log('    Solution: Check internet connection and try again\n');
+        log('❓ DIAGNOSIS: Unexpected registry issue\n');
+        log('🔧 Possible causes:\n');
+        log('   • Temporary registry outage\n');
+        log('   • Docker daemon issues\n');
+        log('   • DNS resolution problems\n');
+        log('💡 Try restarting Docker or check registry status\n');
       }
       log('\n');
     }
@@ -1821,15 +1848,42 @@ OS: ${imageData.Os}`;
           log(`❌ [${i + 1}/${images.length}] Failed to pull ${image}\n`);
           log(`🔍 Error details: ${error.message}\n`);
           
-          // Provide specific error diagnostics
-          if (error.message.includes('manifest unknown') || error.message.includes('not found')) {
-            log(`💡 This image may not exist in the registry. Check: https://quay.io/repository/xavs.images/${image.split(':')[0]}\n`);
-          } else if (error.message.includes('connection') || error.message.includes('network')) {
-            log(`🌐 Network connectivity issue. Check internet connection and registry access.\n`);
-          } else if (error.message.includes('unauthorized') || error.message.includes('authentication')) {
-            log(`🔐 Authentication issue. You may need to login: docker login quay.io\n`);
-          } else if (error.message.includes('timeout')) {
-            log(`⏱️ Request timeout. The registry may be slow or overloaded.\n`);
+          // Provide specific error diagnostics based on error type
+          const errorLower = error.message.toLowerCase();
+          
+          if (errorLower.includes('manifest unknown') || errorLower.includes('not found') || errorLower.includes('repository does not exist')) {
+            log(`� IMAGE NOT FOUND: The image "${image}" does not exist in the registry.\n`);
+            log(`🔗 Check if the image exists: https://quay.io/repository/xavs.images/${image.split(':')[0]}\n`);
+            log(`💡 Possible causes:\n`);
+            log(`   • Image name or tag is incorrect\n`);
+            log(`   • Image has been removed or relocated\n`);
+            log(`   • Typo in the image list file\n`);
+          } else if (errorLower.includes('unauthorized') || errorLower.includes('authentication') || errorLower.includes('access denied')) {
+            log(`🔐 AUTHENTICATION REQUIRED: Access to this image requires login.\n`);
+            log(`🔑 Solution: Run "docker login quay.io" with valid credentials\n`);
+            log(`ℹ️  Some images may be private and require authentication\n`);
+          } else if (errorLower.includes('connection') || errorLower.includes('network') || errorLower.includes('dial tcp')) {
+            log(`🌐 NETWORK ISSUE: Cannot connect to the registry.\n`);
+            log(`🔧 Troubleshooting:\n`);
+            log(`   • Check internet connection\n`);
+            log(`   • Verify firewall/proxy settings\n`);
+            log(`   • Test: ping quay.io\n`);
+          } else if (errorLower.includes('timeout') || errorLower.includes('deadline exceeded')) {
+            log(`⏱️ TIMEOUT: Request timed out while pulling the image.\n`);
+            log(`🔄 This may be temporary - try again later\n`);
+            log(`💡 Large images may take longer to download\n`);
+          } else if (errorLower.includes('pull rate limit') || errorLower.includes('rate limit')) {
+            log(`� RATE LIMITED: Too many requests to the registry.\n`);
+            log(`⏳ Wait a few minutes before trying again\n`);
+            log(`💡 Consider using docker login to get higher rate limits\n`);
+          } else if (errorLower.includes('disk space') || errorLower.includes('no space left')) {
+            log(`💾 DISK SPACE: Insufficient disk space to store the image.\n`);
+            log(`🧹 Free up disk space and try again\n`);
+            log(`📊 Check: docker system df\n`);
+          } else {
+            log(`❓ UNKNOWN ERROR: Unexpected issue during image pull.\n`);
+            log(`🔧 This might be a temporary registry issue or Docker daemon problem.\n`);
+            log(`💡 Try: docker system prune (to clean up) or restart Docker\n`);
           }
           log('\n');
           // Continue with next image instead of stopping
